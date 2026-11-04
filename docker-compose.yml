@@ -1,0 +1,74 @@
+services:
+  # Vita's own metadata DB (connections, queries, charts, dashboards).
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5433:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Demo database with a seeded "sales" schema. Connect to it from Vita with
+  # host "sampledb", port 5432.
+  sampledb:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${SAMPLEDB_USER}
+      POSTGRES_PASSWORD: ${SAMPLEDB_PASSWORD}
+      POSTGRES_DB: ${SAMPLEDB_DB}
+    ports:
+      - "5434:5432"
+    volumes:
+      - sampledb-data:/var/lib/postgresql/data
+      - ./sampledb/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    env_file: .env
+    environment:
+      # File change events don't reliably cross Docker bind mounts on Windows/macOS.
+      WATCHFILES_FORCE_POLLING: "true"
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    extra_hosts:
+      # Lets the backend reach databases on the host machine (also on Linux).
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      db:
+        condition: service_healthy
+      sampledb:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    environment:
+      BACKEND_URL: http://backend:8000
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+
+volumes:
+  db-data:
+  sampledb-data:

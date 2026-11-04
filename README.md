@@ -1,0 +1,81 @@
+# Vita
+
+A small, self-hosted data visualization tool — a much simpler alternative to Apache Superset.
+Connect a database, write SQL, turn results into charts, put charts on dashboards.
+
+**Status:** Part 2 — save, test and browse database connections (PostgreSQL, MySQL).
+
+## Requirements
+- Docker with Docker Compose
+
+## Run it
+```sh
+cp .env.example .env
+# Edit .env: change the passwords, and set VITA_SECRET_KEY. Generate a key with:
+docker compose run --rm --no-deps backend python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+
+docker compose up --build
+```
+
+| What            | URL / address                      |
+|-----------------|------------------------------------|
+| App             | http://localhost:5173              |
+| Health endpoint | http://localhost:8000/api/health   |
+| API docs        | http://localhost:8000/docs         |
+| Vita metadata DB| `localhost:5433` (from your host)  |
+| Demo DB         | `localhost:5434` (from your host)  |
+
+Both backend (uvicorn `--reload`) and frontend (Vite) hot-reload when you edit files.
+Migrations run automatically (`alembic upgrade head`) when the backend container starts.
+
+> **Keep `VITA_SECRET_KEY` safe.** Saved connection passwords are encrypted with it.
+> If it changes, re-enter the passwords of your saved connections.
+
+## Demo database
+The `sampledb` service is a Postgres database with a seeded `sales` schema
+(customers, products, orders, order_items, and an `order_totals` view; ~800 orders over two years).
+Add it in Vita as a connection:
+
+| Field    | Value                                  |
+|----------|----------------------------------------|
+| Type     | PostgreSQL                             |
+| Host     | `sampledb`                             |
+| Port     | `5432`                                 |
+| Database | value of `SAMPLEDB_DB` in `.env`       |
+| Username | value of `SAMPLEDB_USER` in `.env`     |
+| Password | value of `SAMPLEDB_PASSWORD` in `.env` |
+
+The seed script only runs when the volume is first created. To re-seed from scratch:
+```sh
+docker compose rm -sf sampledb
+docker volume rm vitaproject_sampledb-data
+docker compose up -d sampledb
+```
+
+## Connecting to your own databases
+The backend runs inside Docker, so `localhost` there means the backend container itself.
+For a database running on your own (Windows) machine, use the host **`host.docker.internal`**.
+
+## Tests
+```sh
+docker compose exec backend pytest
+docker compose exec frontend npm run typecheck
+```
+Backend tests use a separate `vita_test` database, so they don't touch your saved connections.
+
+## Migrations
+```sh
+docker compose exec backend alembic revision --autogenerate -m "describe change"
+docker compose exec backend alembic upgrade head
+```
+
+## Layout
+```
+backend/    FastAPI app, Alembic migrations, pytest tests
+frontend/   React + TypeScript + Vite
+sampledb/   seed SQL for the demo database
+docker-compose.yml
+```
+
+If you add dependencies to `frontend/package.json`, rebuild with `docker compose up --build -V`
+(`-V` recreates the `node_modules` volume).

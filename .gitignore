@@ -1,0 +1,23 @@
+# Read-only Apache Superset source used as reference material
+superset-reference/
+
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Node / frontend
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

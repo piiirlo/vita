@@ -1,0 +1,19 @@
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+
+// In Docker the backend is reachable as http://backend:8000; locally it's localhost.
+const backendUrl = process.env.BACKEND_URL ?? "http://localhost:8000";
+
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    host: true,
+    port: 5173,
+    strictPort: true,
+    // File change events don't reliably cross Docker bind mounts on Windows/macOS.
+    watch: { usePolling: true, interval: 300 },
+    proxy: {
+      "/api": { target: backendUrl, changeOrigin: true },
+    },
+  },
+});
