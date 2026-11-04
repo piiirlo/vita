@@ -276,6 +276,34 @@ button.danger:hover {
   color: var(--muted);
 }
 
+.form .hint-warning {
+  color: #92400e;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+
+.form .password-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: -8px 0 14px;
+}
+
+.form label.checkbox {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-weight: 400;
+}
+
+.form input:disabled {
+  background: var(--bg);
+  color: var(--muted);
+}
+
 .form-actions {
   display: flex;
   gap: 8px;

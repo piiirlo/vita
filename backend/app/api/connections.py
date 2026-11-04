@@ -4,10 +4,12 @@ from typing import Annotated
 
 from cryptography.fernet import InvalidToken
 from fastapi import APIRouter, Depends, HTTPException, Response, status
+from sqlalchemy import Connection as SAConnection
 from sqlalchemy import Inspector, inspect, select
-from sqlalchemy.exc import IntegrityError, NoSuchTableError, SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, NoSuchTableError
 from sqlalchemy.orm import Session
 
+from app.browsing import read_columns
 from app.crypto import encrypt_password
 from app.db import get_db
 from app.db_errors import friendly_db_error
@@ -89,9 +91,9 @@ def _inspector(details: ConnectionDetails) -> Iterator[Inspector]:
     try:
         with engine.connect() as db_conn:
             yield inspect(db_conn)
-    except NoSuchTableError:
+    except (HTTPException, NoSuchTableError):
         raise
-    except SQLAlchemyError as exc:
+    except Exception as exc:  # driver/network errors, and e.g. TypeError for unknown extra options
         raise HTTPException(status.HTTP_400_BAD_REQUEST, friendly_db_error(exc, details)) from None
     finally:
         engine.dispose()
@@ -109,7 +111,8 @@ def list_connections(db: DbSession) -> list[Connection]:
 def create_connection(payload: ConnectionCreate, db: DbSession) -> Connection:
     conn = Connection(
         **payload.model_dump(exclude={"password"}),
-        password_encrypted=encrypt_password(payload.password),
+        # Empty password = no password (NULL), not an encrypted empty string.
+        password_encrypted=encrypt_password(payload.password) if payload.password else None,
     )
     db.add(conn)
     _commit_or_409(db)
@@ -119,11 +122,17 @@ def create_connection(payload: ConnectionCreate, db: DbSession) -> Connection:
 
 @router.post("/test", response_model=TestResult)
 def test_unsaved_connection(payload: ConnectionTestRequest, db: DbSession) -> TestResult:
-    password = payload.password
-    if not password and payload.connection_id is not None:
+    password: str | None
+    if payload.clear_password:
+        password = None
+    elif payload.password:
+        password = payload.password
+    elif payload.connection_id is not None:
         password = _saved_details(_get_or_404(db, payload.connection_id)).password
+    else:
+        password = None
     details = ConnectionDetails(
-        **payload.model_dump(exclude={"password", "connection_id"}),
+        **payload.model_dump(exclude={"password", "clear_password", "connection_id"}),
         password=password,
     )
     return _run_test(details)
@@ -137,10 +146,13 @@ def get_connection(connection_id: int, db: DbSession) -> Connection:
 @router.put("/{connection_id}", response_model=ConnectionOut)
 def update_connection(connection_id: int, payload: ConnectionUpdate, db: DbSession) -> Connection:
     conn = _get_or_404(db, connection_id)
-    for field, value in payload.model_dump(exclude={"password"}).items():
+    for field, value in payload.model_dump(exclude={"password", "clear_password"}).items():
         setattr(conn, field, value)
-    if payload.password:
+    if payload.clear_password:
+        conn.password_encrypted = None
+    elif payload.password:
         conn.password_encrypted = encrypt_password(payload.password)
+    # else: empty password keeps the saved one
     _commit_or_409(db)
     db.refresh(conn)
     return conn
@@ -188,26 +200,10 @@ def list_columns(connection_id: int, schema: str, table: str, db: DbSession) -> 
     details = _saved_details(_get_or_404(db, connection_id))
     try:
         with _inspector(details) as insp:
-            columns = insp.get_columns(table, schema=schema)
-            pk_columns = set(insp.get_pk_constraint(table, schema=schema)["constrained_columns"])
-            dialect = insp.dialect
+            db_conn = insp.bind
+            assert isinstance(db_conn, SAConnection)  # _inspector inspects a connection
+            return read_columns(db_conn, details.db_type, schema, table)
     except NoSuchTableError:
         raise HTTPException(
             status.HTTP_404_NOT_FOUND, f'Table "{schema}.{table}" not found'
         ) from None
-
-    result: list[ColumnInfo] = []
-    for col in columns:
-        try:
-            type_name = col["type"].compile(dialect=dialect)
-        except Exception:  # some exotic types can't be compiled; fall back to the class name
-            type_name = type(col["type"]).__name__
-        result.append(
-            ColumnInfo(
-                name=col["name"],
-                type=type_name,
-                nullable=bool(col["nullable"]),
-                primary_key=col["name"] in pk_columns,
-            )
-        )
-    return result

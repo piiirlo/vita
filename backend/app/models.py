@@ -19,7 +19,8 @@ class Connection(Base):
     port: Mapped[int]
     database: Mapped[str] = mapped_column(String(255))
     username: Mapped[str] = mapped_column(String(255))
-    password_encrypted: Mapped[str] = mapped_column(Text)
+    # NULL means "no password". Never expose this column through the API.
+    password_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     extra: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
@@ -27,3 +28,7 @@ class Connection(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+    @property
+    def has_password(self) -> bool:
+        return self.password_encrypted is not None

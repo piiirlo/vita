@@ -31,6 +31,33 @@ def test_build_url_postgresql() -> None:
     assert url.drivername == "postgresql+psycopg"
 
 
+def test_build_url_without_password() -> None:
+    url = build_url(_details(password=None))
+    assert url.password is None
+    assert url.render_as_string(hide_password=False) == "mysql+pymysql://reader@mysql.example.com:3306/shop"
+
+
+def test_mysql_extra_option_examples_are_real_pymysql_arguments() -> None:
+    """The UI suggests these for MySQL; make sure PyMySQL actually accepts them."""
+    import inspect
+
+    import pymysql
+
+    params = inspect.signature(pymysql.connections.Connection.__init__).parameters
+    for name in ("ssl_ca", "ssl", "charset", "connect_timeout"):
+        assert name in params
+
+
+def test_mysql_ssl_ca_reaches_driver() -> None:
+    """A missing CA file fails inside PyMySQL (so the option was passed), with a clear message."""
+    from app.engines import check_connection
+
+    details = _details(host="sampledb", extra={"ssl_ca": "/nonexistent/ca.pem"})
+    with pytest.raises(FileNotFoundError) as exc_info:
+        check_connection(details)
+    assert "inside the backend container" in friendly_db_error(exc_info.value, details)
+
+
 def test_build_url_rejects_unknown_type() -> None:
     with pytest.raises(ValueError, match="Unsupported database type"):
         build_url(_details(db_type="oracle"))

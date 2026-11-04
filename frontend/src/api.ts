@@ -21,11 +21,19 @@ export type Connection = {
   port: number;
   database: string;
   username: string;
+  /** Whether a password is saved. The password itself is never returned. */
+  has_password: boolean;
   extra: ExtraOptions | null;
   created_at: string;
   updated_at: string;
 };
 
+/**
+ * Password rules (same for save and test):
+ * - clear_password: true -> no password
+ * - non-empty password   -> use this password
+ * - empty password       -> keep the saved one (on create: no password)
+ */
 export type ConnectionFields = {
   db_type: DbType;
   host: string;
@@ -33,7 +41,14 @@ export type ConnectionFields = {
   database: string;
   username: string;
   password: string;
+  clear_password: boolean;
   extra: ExtraOptions | null;
+};
+
+/** Example "extra options" per database type; both are real driver arguments. */
+export const EXTRA_OPTIONS_EXAMPLES: Record<DbType, string> = {
+  postgresql: '{"sslmode": "require"}',
+  mysql: '{"ssl_ca": "/path/to/ca.pem"}',
 };
 
 export type ConnectionInput = ConnectionFields & { name: string };

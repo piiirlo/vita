@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import {
   DEFAULT_PORTS,
+  EXTRA_OPTIONS_EXAMPLES,
   createConnection,
   getConnection,
   testConnectionDetails,
@@ -21,6 +22,8 @@ type FormState = {
   database: string;
   username: string;
   password: string;
+  /** Edit form only: "No password" checkbox, clears the saved password. */
+  noPassword: boolean;
   extra: string;
 };
 
@@ -32,8 +35,26 @@ const EMPTY_FORM: FormState = {
   database: "",
   username: "",
   password: "",
+  noPassword: false,
   extra: "",
 };
+
+/** Soft check for a common mistake: typing the host name into the Database field. */
+function looksLikeHostname(database: string, host: string): boolean {
+  const db = database.trim().toLowerCase();
+  if (!db) return false;
+  return db.includes(".") || db === host.trim().toLowerCase();
+}
+
+/**
+ * New port after switching database type: only replace it when it's empty or
+ * still the other type's default, so a custom port is never overwritten.
+ */
+function portAfterTypeChange(currentPort: string, from: DbType, to: DbType): string {
+  const port = currentPort.trim();
+  if (port === "" || port === String(DEFAULT_PORTS[from])) return String(DEFAULT_PORTS[to]);
+  return currentPort;
+}
 
 /** Validate and convert the form to API fields. Throws Error with a readable message. */
 function toFields(form: FormState): ConnectionFields {
@@ -65,7 +86,8 @@ function toFields(form: FormState): ConnectionFields {
     port,
     database: form.database.trim(),
     username: form.username.trim(),
-    password: form.password,
+    password: form.noPassword ? "" : form.password,
+    clear_password: form.noPassword,
     extra,
   };
 }
@@ -77,6 +99,7 @@ export default function ConnectionFormPage() {
   const navigate = useNavigate();
 
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  const [savedHasPassword, setSavedHasPassword] = useState(false);
   const [loading, setLoading] = useState(isEdit);
   const [error, setError] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<TestResult | null>(null);
@@ -85,7 +108,7 @@ export default function ConnectionFormPage() {
   useEffect(() => {
     if (editId === null) return;
     getConnection(editId)
-      .then((conn) =>
+      .then((conn) => {
         setForm({
           name: conn.name,
           db_type: conn.db_type,
@@ -94,9 +117,11 @@ export default function ConnectionFormPage() {
           database: conn.database,
           username: conn.username,
           password: "",
+          noPassword: false,
           extra: conn.extra ? JSON.stringify(conn.extra, null, 2) : "",
-        }),
-      )
+        });
+        setSavedHasPassword(conn.has_password);
+      })
       .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
       .finally(() => setLoading(false));
   }, [editId]);
@@ -107,17 +132,20 @@ export default function ConnectionFormPage() {
   }
 
   function changeDbType(dbType: DbType) {
-    setForm((prev) => {
-      // Switch the port too, unless the user typed a custom one.
-      const isDefaultPort = Object.values(DEFAULT_PORTS).map(String).includes(prev.port);
-      return {
-        ...prev,
-        db_type: dbType,
-        port: isDefaultPort || !prev.port ? String(DEFAULT_PORTS[dbType]) : prev.port,
-      };
-    });
+    setForm((prev) => ({
+      ...prev,
+      db_type: dbType,
+      port: portAfterTypeChange(prev.port, prev.db_type, dbType),
+    }));
     setTestResult(null);
   }
+
+  function setNoPassword(checked: boolean) {
+    setForm((prev) => ({ ...prev, noPassword: checked, password: checked ? "" : prev.password }));
+    setTestResult(null);
+  }
+
+  const dbLooksLikeHost = looksLikeHostname(form.database, form.host);
 
   async function handleTest() {
     setError(null);
@@ -219,8 +247,18 @@ export default function ConnectionFormPage() {
 
         <label>
           Database
-          <input value={form.database} onChange={(e) => update("database", e.target.value)} />
+          <input
+            value={form.database}
+            onChange={(e) => update("database", e.target.value)}
+            placeholder={form.db_type === "mysql" ? "e.g. Rfam" : "e.g. sampledb"}
+          />
         </label>
+        {dbLooksLikeHost && (
+          <p className="hint hint-warning">
+            This looks like a hostname. The database name is usually something like{" "}
+            <code>Rfam</code> or <code>sales</code>.
+          </p>
+        )}
 
         <div className="row">
           <label className="grow">
@@ -237,22 +275,57 @@ export default function ConnectionFormPage() {
               type="password"
               value={form.password}
               onChange={(e) => update("password", e.target.value)}
-              placeholder={isEdit ? "Leave empty to keep current" : ""}
+              placeholder={
+                form.noPassword
+                  ? "No password"
+                  : isEdit
+                    ? "Leave empty to keep current"
+                    : "Leave empty if there is no password"
+              }
+              disabled={form.noPassword}
               autoComplete="new-password"
             />
           </label>
         </div>
+        {isEdit && (
+          <div className="password-row">
+            <span className="muted small">
+              Current password: <strong>{savedHasPassword ? "set" : "none"}</strong>
+            </span>
+            <label className="checkbox">
+              <input
+                type="checkbox"
+                checked={form.noPassword}
+                onChange={(e) => setNoPassword(e.target.checked)}
+              />
+              No password
+            </label>
+          </div>
+        )}
 
         <label>
           Extra options <span className="muted">(optional JSON, passed to the driver)</span>
           <textarea
             value={form.extra}
             onChange={(e) => update("extra", e.target.value)}
-            placeholder='{"sslmode": "require"}'
+            placeholder={EXTRA_OPTIONS_EXAMPLES[form.db_type]}
             rows={2}
             className="mono"
           />
         </label>
+        <p className="hint">
+          {form.db_type === "mysql" ? (
+            <>
+              PyMySQL options, e.g. <code>{EXTRA_OPTIONS_EXAMPLES.mysql}</code> or{" "}
+              <code>{'{"charset": "utf8mb4"}'}</code>.
+            </>
+          ) : (
+            <>
+              libpq options, e.g. <code>{EXTRA_OPTIONS_EXAMPLES.postgresql}</code>.
+            </>
+          )}{" "}
+          File paths are inside the backend container.
+        </p>
 
         {testResult && <TestResultMessage result={testResult} />}
         {error && <p className="alert alert-error">{error}</p>}

@@ -46,8 +46,12 @@ This folder may contain the Apache Superset source code. It is **read-only refer
   - `app/engines.py` — builds SQLAlchemy engines for *user* databases (NullPool, 5s connect
     timeout). Reuse it for anything that talks to a user DB (query engine, datasets, charts).
   - `app/db_errors.py` — turns driver errors into human-readable messages. Reuse it too.
+  - `app/browsing.py` — column metadata for a table. Falls back to `information_schema` on
+    Postgres servers that deny access to system catalogs (e.g. public RNAcentral). Reuse it.
   - `app/crypto.py` — Fernet encryption of saved passwords (`VITA_SECRET_KEY`). Passwords are
-    never returned by the API; response schemas must not include them.
+    never returned by the API (only `has_password`); response schemas must not include them.
+    `password_encrypted` NULL = no password. Save/test password rules: `clear_password` → none,
+    non-empty password → use it, empty → keep the saved one.
 - `frontend/` — Vite React TS app (`src/`, pages in `src/pages/`, typed API calls in
   `src/api.ts`); dev server proxies `/api` to the backend. Routing: react-router.
 - `sampledb/init/` — seed SQL for the demo database (`sales` schema: customers, products,

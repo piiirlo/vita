@@ -81,6 +81,7 @@ export default function ConnectionsPage() {
               <th>Type</th>
               <th>Location</th>
               <th>User</th>
+              <th>Password</th>
               <th />
             </tr>
           </thead>
@@ -98,6 +99,9 @@ export default function ConnectionsPage() {
                     {conn.host}:{conn.port}/{conn.database}
                   </td>
                   <td>{conn.username}</td>
+                  <td className={conn.has_password ? "" : "muted"}>
+                    {conn.has_password ? "set" : "none"}
+                  </td>
                   <td className="actions">
                     <button onClick={() => void handleTest(conn)} disabled={testing === conn.id}>
                       {testing === conn.id ? "Testing…" : "Test"}

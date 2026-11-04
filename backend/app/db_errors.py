@@ -26,6 +26,22 @@ def friendly_db_error(exc: BaseException, details: ConnectionDetails | None = No
     database = f'"{details.database}"' if details else "The database"
     user = f'"{details.username}"' if details else "this user"
 
+    # Unknown key in "extra options": PyMySQL raises TypeError, libpq "invalid connection option".
+    if isinstance(exc, TypeError) and "unexpected keyword argument" in low:
+        option = raw.split("unexpected keyword argument", 1)[1].strip(" '\"")
+        return f'Unknown extra option "{option}" for this database type. Check "Extra options".'
+    if "invalid connection option" in low:
+        option = raw.split("invalid connection option", 1)[1].strip().split()[0].strip("'\"")
+        return f'Unknown extra option "{option}" for this database type. Check "Extra options".'
+
+    # e.g. {"ssl_ca": "/path/to/ca.pem"} pointing at a file that doesn't exist.
+    if isinstance(exc, FileNotFoundError):
+        name = f' "{exc.filename}"' if exc.filename else ""
+        return (
+            f"File{name} not found. File paths in Extra options are paths inside the "
+            "backend container, not on your computer."
+        )
+
     if (
         "password authentication failed" in low
         or "access denied for user" in low

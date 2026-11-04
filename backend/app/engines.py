@@ -35,18 +35,21 @@ class ConnectionDetails:
     port: int
     database: str
     username: str
-    password: str
+    password: str | None  # None = connect without a password
     extra: dict[str, Any] | None = None
 
 
 def details_from_connection(conn: Connection) -> ConnectionDetails:
+    password = (
+        decrypt_password(conn.password_encrypted) if conn.password_encrypted is not None else None
+    )
     return ConnectionDetails(
         db_type=conn.db_type,
         host=conn.host,
         port=conn.port,
         database=conn.database,
         username=conn.username,
-        password=decrypt_password(conn.password_encrypted),
+        password=password,
         extra=conn.extra,
     )
 
