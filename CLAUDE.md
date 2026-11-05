@@ -63,8 +63,10 @@ This folder may contain the Apache Superset source code. It is **read-only refer
 - `frontend/` — Vite React TS app (`src/`, pages in `src/pages/`, typed API calls in
   `src/api.ts`); dev server proxies `/api` to the backend. Routing: react-router.
   - SQL Lab = `src/pages/SqlLabPage.tsx` (lazy-loaded) + `src/sqllab/`:
-    `SqlEditor.tsx` (Monaco, bundled locally via `monacoSetup.ts` — no CDN; one global
-    completion provider), `schemaCache.ts` (per-connection metadata cache — use it instead of
+    `SqlEditor.tsx` (Monaco, bundled locally via `monacoSetup.ts` — no CDN; one
+    ref-counted SQL completion provider for language id `sql`). `monacoSetup.ts` must keep
+    importing `edcore.main`: `editor.api` alone has no suggest widget/hover/find, so
+    autocomplete silently does nothing (`monacoSetup.test.ts` uses real Monaco to guard this), `schemaCache.ts` (per-connection metadata cache — use it instead of
     calling browse endpoints directly), `ResultsPane.tsx` (TanStack Table + Virtual grid),
     `tabs.ts` (tab state, localStorage `vita.sqllab.tabs.v1`), pure helpers in
     `completion.ts` / `results.ts` (unit-tested).

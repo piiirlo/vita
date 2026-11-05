@@ -16,6 +16,20 @@ class ResizeObserverStub {
 }
 globalThis.ResizeObserver ??= ResizeObserverStub as unknown as typeof ResizeObserver;
 
+// Browser APIs the real Monaco touches when it loads (used by monacoSetup.test.ts).
+document.queryCommandSupported ??= () => false;
+window.matchMedia ??= (query: string) =>
+  ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: () => undefined,
+    removeListener: () => undefined,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+    dispatchEvent: () => false,
+  }) as MediaQueryList;
+
 // jsdom has no layout: every element is 0x0, so a virtualized grid would render no
 // rows. Give elements a plausible size.
 Object.defineProperties(HTMLElement.prototype, {

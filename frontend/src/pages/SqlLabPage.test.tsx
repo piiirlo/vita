@@ -15,6 +15,9 @@ vi.mock("@monaco-editor/react", () => ({
 vi.mock("../sqllab/monacoSetup.ts", () => ({
   setupMonaco: () => undefined,
   setCompletionContext: () => undefined,
+  registerSqlCompletion: () => ({ dispose: () => undefined }),
+  SQL_LANGUAGE: "sql",
+  SQL_EDITOR_OPTIONS: {},
 }));
 
 const CONNECTION = {

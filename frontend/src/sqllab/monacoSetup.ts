@@ -1,11 +1,17 @@
 /**
- * Monaco is bundled locally (no CDN): only the editor core + SQL highlighting.
- * One global SQL completion provider reads the active tab's connection/schema
- * from `setCompletionContext` and uses the schema cache, so typing never
- * triggers more than one request per table.
+ * Monaco is bundled locally (no CDN): the editor core with its standard features
+ * + SQL highlighting, but none of the big language services (TS/JSON/CSS/HTML).
+ * One SQL completion provider reads the active tab's connection/schema from
+ * `setCompletionContext` and uses the schema cache, so typing never triggers
+ * more than one request per table.
  */
 import { loader } from "@monaco-editor/react";
 import * as monaco from "monaco-editor/esm/vs/editor/editor.api";
+// IMPORTANT: `editor.api` alone is a bare editor. The suggest widget (autocomplete),
+// hover tooltips, find, folding, comment toggling, etc. are "editor contributions"
+// that only `edcore.main` (via `editor.all`) loads. Without this import, completion
+// providers are registered but nothing ever asks them or shows their results.
+import "monaco-editor/esm/vs/editor/edcore.main";
 import "monaco-editor/esm/vs/basic-languages/sql/sql.contribution";
 import EditorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import type { ColumnInfo, DbType } from "../api.ts";
@@ -33,8 +39,28 @@ export function setCompletionContext(next: CompletionContext): void {
   context = next;
 }
 
+/** Language id of the SQL editor; the completion provider is registered for the same id. */
+export const SQL_LANGUAGE = "sql";
+
+/** Options for the SQL editor (exported so tests check what the real editor uses). */
+export const SQL_EDITOR_OPTIONS: monaco.editor.IStandaloneEditorConstructionOptions = {
+  minimap: { enabled: false },
+  fontSize: 14,
+  scrollBeyondLastLine: false,
+  automaticLayout: true,
+  tabSize: 2,
+  wordWrap: "on",
+  renderLineHighlight: "line",
+  // Suggest while typing (not only on Ctrl+Space), and after "." (trigger character).
+  quickSuggestions: { other: "on", comments: "off", strings: "off" },
+  quickSuggestionsDelay: 50,
+  suggestOnTriggerCharacters: true,
+  fixedOverflowWidgets: true,
+};
+
 let initialized = false;
 
+/** Use the bundled Monaco (not the CDN) and its local worker. Safe to call repeatedly. */
 export function setupMonaco(): void {
   if (initialized) return;
   initialized = true;
@@ -42,7 +68,32 @@ export function setupMonaco(): void {
     getWorker: () => new EditorWorker(),
   };
   loader.config({ monaco });
-  monaco.languages.registerCompletionItemProvider("sql", completionProvider);
+}
+
+let registration: monaco.IDisposable | null = null;
+let users = 0;
+
+/**
+ * Register the SQL completion provider while at least one editor uses it.
+ * Reference-counted: calling it twice (e.g. React StrictMode effects) still
+ * registers only one provider, so suggestions never show up twice. Dispose the
+ * returned handle on unmount; the provider is removed when the last user goes.
+ */
+export function registerSqlCompletion(): monaco.IDisposable {
+  users += 1;
+  registration ??= monaco.languages.registerCompletionItemProvider(SQL_LANGUAGE, sqlCompletionProvider);
+  let disposed = false;
+  return {
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      users -= 1;
+      if (users === 0) {
+        registration?.dispose();
+        registration = null;
+      }
+    },
+  };
 }
 
 const MAX_REFERENCED_TABLES = 8;
@@ -70,7 +121,7 @@ async function columnsOf(
   return { table, columns: await getColumns(connectionId, schema, table) };
 }
 
-const completionProvider: monaco.languages.CompletionItemProvider = {
+export const sqlCompletionProvider: monaco.languages.CompletionItemProvider = {
   triggerCharacters: ["."],
 
   async provideCompletionItems(model, position) {
@@ -106,13 +157,20 @@ const completionProvider: monaco.languages.CompletionItemProvider = {
         const schemas = await getSchemas(connectionId);
 
         if (qualifier) {
-          const target = resolveQualifier(qualifier, refs, schemas);
+          let target = resolveQualifier(qualifier, refs, schemas);
           if (target?.kind === "columns") {
             const found = await columnsOf(connectionId, target, schema);
-            for (const c of found?.columns ?? []) {
-              add(c.name, Kind.Field, `${c.type}${c.primary_key ? " · PK" : ""}`, quoteIdent(c.name, dbType), "1");
+            if (found) {
+              for (const c of found.columns) {
+                add(c.name, Kind.Field, `${c.type}${c.primary_key ? " · PK" : ""}`, quoteIdent(c.name, dbType), "1");
+              }
+              return { suggestions };
             }
-          } else if (target?.kind === "tables") {
+            // While typing "FROM sales." the FROM regex sees "sales" as a table name.
+            // No such table: treat the qualifier as a schema instead.
+            target = resolveQualifier(qualifier, [], schemas);
+          }
+          if (target?.kind === "tables") {
             for (const t of await getTables(connectionId, target.schema)) {
               add(t.name, t.type === "view" ? Kind.Interface : Kind.Struct, t.type, quoteIdent(t.name, dbType), "1");
             }

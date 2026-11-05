@@ -2,6 +2,7 @@ import Editor, { type OnMount } from "@monaco-editor/react";
 import { useEffect, useImperativeHandle, useRef, type Ref } from "react";
 import { format as formatSql } from "sql-formatter";
 import type { DbType } from "../api.ts";
+import { SQL_EDITOR_OPTIONS, SQL_LANGUAGE, registerSqlCompletion } from "./monacoSetup.ts";
 import { editorErrorPosition, type RunOffset } from "./results.ts";
 
 type MonacoEditor = Parameters<OnMount>[0];
@@ -43,6 +44,12 @@ export default function SqlEditor({ ref, path, defaultValue, onChange, onRun, er
   const monacoRef = useRef<MonacoApi | null>(null);
   const onRunRef = useRef(onRun);
   onRunRef.current = onRun;
+
+  // Autocomplete for this editor; removed again when the editor unmounts.
+  useEffect(() => {
+    const completion = registerSqlCompletion();
+    return () => completion.dispose();
+  }, []);
 
   const handleMount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
@@ -147,21 +154,10 @@ export default function SqlEditor({ ref, path, defaultValue, onChange, onRun, er
     <Editor
       path={path}
       defaultValue={defaultValue}
-      language="sql"
+      language={SQL_LANGUAGE}
       onChange={(value) => onChange(value ?? "")}
       onMount={handleMount}
-      options={{
-        minimap: { enabled: false },
-        fontSize: 14,
-        scrollBeyondLastLine: false,
-        automaticLayout: true,
-        tabSize: 2,
-        wordWrap: "on",
-        renderLineHighlight: "line",
-        quickSuggestions: { other: true, comments: false, strings: false },
-        suggestOnTriggerCharacters: true,
-        fixedOverflowWidgets: true,
-      }}
+      options={SQL_EDITOR_OPTIONS}
     />
   );
 }
