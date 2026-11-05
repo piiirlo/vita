@@ -60,6 +60,18 @@ This folder may contain the Apache Superset source code. It is **read-only refer
     `password_encrypted` NULL = no password. Save/test password rules: `clear_password` → none,
     non-empty password → use it, empty → keep the saved one.
   - `app/api/saved_queries.py` — saved queries CRUD (`/api/saved-queries`).
+  - `app/datasets/` — datasets logic, no FastAPI imports (the chart builder reuses it);
+    API in `app/api/datasets.py` (`/api/datasets`).
+    `sql.py`: `from_clause` / `select_sql` build SQL with sqlglot only (always-quoted
+    identifiers; kind=sql becomes `(<sql>) AS "virtual_table"`, keeping the user's own quoting).
+    `checks.py`: SQL dataset check (Part 3 rules + must be a SELECT; warns on ORDER BY/LIMIT)
+    and `parse_metric_expression` (exactly one expression; no clauses, alias or writes).
+    `sync.py`: generic types come from cursor metadata of `SELECT * ... LIMIT 0`, never from
+    row values; the merge keeps user settings and marks vanished columns `is_missing`.
+    `run.py`: preview and metric validation, both via `run_query`.
+    The user's type override is `generic_type_override` (sync refreshes `generic_type`).
+    The built-in `count` metric (`is_builtin`) can't be deleted. Datasets → connections FK is
+    RESTRICT; deleting a used connection returns 409 listing the datasets.
 - `frontend/` — Vite React TS app (`src/`, pages in `src/pages/`, typed API calls in
   `src/api.ts`); dev server proxies `/api` to the backend. Routing: react-router.
   - SQL Lab = `src/pages/SqlLabPage.tsx` (lazy-loaded) + `src/sqllab/`:
@@ -69,7 +81,10 @@ This folder may contain the Apache Superset source code. It is **read-only refer
     autocomplete silently does nothing (`monacoSetup.test.ts` uses real Monaco to guard this), `schemaCache.ts` (per-connection metadata cache — use it instead of
     calling browse endpoints directly), `ResultsPane.tsx` (TanStack Table + Virtual grid),
     `tabs.ts` (tab state, localStorage `vita.sqllab.tabs.v1`), pure helpers in
-    `completion.ts` / `results.ts` (unit-tested).
+    `completion.ts` / `results.ts` (unit-tested). SQL Lab opens a new tab from router state
+    `{ openTab }` (`src/datasets/sqlLabLink.ts`); "Open in SQL Lab" uses it.
+  - Datasets: `src/pages/Dataset*Page.tsx` + `src/datasets/` (Columns/Metrics/Preview tabs,
+    SQL Lab's "Save as dataset" dialog). Preview reuses `ResultsPane`.
   - Tests: Vitest + Testing Library (`*.test.ts(x)` next to the code, setup in
     `src/test/setup.ts`). Monaco is mocked with a textarea in page tests.
 - `sampledb/init/` — seed SQL for the demo database (`sales` schema: customers, products,

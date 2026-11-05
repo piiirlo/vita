@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
-import { Link } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 import {
   ApiError,
   createSavedQuery,
@@ -12,6 +12,8 @@ import {
   type QueryHistoryItem,
   type SavedQuery,
 } from "../api.ts";
+import SaveAsDatasetDialog from "../datasets/SaveAsDatasetDialog.tsx";
+import { isSqlLabLocationState } from "../datasets/sqlLabLink.ts";
 import HistoryPanel from "../sqllab/HistoryPanel.tsx";
 import { setCompletionContext, setupMonaco } from "../sqllab/monacoSetup.ts";
 import ResultsPane, { type RunState } from "../sqllab/ResultsPane.tsx";
@@ -72,6 +74,10 @@ export default function SqlLabPage() {
   const [savedKey, setSavedKey] = useState(0);
   const [saveDialog, setSaveDialog] = useState<"new" | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [datasetDialog, setDatasetDialog] = useState(false);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const handledLocation = useRef<string | null>(null);
 
   const editorRef = useRef<SqlEditorHandle>(null);
   const controllers = useRef(new Map<string, AbortController>());
@@ -135,6 +141,23 @@ export default function SqlLabPage() {
   useEffect(() => {
     setCompletionContext({ connectionId: activeTab.connectionId, schema: activeTab.schema, dbType });
   }, [activeTab.connectionId, activeTab.schema, dbType]);
+
+  // "Open in SQL Lab" from elsewhere (e.g. a dataset): open a new tab once, then clear the state
+  // so a reload or Back doesn't open it again.
+  useEffect(() => {
+    if (handledLocation.current === location.key) return;
+    handledLocation.current = location.key;
+    if (!isSqlLabLocationState(location.state)) return;
+    const { openTab } = location.state;
+    const tab = createTab(stateRef.current.tabs, {
+      title: openTab.title,
+      sql: openTab.sql,
+      connectionId: openTab.connectionId,
+      schema: openTab.schema,
+    });
+    dispatch({ type: "add", tab });
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location, navigate]);
 
   // ---------- running ----------
 
@@ -523,6 +546,13 @@ export default function SqlLabPage() {
               Save as new
             </button>
           )}
+          <button
+            onClick={() => setDatasetDialog(true)}
+            disabled={!activeTab.sql.trim() || activeTab.connectionId === null}
+            title="Use this tab's query as a dataset for charts"
+          >
+            Save as dataset
+          </button>
           <span className="spacer" />
           {notice && <span className="toolbar-notice">{notice}</span>}
           <span className="muted small kbd-hint">Ctrl+Enter to run</span>
@@ -549,6 +579,14 @@ export default function SqlLabPage() {
           initialDescription={activeTab.description ?? ""}
           onSave={saveNew}
           onCancel={() => setSaveDialog(null)}
+        />
+      )}
+      {datasetDialog && activeTab.connectionId !== null && (
+        <SaveAsDatasetDialog
+          connectionId={activeTab.connectionId}
+          sql={activeTab.sql}
+          initialName={activeTab.title.startsWith("Query ") ? "" : activeTab.title}
+          onClose={() => setDatasetDialog(false)}
         />
       )}
     </div>

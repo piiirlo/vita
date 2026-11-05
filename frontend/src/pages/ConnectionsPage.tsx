@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
 import {
+  ApiError,
   deleteConnection,
   listConnections,
   testSavedConnection,
@@ -12,6 +13,8 @@ import TestResultMessage from "../components/TestResultMessage.tsx";
 export default function ConnectionsPage() {
   const [connections, setConnections] = useState<Connection[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Set when a delete was refused because datasets still use the connection.
+  const [inUse, setInUse] = useState(false);
   const [testing, setTesting] = useState<number | null>(null);
   const [testResults, setTestResults] = useState<Record<number, TestResult>>({});
 
@@ -45,8 +48,11 @@ export default function ConnectionsPage() {
     if (!window.confirm(`Delete connection "${conn.name}"? This cannot be undone.`)) return;
     try {
       await deleteConnection(conn.id);
+      setInUse(false);
       await load();
     } catch (err) {
+      // 409: "This connection is used by 2 datasets: X, Y. Delete those first."
+      setInUse(err instanceof ApiError && err.status === 409);
       setError(err instanceof Error ? err.message : String(err));
     }
   }
@@ -60,7 +66,17 @@ export default function ConnectionsPage() {
         </Link>
       </div>
 
-      {error && <p className="alert alert-error">{error}</p>}
+      {error && (
+        <p className="alert alert-error">
+          {error}
+          {inUse && (
+            <>
+              {" "}
+              <Link to="/datasets">Go to datasets</Link>
+            </>
+          )}
+        </p>
+      )}
       {connections === null && !error && <p className="muted">Loading…</p>}
 
       {connections?.length === 0 && (

@@ -160,6 +160,67 @@ describe("SQL Lab page", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Syntax error at line 1, column 8");
   });
 
+  it("saves the current tab's query as a dataset", async () => {
+    mockApi();
+    const created: unknown[] = [];
+    const baseFetch = vi.mocked(fetch);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input) === "/api/datasets" && init?.method === "POST") {
+          created.push(JSON.parse(String(init.body)));
+          return json({
+            status: 201,
+            body: { id: 5, name: "Orders query", column_count: 3, warnings: ["The query ends with LIMIT."] },
+          });
+        }
+        return baseFetch(input, init);
+      }),
+    );
+    renderPage();
+
+    fireEvent.change(await screen.findByLabelText("SQL editor"), {
+      target: { value: "SELECT * FROM sales.orders LIMIT 5" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save as dataset" }));
+    const dialog = screen.getByRole("dialog", { name: "Save as dataset" });
+    fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "Orders query" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save dataset" }));
+
+    expect(await within(dialog).findByText(/Dataset “Orders query” created with 3 columns/)).toBeInTheDocument();
+    expect(within(dialog).getByText("The query ends with LIMIT.")).toBeInTheDocument();
+    expect(within(dialog).getByRole("link", { name: "Open dataset" })).toHaveAttribute("href", "/datasets/5");
+    expect(created).toEqual([
+      {
+        name: "Orders query",
+        description: null,
+        connection_id: 1,
+        kind: "sql",
+        sql: "SELECT * FROM sales.orders LIMIT 5",
+      },
+    ]);
+  });
+
+  it("opens a new tab when sent from a dataset", async () => {
+    mockApi();
+    render(
+      <MemoryRouter
+        initialEntries={[
+          {
+            pathname: "/sql-lab",
+            state: { openTab: { title: "Orders", sql: 'SELECT * FROM "sales"."orders"', connectionId: 1, schema: "sales" } },
+          },
+        ]}
+      >
+        <SqlLabPage />
+      </MemoryRouter>,
+    );
+    const tab = await screen.findByRole("tab", { name: /Orders/ });
+    expect(tab).toHaveAttribute("aria-selected", "true");
+    expect(screen.getAllByRole("tab", { name: /Orders/ })).toHaveLength(1); // opened once
+    expect(screen.getByLabelText("SQL editor")).toHaveValue('SELECT * FROM "sales"."orders"');
+  });
+
   it("keeps open tabs in localStorage", async () => {
     mockApi();
     renderPage();

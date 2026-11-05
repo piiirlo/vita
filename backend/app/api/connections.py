@@ -19,7 +19,7 @@ from app.engines import (
     create_engine_for,
     details_from_connection,
 )
-from app.models import Connection
+from app.models import Connection, Dataset
 from app.schemas.connections import (
     ColumnInfo,
     ConnectionCreate,
@@ -160,7 +160,21 @@ def update_connection(connection_id: int, payload: ConnectionUpdate, db: DbSessi
 
 @router.delete("/{connection_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_connection(connection_id: int, db: DbSession) -> Response:
-    db.delete(get_connection_or_404(db, connection_id))
+    conn = get_connection_or_404(db, connection_id)
+    used_by = list(
+        db.scalars(select(Dataset.name).where(Dataset.connection_id == conn.id).order_by(Dataset.name))
+    )
+    if used_by:
+        noun = "dataset" if len(used_by) == 1 else "datasets"
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            {
+                "message": f"This connection is used by {len(used_by)} {noun}: "
+                f"{', '.join(used_by)}. Delete those first.",
+                "datasets": used_by,
+            },
+        )
+    db.delete(conn)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

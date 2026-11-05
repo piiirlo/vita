@@ -272,3 +272,144 @@ export const listColumns = (id: number, schema: string, table: string) =>
   request<ColumnInfo[]>(
     `/api/connections/${id}/schemas/${seg(schema)}/tables/${seg(table)}/columns`,
   );
+
+// ---------- datasets ----------
+
+export type DatasetKind = "table" | "sql";
+
+export type DatasetColumn = {
+  id: number;
+  name: string;
+  position: number;
+  label: string | null;
+  raw_type: string;
+  /** What the database reports (refreshed on sync). */
+  generic_type: GenericType;
+  generic_type_override: GenericType | null;
+  effective_type: GenericType;
+  is_temporal: boolean;
+  is_dimension: boolean;
+  is_hidden: boolean;
+  /** The last sync didn't find this column. */
+  is_missing: boolean;
+  description: string | null;
+};
+
+export type ColumnSettings = Pick<
+  DatasetColumn,
+  "id" | "label" | "generic_type_override" | "is_temporal" | "is_dimension" | "is_hidden" | "description"
+>;
+
+export type DatasetMetric = {
+  id: number;
+  name: string;
+  label: string | null;
+  expression: string;
+  description: string | null;
+  number_format: string | null;
+  is_builtin: boolean;
+};
+
+export type MetricInput = {
+  name: string;
+  label: string | null;
+  expression: string;
+  description: string | null;
+  number_format: string | null;
+};
+
+export type DatasetListItem = {
+  id: number;
+  name: string;
+  description: string | null;
+  connection_id: number;
+  connection_name: string;
+  kind: DatasetKind;
+  schema: string | null;
+  table_name: string | null;
+  column_count: number;
+  metric_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Dataset = DatasetListItem & {
+  db_type: DbType;
+  sql: string | null;
+  main_time_column: string | null;
+  columns: DatasetColumn[];
+  metrics: DatasetMetric[];
+  warnings: string[];
+  sqllab_sql: string;
+};
+
+export type DatasetCreateInput =
+  | { name: string; description: string | null; connection_id: number; kind: "table"; schema: string; table_name: string }
+  | { name: string; description: string | null; connection_id: number; kind: "sql"; sql: string };
+
+export type DatasetUpdateInput = {
+  name: string;
+  description: string | null;
+  sql?: string;
+  main_time_column: string | null;
+  columns?: ColumnSettings[];
+  /** Only columns marked is_missing can be removed. */
+  delete_column_ids?: number[];
+};
+
+export type SyncResponse = {
+  dataset: Dataset;
+  summary: { added: string[]; removed: string[]; restored: string[]; type_changed: string[] };
+};
+
+export type PreviewResponse = QueryResult & { sql: string };
+
+export type MetricValidation = {
+  ok: boolean;
+  error: QueryErrorDetail | null;
+  warning: string | null;
+  value: unknown;
+};
+
+export function listDatasets(q?: string) {
+  const params = new URLSearchParams();
+  if (q) params.set("q", q);
+  const query = params.toString();
+  return request<DatasetListItem[]>(`/api/datasets${query ? `?${query}` : ""}`);
+}
+
+export const getDataset = (id: number) => request<Dataset>(`/api/datasets/${id}`);
+
+/** Throws ApiError; when the SQL or table fails, `detail` is a QueryErrorDetail. */
+export const createDataset = (input: DatasetCreateInput) =>
+  request<Dataset>("/api/datasets", { method: "POST", body: json(input) });
+
+export const updateDataset = (id: number, input: DatasetUpdateInput) =>
+  request<Dataset>(`/api/datasets/${id}`, { method: "PUT", body: json(input) });
+
+export const deleteDataset = (id: number) =>
+  request<void>(`/api/datasets/${id}`, { method: "DELETE" });
+
+export const syncDataset = (id: number) =>
+  request<SyncResponse>(`/api/datasets/${id}/sync`, { method: "POST" });
+
+export const previewDataset = (id: number, signal?: AbortSignal) =>
+  request<PreviewResponse>(`/api/datasets/${id}/preview`, { signal });
+
+export const createMetric = (datasetId: number, input: MetricInput) =>
+  request<DatasetMetric>(`/api/datasets/${datasetId}/metrics`, { method: "POST", body: json(input) });
+
+export const updateMetric = (datasetId: number, metricId: number, input: MetricInput) =>
+  request<DatasetMetric>(`/api/datasets/${datasetId}/metrics/${metricId}`, {
+    method: "PUT",
+    body: json(input),
+  });
+
+export const deleteMetric = (datasetId: number, metricId: number) =>
+  request<void>(`/api/datasets/${datasetId}/metrics/${metricId}`, { method: "DELETE" });
+
+export const validateMetric = (datasetId: number, expression: string) =>
+  request<MetricValidation>(`/api/datasets/${datasetId}/metrics/validate`, {
+    method: "POST",
+    body: json({ expression }),
+  });

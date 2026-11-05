@@ -1048,3 +1048,170 @@ button.icon {
     display: none;
   }
 }
+
+/* ---------- datasets ---------- */
+
+.search-input {
+  font: inherit;
+  font-size: 14px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  min-width: 220px;
+}
+
+.data-table .num {
+  text-align: right;
+}
+
+.data-table .center {
+  text-align: center;
+}
+
+.alert-warning {
+  background: #fffbeb;
+  border-color: #fcd34d;
+  color: #92400e;
+}
+
+.tag-warning {
+  background: #fef3c7;
+  color: #92400e;
+  margin-left: 6px;
+}
+
+.dataset-page .page-header h1 {
+  font-size: 22px;
+}
+
+.dataset-details {
+  margin-bottom: 16px;
+}
+
+.dataset-details label {
+  margin-bottom: 10px;
+}
+
+.dataset-source {
+  margin-bottom: 4px;
+}
+
+.dataset-sql pre {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+  margin: 8px 0 0;
+  white-space: pre-wrap;
+  max-height: 240px;
+  overflow: auto;
+}
+
+.dataset-tabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 14px;
+  padding-bottom: 8px;
+}
+
+.dataset-tabs [role="tab"] {
+  border: none;
+  background: none;
+  border-radius: 0;
+  padding: 6px 10px;
+  color: var(--muted);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -9px;
+}
+
+.dataset-tabs [role="tab"].active {
+  color: var(--text);
+  font-weight: 600;
+  border-bottom-color: var(--primary);
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+.columns-table td {
+  vertical-align: middle;
+}
+
+.columns-table .cell-input {
+  font: inherit;
+  font-size: 13px;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  width: 100%;
+  min-width: 90px;
+}
+
+.columns-table .row-missing td {
+  background: #fffbeb;
+}
+
+.columns-table .row-missing .mono:first-child {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+
+.radio-cell {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+
+button.small,
+.button.small {
+  font-size: 13px;
+  padding: 3px 10px;
+}
+
+.row-selected td {
+  background: var(--selected-bg);
+}
+
+.metric-form {
+  margin-top: 16px;
+}
+
+.validate-row {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  margin: -4px 0 14px;
+  font-size: 14px;
+}
+
+.preview-toolbar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 8px;
+  min-width: 0;
+}
+
+.preview-sql {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.preview-grid {
+  height: 520px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.confirm-body p {
+  margin-top: 0;
+}
