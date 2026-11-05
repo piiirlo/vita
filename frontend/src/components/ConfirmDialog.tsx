@@ -4,8 +4,8 @@ type Props = {
   title: string;
   children: ReactNode;
   confirmLabel: string;
-  /** Rejecting shows the error in the dialog and keeps it open. */
-  onConfirm(): Promise<void>;
+  /** Throwing / rejecting shows the error in the dialog and keeps it open. */
+  onConfirm(): Promise<void> | void;
   onCancel(): void;
 };
 

@@ -13,6 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.connections import get_connection_or_404, saved_connection_details
+from app.charts.usage import GROUP, TIME, QueryUsage, query_usage, used_by_message
 from app.datasets import (
     DatasetSource,
     check_dataset_sql,
@@ -26,13 +27,13 @@ from app.datasets import (
     sqllab_sql,
     validate_metric,
 )
-from app.charts.usage import GROUP, TIME, QueryUsage, query_usage, used_by_message
 from app.datasets.checks import query_warnings
 from app.datasets.sql import parse_dataset_query
 from app.db import get_db
 from app.engines import ConnectionDetails
 from app.models import Chart, Dataset, DatasetColumn, DatasetMetric
 from app.query import QueryError
+from app.schemas.charts import ChartParams
 from app.schemas.datasets import (
     DatasetColumnOut,
     DatasetCreate,
@@ -47,7 +48,6 @@ from app.schemas.datasets import (
     SyncOut,
     SyncSummary,
 )
-from app.schemas.charts import ChartParams
 from app.schemas.query import QueryErrorOut
 
 router = APIRouter()
@@ -105,7 +105,7 @@ def _commit(db: Session, conflict_message: str) -> None:
 
 def _touch(dataset: Dataset) -> None:
     """Column and metric edits don't change the datasets row itself; bump updated_at."""
-    dataset.updated_at = func.now()  # type: ignore[assignment]
+    dataset.updated_at = func.now()
 
 
 def _warnings(dataset: Dataset) -> list[str]:
@@ -137,7 +137,7 @@ def _list_item_fields(dataset: Dataset) -> dict[str, object]:
 def _out(dataset: Dataset) -> DatasetOut:
     db_type = dataset.connection.db_type
     return DatasetOut(
-        **_list_item_fields(dataset),  # type: ignore[arg-type]
+        **_list_item_fields(dataset),
         db_type=db_type,
         sql=dataset.sql,
         main_time_column=dataset.main_time_column,
@@ -236,7 +236,7 @@ def list_datasets(
     if connection_id is not None:
         stmt = stmt.where(Dataset.connection_id == connection_id)
     stmt = stmt.order_by(Dataset.updated_at.desc(), Dataset.id.desc())
-    return [DatasetListItem(**_list_item_fields(d)) for d in db.scalars(stmt)]  # type: ignore[arg-type]
+    return [DatasetListItem(**_list_item_fields(d)) for d in db.scalars(stmt)]
 
 
 @router.post(
@@ -403,7 +403,9 @@ def sync_dataset(dataset_id: int, db: DbSession) -> SyncOut:
     _touch(dataset)
     db.commit()
     db.expire_all()
-    return SyncOut(dataset=_out(get_dataset_or_404(db, dataset_id)), summary=SyncSummary(**asdict(result)))
+    return SyncOut(
+        dataset=_out(get_dataset_or_404(db, dataset_id)), summary=SyncSummary(**asdict(result))
+    )
 
 
 @router.get("/{dataset_id}/preview", response_model=PreviewOut, responses=QUERY_ERROR_RESPONSES)
@@ -482,7 +484,9 @@ def create_metric(dataset_id: int, payload: MetricIn, db: DbSession) -> DatasetM
     response_model=DatasetMetricOut,
     responses=QUERY_ERROR_RESPONSES,
 )
-def update_metric(dataset_id: int, metric_id: int, payload: MetricIn, db: DbSession) -> DatasetMetric:
+def update_metric(
+    dataset_id: int, metric_id: int, payload: MetricIn, db: DbSession
+) -> DatasetMetric:
     dataset = get_dataset_or_404(db, dataset_id)
     metric = _metric_or_404(dataset, metric_id)
     name = payload.name.strip()
@@ -513,7 +517,9 @@ def delete_metric(dataset_id: int, metric_id: int, db: DbSession) -> Response:
     dataset = get_dataset_or_404(db, dataset_id)
     metric = _metric_or_404(dataset, metric_id)
     if metric.is_builtin:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "The built-in count metric can't be deleted")
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "The built-in count metric can't be deleted"
+        )
     _check_metric_unused(db, dataset, metric)
     dataset.metrics.remove(metric)
     _touch(dataset)
@@ -537,4 +543,3 @@ def validate_metric_expression(
     parsed = parse_metric_expression(payload.expression, details.db_type)
     value = result.rows[0][0] if result.rows else None
     return MetricValidateOut(ok=True, warning=metric_warning(parsed), value=value)
-

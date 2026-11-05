@@ -81,11 +81,11 @@ export class ApiError extends Error {
 /** Pull a readable message out of a FastAPI error body. */
 function errorMessage(body: unknown, status: number): string {
   if (typeof body === "object" && body !== null && "detail" in body) {
-    const detail = (body as { detail: unknown }).detail;
+    const detail = (body).detail;
     if (typeof detail === "string") return detail;
     // Query errors: {kind, message, line, column}
     if (typeof detail === "object" && detail !== null && "message" in detail) {
-      return String((detail as { message: unknown }).message);
+      return String((detail).message);
     }
     // 422 validation errors: [{loc: [...], msg: "..."}]
     if (Array.isArray(detail)) {
@@ -100,16 +100,22 @@ function errorMessage(body: unknown, status: number): string {
   return `Request failed (HTTP ${status})`;
 }
 
+/** Fired when the API answers 401 (not logged in, or the session expired). */
+export const UNAUTHORIZED_EVENT = "vita:unauthorized";
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     ...init,
     headers: { "Content-Type": "application/json", ...init?.headers },
   });
+  if (response.status === 401 && !path.startsWith("/api/auth/")) {
+    window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+  }
   if (response.status === 204) return undefined as T;
   const body: unknown = await response.json().catch(() => null);
   if (!response.ok) {
     const detail = typeof body === "object" && body !== null && "detail" in body
-      ? (body as { detail: unknown }).detail
+      ? (body).detail
       : undefined;
     throw new ApiError(response.status, errorMessage(body, response.status), detail);
   }
@@ -577,3 +583,22 @@ export const duplicateDashboard = (id: number) =>
 /** Adds a chart tile below the existing tiles. */
 export const addChartToDashboard = (id: number, chartId: number) =>
   request<Dashboard>(`/api/dashboards/${id}/charts`, { method: "POST", body: json({ chart_id: chartId }) });
+
+// ---------- auth ----------
+
+export type CurrentUser = { username: string };
+
+/** Throws ApiError: 401 wrong credentials, 429 too many failed attempts. */
+export const login = (username: string, password: string) =>
+  request<CurrentUser>("/api/auth/login", { method: "POST", body: json({ username, password }) });
+
+export const logout = () => request<void>("/api/auth/logout", { method: "POST" });
+
+/** The logged-in user; throws ApiError 401 when not logged in. */
+export const fetchCurrentUser = () => request<CurrentUser>("/api/auth/me");
+
+export const changePassword = (currentPassword: string, newPassword: string) =>
+  request<void>("/api/auth/password", {
+    method: "POST",
+    body: json({ current_password: currentPassword, new_password: newPassword }),
+  });

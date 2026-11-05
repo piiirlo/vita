@@ -82,7 +82,7 @@ def parse_dataset_query(sql: str, db_type: str) -> exp.Query:
     return statements[0]
 
 
-def from_clause(source: DatasetSource, db_type: str) -> exp.Expression:
+def from_clause(source: DatasetSource, db_type: str) -> exp.Expr:
     """What goes after FROM: a quoted table, or the dataset's query as an aliased subquery."""
     if source.kind == "table":
         if not source.table_name:
@@ -97,7 +97,7 @@ def from_clause(source: DatasetSource, db_type: str) -> exp.Expression:
 def select_sql(
     source: DatasetSource,
     db_type: str,
-    projections: Sequence[exp.Expression] | None = None,
+    projections: Sequence[exp.Expr] | None = None,
     limit: int | None = None,
 ) -> str:
     """SELECT <projections or *> FROM <dataset> [LIMIT n], rendered for the dialect."""

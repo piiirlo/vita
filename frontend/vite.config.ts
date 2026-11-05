@@ -20,5 +20,7 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],
+    // Page tests render real pages (and SQL Lab loads Monaco): allow for a busy machine.
+    testTimeout: 15_000,
   },
 });

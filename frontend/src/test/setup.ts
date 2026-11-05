@@ -1,10 +1,16 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup } from "@testing-library/react";
+import { cleanup, configure } from "@testing-library/react";
 import { afterEach, vi } from "vitest";
+import { clearToasts } from "../components/toast.ts";
+
+// findBy* / waitFor: pages debounce work (e.g. the chart editor waits 600 ms before
+// running), so the default 1 s is too tight when the whole suite runs in parallel.
+configure({ asyncUtilTimeout: 4000 });
 
 afterEach(() => {
   cleanup();
   localStorage.clear();
+  clearToasts();
   vi.restoreAllMocks();
 });
 

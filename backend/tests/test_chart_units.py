@@ -53,7 +53,9 @@ def dataset(kind: str = "table") -> Dataset:
     )
 
 
-def sql(query: dict[str, Any], db_type: str = PG, viz: VizType = "table", kind: str = "table") -> str:
+def sql(
+    query: dict[str, Any], db_type: str = PG, viz: VizType = "table", kind: str = "table"
+) -> str:
     built = build_chart_query(
         dataset(kind), db_type, viz, ChartQuery(dataset_id=1, **query), today=TODAY
     )
@@ -92,7 +94,10 @@ def test_postgres_grains(grain: str, expected: str) -> None:
         ("day", "DATE(`created at`)"),
         ("week", "DATE(DATE_SUB(`created at`, INTERVAL (WEEKDAY(`created at`)) DAY))"),
         ("month", "DATE(DATE_SUB(`created at`, INTERVAL (DAYOFMONTH(`created at`) - 1) DAY))"),
-        ("quarter", "MAKEDATE(YEAR(`created at`), 1) + INTERVAL ( QUARTER(`created at`) - 1 ) QUARTER"),
+        (
+            "quarter",
+            "MAKEDATE(YEAR(`created at`), 1) + INTERVAL ( QUARTER(`created at`) - 1 ) QUARTER",
+        ),
         ("year", "MAKEDATE(YEAR(`created at`), 1)"),
     ],
 )
@@ -129,8 +134,12 @@ def test_sql_dataset_is_a_subquery_and_series_join() -> None:
         "line",
         kind="sql",
     )
-    assert "FROM ( SELECT * FROM sales.`lines` ) AS `virtual_table` JOIN (" in text  # `lines`: reserved
-    assert "GROUP BY `status` ORDER BY COUNT(*) DESC, `status` ASC LIMIT 3 ) AS `top_series`" in text
+    assert (
+        "FROM ( SELECT * FROM sales.`lines` ) AS `virtual_table` JOIN (" in text
+    )  # `lines`: reserved
+    assert (
+        "GROUP BY `status` ORDER BY COUNT(*) DESC, `status` ASC LIMIT 3 ) AS `top_series`" in text
+    )
     assert "ON `status` <=> `top_series`.`__series`" in text
     # Plain aliases in ORDER BY: no CASE ... IS NULL emulation on MySQL.
     assert text.endswith("ORDER BY `order_date` ASC, `status` ASC LIMIT 1001")
@@ -144,7 +153,9 @@ def test_series_limit_none_means_no_join() -> None:
 
 
 def test_raw_records() -> None:
-    text = sql({"columns": ["order_date", "select"], "order_by": {"by": "order_date"}, "row_limit": 10})
+    text = sql(
+        {"columns": ["order_date", "select"], "order_by": {"by": "order_date"}, "row_limit": 10}
+    )
     assert text == (
         'SELECT "order_date", "select" FROM "sales"."Order Lines" '
         'ORDER BY "order_date" DESC NULLS LAST LIMIT 11'
@@ -191,7 +202,7 @@ def test_filter_operators(filter_: dict[str, Any], postgres: str, mysql: str) ->
     ("value", "postgres", "mysql"),
     [
         ("'; DROP TABLE x; --", "'''; DROP TABLE x; --'", "'''; DROP TABLE x; --'"),
-        ("O'Brien \"quoted\"", "'O''Brien \"quoted\"'", "'O''Brien \"quoted\"'"),
+        ('O\'Brien "quoted"', "'O''Brien \"quoted\"'", "'O''Brien \"quoted\"'"),
         ("back\\slash", "'back\\slash'", "'back\\\\slash'"),
     ],
 )
@@ -207,7 +218,9 @@ def test_filter_values_are_literals(value: str, postgres: str, mysql: str) -> No
 def test_like_escapes_wildcards() -> None:
     f = [{"column": "status", "operator": "LIKE", "value": "50%_off\\"}]
     assert "ILIKE '%50\\%\\_off\\\\%'" in sql({"metrics": ["count"], "filters": f})
-    assert "LIKE LOWER('%50\\\\%\\\\_off\\\\\\\\%')" in sql({"metrics": ["count"], "filters": f}, MY)
+    assert "LIKE LOWER('%50\\\\%\\\\_off\\\\\\\\%')" in sql(
+        {"metrics": ["count"], "filters": f}, MY
+    )
 
 
 def test_number_filter_value_must_be_a_number() -> None:
@@ -232,13 +245,16 @@ def test_number_filter_value_must_be_a_number() -> None:
     ],
 )
 def test_time_bounds(kind: str, start: date | None, end: date | None) -> None:
-    assert time_bounds(TimeRange(kind=kind), TODAY) == (start, end)  # type: ignore[arg-type]
+    assert time_bounds(TimeRange(kind=kind), TODAY) == (start, end)
 
 
 def test_custom_and_clamped_time_bounds() -> None:
     custom = TimeRange(kind="custom", start=date(2025, 1, 1), end=date(2025, 1, 31))
     assert time_bounds(custom, TODAY) == (date(2025, 1, 1), date(2025, 2, 1))  # end inclusive
-    assert time_bounds(TimeRange(kind="custom", end=date(2025, 1, 31)), TODAY) == (None, date(2025, 2, 1))
+    assert time_bounds(TimeRange(kind="custom", end=date(2025, 1, 31)), TODAY) == (
+        None,
+        date(2025, 2, 1),
+    )
     leap = time_bounds(TimeRange(kind="last_12_months"), date(2024, 2, 29))
     assert leap[0] == date(2023, 2, 28)
 
@@ -311,7 +327,9 @@ def test_no_main_time_column() -> None:
     ds = dataset()
     ds.main_time_column = None
     with pytest.raises(QueryError) as info:
-        build_chart_query(ds, PG, "line", ChartQuery(dataset_id=1, metrics=["count"], time={"grain": "day"}))  # type: ignore[arg-type]
+        build_chart_query(
+            ds, PG, "line", ChartQuery(dataset_id=1, metrics=["count"], time={"grain": "day"})
+        )
     assert "no main time column" in info.value.message
 
 
@@ -334,13 +352,22 @@ def test_range_start_snaps_to_the_grain(grain: str | None, start: str) -> None:
     if grain:
         time["grain"] = grain
     text = sql({"metrics": ["count"], "time": time}, PG, "line" if grain else "table")
-    assert f"\"order_date\" >= CAST('{start}' AS DATE) AND \"order_date\" < CAST('2026-03-16' AS DATE)" in text
+    assert (
+        f"\"order_date\" >= CAST('{start}' AS DATE) AND \"order_date\" < CAST('2026-03-16' AS DATE)"
+        in text
+    )
 
 
 def test_custom_range_snaps_too() -> None:
-    time = {"grain": "month", "range": {"kind": "custom", "start": "2025-06-17", "end": "2025-08-03"}}
+    time = {
+        "grain": "month",
+        "range": {"kind": "custom", "start": "2025-06-17", "end": "2025-08-03"},
+    }
     text = sql({"metrics": ["count"], "time": time}, MY, "line")
-    assert "`order_date` >= CAST('2025-06-01' AS DATE) AND `order_date` < CAST('2025-08-04' AS DATE)" in text
+    assert (
+        "`order_date` >= CAST('2025-06-01' AS DATE) AND `order_date` < CAST('2025-08-04' AS DATE)"
+        in text
+    )
 
 
 # ---------- NULLs with != / NOT IN / IN ----------

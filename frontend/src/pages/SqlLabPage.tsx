@@ -35,6 +35,10 @@ import {
   type Tab,
   type TabInput,
 } from "../sqllab/tabs.ts";
+import { usePageTitle } from "../components/usePageTitle.ts";
+import { toast } from "../components/toast.ts";
+import EmptyState from "../components/EmptyState.tsx";
+import ConfirmDialog from "../components/ConfirmDialog.tsx";
 
 setupMonaco();
 
@@ -61,10 +65,12 @@ function messageOf(err: unknown): string {
 }
 
 export default function SqlLabPage() {
+  usePageTitle("SQL Lab");
   const [connections, setConnections] = useState<Connection[] | null>(null);
   const [connectionsError, setConnectionsError] = useState<string | null>(null);
   const [state, dispatch] = useReducer(tabsReducer, undefined, () => loadTabs());
   const [runs, setRuns] = useState<Record<string, RunState>>({});
+  const [tabToClose, setTabToClose] = useState<Tab | null>(null);
   const [offsets, setOffsets] = useState<Record<string, RunOffset>>({});
   const [limit, setLimit] = useState(() => loadSetting(LIMIT_KEY, 1000, isLimit));
   const [editorHeight, setEditorHeight] = useState(() => loadSetting(HEIGHT_KEY, 300, isHeight));
@@ -73,7 +79,6 @@ export default function SqlLabPage() {
   const [historyKey, setHistoryKey] = useState(0);
   const [savedKey, setSavedKey] = useState(0);
   const [saveDialog, setSaveDialog] = useState<"new" | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [datasetDialog, setDatasetDialog] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
@@ -156,7 +161,7 @@ export default function SqlLabPage() {
       schema: openTab.schema,
     });
     dispatch({ type: "add", tab });
-    navigate(location.pathname, { replace: true, state: null });
+    void navigate(location.pathname, { replace: true, state: null });
   }, [location, navigate]);
 
   // ---------- running ----------
@@ -240,8 +245,14 @@ export default function SqlLabPage() {
     return tab;
   }
 
+  /** Asks first when the tab has unsaved changes. */
   function closeTab(tab: Tab) {
-    if (isDirty(tab) && !window.confirm(`"${tab.title}" has unsaved changes. Close it anyway?`)) return;
+    if (isDirty(tab)) setTabToClose(tab);
+    else forceCloseTab(tab);
+  }
+
+  function forceCloseTab(tab: Tab) {
+    setTabToClose(null);
     controllers.current.get(tab.id)?.abort();
     controllers.current.delete(tab.id);
     editorRef.current?.disposeModel(tab.id);
@@ -304,7 +315,7 @@ export default function SqlLabPage() {
     });
     setSaveDialog(null);
     setSavedKey((k) => k + 1);
-    flash(`Saved "${saved.name}".`);
+    toast.success(`Saved "${saved.name}".`);
   }
 
   async function save() {
@@ -326,22 +337,19 @@ export default function SqlLabPage() {
       });
       updateTab(tab.id, { savedSql: saved.sql });
       setSavedKey((k) => k + 1);
-      flash(`Saved "${saved.name}".`);
+      toast.success(`Saved "${saved.name}".`);
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
         updateTab(tab.id, { savedQueryId: null, savedSql: null });
         setSaveDialog("new"); // it was deleted meanwhile: save as a new one
       } else {
-        flash(`Couldn't save: ${messageOf(err)}`);
+        toast.error(`Couldn't save: ${messageOf(err)}`);
       }
     }
   }
 
-  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   function flash(text: string) {
-    setNotice(text);
-    if (noticeTimer.current) clearTimeout(noticeTimer.current);
-    noticeTimer.current = setTimeout(() => setNotice(null), 3000);
+    toast.info(text);
   }
 
   // Ctrl+S saves the current tab.
@@ -394,11 +402,15 @@ export default function SqlLabPage() {
   if (connections === null) return <p className="muted page-pad">Loading…</p>;
   if (connections.length === 0) {
     return (
-      <div className="card empty page-pad">
-        <p>SQL Lab needs a database connection first.</p>
-        <Link to="/connections/new" className="button primary">
-          Add a connection
-        </Link>
+      <div className="page-pad">
+        <EmptyState
+          title="SQL Lab needs a database connection first"
+          action={
+            <Link to="/connections/new" className="button primary">
+              Add a connection
+            </Link>
+          }
+        />
       </div>
     );
   }
@@ -554,7 +566,6 @@ export default function SqlLabPage() {
             Save as dataset
           </button>
           <span className="spacer" />
-          {notice && <span className="toolbar-notice">{notice}</span>}
           <span className="muted small kbd-hint">Ctrl+Enter to run</span>
         </div>
 
@@ -580,6 +591,18 @@ export default function SqlLabPage() {
           onSave={saveNew}
           onCancel={() => setSaveDialog(null)}
         />
+      )}
+      {tabToClose && (
+        <ConfirmDialog
+          title="Close tab"
+          confirmLabel="Close without saving"
+          onConfirm={() => forceCloseTab(tabToClose)}
+          onCancel={() => setTabToClose(null)}
+        >
+          <p>
+            <strong>{tabToClose.title}</strong> has unsaved changes. Close it anyway?
+          </p>
+        </ConfirmDialog>
       )}
       {datasetDialog && activeTab.connectionId !== null && (
         <SaveAsDatasetDialog

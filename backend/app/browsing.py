@@ -5,6 +5,9 @@ the public RNAcentral database) deny access to system catalogs the inspector nee
 as pg_collation. In that case we fall back to information_schema, which every user can read.
 """
 
+from collections.abc import Sequence
+from typing import cast
+
 import psycopg.errors
 from sqlalchemy import Connection, inspect, text
 from sqlalchemy.exc import DBAPIError, NoSuchTableError
@@ -73,18 +76,23 @@ def _pg_type_name(
 def _pg_columns_via_information_schema(
     conn: Connection, schema: str, table: str
 ) -> list[ColumnInfo]:
-    rows = conn.execute(
-        text(
-            """
+    # (name, data_type, udt_name, char_len, precision, scale, is_nullable)
+    PgColumnRow = tuple[str, str, str, int | None, int | None, int | None, str]
+    rows: Sequence[PgColumnRow] = cast(
+        "Sequence[PgColumnRow]",
+        conn.execute(
+            text(
+                """
             SELECT column_name, data_type, udt_name, character_maximum_length,
                    numeric_precision, numeric_scale, is_nullable
             FROM information_schema.columns
             WHERE table_schema = :schema AND table_name = :table
             ORDER BY ordinal_position
             """
-        ),
-        {"schema": schema, "table": table},
-    ).all()
+            ),
+            {"schema": schema, "table": table},
+        ).all(),
+    )
     if not rows:
         raise NoSuchTableError(f"{schema}.{table}")
 
@@ -97,7 +105,8 @@ def _pg_columns_via_information_schema(
                     SELECT a.attname
                     FROM pg_index i
                     JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY (i.indkey)
-                    WHERE i.indrelid = (quote_ident(:schema) || '.' || quote_ident(:table))::regclass
+                    WHERE i.indrelid =
+                          (quote_ident(:schema) || '.' || quote_ident(:table))::regclass
                       AND i.indisprimary
                     """
                 ),

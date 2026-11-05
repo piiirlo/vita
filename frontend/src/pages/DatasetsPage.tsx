@@ -3,8 +3,12 @@ import { Link } from "react-router";
 import { deleteDataset, listDatasets, type DatasetListItem } from "../api.ts";
 import ConfirmDialog from "../components/ConfirmDialog.tsx";
 import { errorText, relativeTime } from "../datasets/format.ts";
+import { usePageTitle } from "../components/usePageTitle.ts";
+import { toast } from "../components/toast.ts";
+import EmptyState from "../components/EmptyState.tsx";
 
 export default function DatasetsPage() {
+  usePageTitle("Datasets");
   const [datasets, setDatasets] = useState<DatasetListItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -30,6 +34,7 @@ export default function DatasetsPage() {
 
   async function confirmDelete(dataset: DatasetListItem) {
     await deleteDataset(dataset.id);
+    toast.success(`Deleted "${dataset.name}".`);
     setToDelete(null);
     setReloadKey((k) => k + 1);
   }
@@ -56,21 +61,14 @@ export default function DatasetsPage() {
       {error && <p className="alert alert-error">{error}</p>}
       {datasets === null && !error && <p className="muted">Loading…</p>}
 
-      {datasets?.length === 0 && (
-        <div className="card empty">
-          {search.trim() ? (
-            <p>No datasets match “{search.trim()}”.</p>
-          ) : (
-            <>
-              <p>No datasets yet.</p>
-              <p className="muted small">
-                Create one from a table, or write a query in <Link to="/sql-lab">SQL Lab</Link> and use
-                “Save as dataset”.
-              </p>
-            </>
-          )}
-        </div>
-      )}
+      {datasets?.length === 0 &&
+        (search.trim() ? (
+          <EmptyState title={`No datasets match “${search.trim()}”.`}>Try a different search.</EmptyState>
+        ) : (
+          <EmptyState title="No datasets yet">
+            Create one from a table, or write a query in <Link to="/sql-lab">SQL Lab</Link> and use “Save as dataset”.
+          </EmptyState>
+        ))}
 
       {datasets && datasets.length > 0 && (
         <table className="data-table">

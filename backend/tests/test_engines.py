@@ -34,7 +34,10 @@ def test_build_url_postgresql() -> None:
 def test_build_url_without_password() -> None:
     url = build_url(_details(password=None))
     assert url.password is None
-    assert url.render_as_string(hide_password=False) == "mysql+pymysql://reader@mysql.example.com:3306/shop"
+    assert (
+        url.render_as_string(hide_password=False)
+        == "mysql+pymysql://reader@mysql.example.com:3306/shop"
+    )
 
 
 def test_mysql_extra_option_examples_are_real_pymysql_arguments() -> None:
@@ -66,14 +69,20 @@ def test_build_url_rejects_unknown_type() -> None:
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [
-        ("(1045, \"Access denied for user 'reader'@'10.0.0.1' (using password: YES)\")",
-         "Wrong username or password"),
+        (
+            "(1045, \"Access denied for user 'reader'@'10.0.0.1' (using password: YES)\")",
+            "Wrong username or password",
+        ),
         ("(1049, \"Unknown database 'shop'\")", 'Database "shop" does not exist'),
-        ("(2003, \"Can't connect to MySQL server on 'x' ([Errno -2] Name or service not known)\")",
-         "could not be found"),
+        (
+            "(2003, \"Can't connect to MySQL server on 'x' ([Errno -2] Name or service not known)\")",
+            "could not be found",
+        ),
         ("(2003, \"Can't connect to MySQL server on 'x' (timed out)\")", "Timed out"),
-        ("(2003, \"Can't connect to MySQL server on 'x' ([Errno 111] Connection refused)\")",
-         "connection refused"),
+        (
+            "(2003, \"Can't connect to MySQL server on 'x' ([Errno 111] Connection refused)\")",
+            "connection refused",
+        ),
     ],
 )
 def test_friendly_mysql_errors(raw: str, expected: str) -> None:

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { fetchHealth, type HealthResponse } from "../api.ts";
+import { usePageTitle } from "../components/usePageTitle.ts";
 
 type HealthState =
   | { kind: "loading" }
@@ -17,6 +18,7 @@ function StatusRow({ label, ok, text }: { label: string; ok: boolean; text: stri
 }
 
 export default function StatusPage() {
+  usePageTitle("Status");
   const [state, setState] = useState<HealthState>({ kind: "loading" });
 
   const check = useCallback(async () => {

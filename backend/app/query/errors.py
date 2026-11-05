@@ -37,7 +37,8 @@ class QueryError(Exception):
 
 def read_only_error(what: str) -> QueryError:
     return QueryError(
-        "read_only", f"Vita is read-only: {what} statements are not allowed. Only read queries can run."
+        "read_only",
+        f"Vita is read-only: {what} statements are not allowed. Only read queries can run.",
     )
 
 
@@ -89,7 +90,9 @@ def _postgres_error(
         line = column = None
         if diag.statement_position:
             line, column = line_and_column(sql, int(diag.statement_position))
-            return QueryError("syntax", f"Syntax error at line {line}, column {column}: {message}", line, column)
+            return QueryError(
+                "syntax", f"Syntax error at line {line}, column {column}: {message}", line, column
+            )
         return QueryError("syntax", f"Syntax error: {message}")
     if state in {"42P01", "42703", "42883", "3F000", "42704", "3D000"}:
         return QueryError("not_found", message)
@@ -121,7 +124,9 @@ def _mysql_error(
     if code in {2013, 2006} and "timed out" in text.lower():  # client read_timeout
         return _timeout(timeout_seconds)
     if code in {1792, 1290}:  # READ ONLY transaction / --read-only server
-        return QueryError("read_only", f"Vita is read-only: this query tries to change data ({text}).")
+        return QueryError(
+            "read_only", f"Vita is read-only: this query tries to change data ({text})."
+        )
     if code in {1146, 1054, 1049, 1305, 1109}:
         return QueryError("not_found", text)
     if code in {1142, 1143, 1044, 1227, 1370}:

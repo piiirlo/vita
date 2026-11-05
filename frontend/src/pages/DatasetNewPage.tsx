@@ -9,9 +9,12 @@ import {
   type TableInfo,
 } from "../api.ts";
 import { errorText } from "../datasets/format.ts";
+import { usePageTitle } from "../components/usePageTitle.ts";
+import EmptyState from "../components/EmptyState.tsx";
 
 /** Create a dataset from a table: pick connection, schema, table. */
 export default function DatasetNewPage() {
+  usePageTitle("New dataset");
   const navigate = useNavigate();
   const [connections, setConnections] = useState<Connection[] | null>(null);
   const [connectionId, setConnectionId] = useState<number | null>(null);
@@ -97,7 +100,7 @@ export default function DatasetNewPage() {
         schema,
         table_name: table,
       });
-      navigate(`/datasets/${dataset.id}`);
+      void navigate(`/datasets/${dataset.id}`);
     } catch (err) {
       setError(errorText(err));
       setSaving(false);
@@ -106,12 +109,14 @@ export default function DatasetNewPage() {
 
   if (connections?.length === 0) {
     return (
-      <div className="card empty">
-        <p>A dataset needs a database connection first.</p>
-        <Link to="/connections/new" className="button primary">
-          Add a connection
-        </Link>
-      </div>
+      <EmptyState
+        title="A dataset needs a database connection first"
+        action={
+          <Link to="/connections/new" className="button primary">
+            Add a connection
+          </Link>
+        }
+      />
     );
   }
 

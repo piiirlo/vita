@@ -62,7 +62,7 @@ const AGGREGATES: { value: Aggregate; label: string; types: GenericType[] | null
 // Same rules as the backend (app/charts/filters.py).
 const ALWAYS: FilterOperator[] = ["=", "!=", "IN", "NOT IN", "IS NULL", "IS NOT NULL"];
 const COMPARE: FilterOperator[] = [">", ">=", "<", "<=", "BETWEEN"];
-export function operatorsFor(type: GenericType): FilterOperator[] {
+function operatorsFor(type: GenericType): FilterOperator[] {
   if (type === "number" || type === "date" || type === "datetime") return [...ALWAYS, ...COMPARE];
   if (type === "string") return [...ALWAYS, "LIKE"];
   return ["=", "!=", "IS NULL", "IS NOT NULL"];
@@ -476,7 +476,7 @@ function TimeSection({ state, dataset, onQuery }: { state: ChartState; dataset: 
   const { query, vizType, display } = state;
   const temporal = temporalColumns(dataset);
   if (temporal.length === 0) return null;
-  const time = query.time ?? { column: dataset.main_time_column ?? temporal[0]!.name, grain: null, range: { kind: "none" as RangeKind } };
+  const time = query.time ?? { column: dataset.main_time_column ?? temporal[0]!.name, grain: null, range: { kind: "none" } };
   const set = (patch: Partial<NonNullable<ChartQuery["time"]>>) => onQuery({ time: { ...time, ...patch } });
   const raw = vizType === "table" && display.mode === "raw";
   const grainRequired = vizType === "line" || (vizType === "big_number" && display.show_trend);

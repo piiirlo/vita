@@ -31,9 +31,7 @@ class Connection(Base):
     # NULL means "no password". Never expose this column through the API.
     password_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     extra: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
@@ -80,9 +78,7 @@ class SavedQuery(Base):
         ForeignKey("connections.id", ondelete="SET NULL"), nullable=True, index=True
     )
     sql: Mapped[str] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
@@ -122,9 +118,7 @@ class Dataset(Base):
     sql: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Name of one of the dataset's temporal columns.
     main_time_column: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
@@ -209,9 +203,7 @@ class Chart(Base):
     )
     viz_type: Mapped[str] = mapped_column(String(20))  # table | big_number | bar | line
     params: Mapped[dict[str, Any]] = mapped_column(JSON)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
@@ -234,9 +226,7 @@ class Dashboard(Base):
     # List of tiles; the source of truth for what the dashboard shows.
     layout: Mapped[list[dict[str, Any]]] = mapped_column(JSON)
     refresh_interval: Mapped[str] = mapped_column(String(10), default="off")
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
@@ -258,3 +248,43 @@ class DashboardChart(Base):
     chart_id: Mapped[int] = mapped_column(
         ForeignKey("charts.id", ondelete="RESTRICT"), primary_key=True, index=True
     )
+
+
+class User(Base):
+    """A Vita user (single admin for now). The password is stored as an argon2 hash."""
+
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    username: Mapped[str] = mapped_column(String(100), unique=True)
+    password_hash: Mapped[str] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class UserSession(Base):
+    """A login session. Only a SHA-256 hash of the cookie token is stored."""
+
+    __tablename__ = "sessions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+    user: Mapped[User] = relationship()
+
+
+class LoginFailure(Base):
+    """Failed logins per (username, client address), to slow down password guessing.
+    Stored in the DB so it works across several backend workers."""
+
+    __tablename__ = "login_failures"
+
+    key: Mapped[str] = mapped_column(String(400), primary_key=True)
+    count: Mapped[int] = mapped_column(default=0)
+    first_failed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

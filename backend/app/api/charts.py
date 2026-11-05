@@ -35,7 +35,7 @@ def _query_error(error: QueryError) -> NoReturn:
 
 
 def today() -> date:
-    """"Today" for relative time ranges (tests replace this)."""
+    """ "Today" for relative time ranges (tests replace this)."""
     return date.today()
 
 
@@ -81,7 +81,7 @@ def _out(chart: Chart) -> ChartOut:
         description=chart.description,
         dataset_id=chart.dataset_id,
         dataset_name=chart.dataset_name,
-        viz_type=chart.viz_type,  # type: ignore[arg-type]
+        viz_type=chart.viz_type,
         params=ChartParams.model_validate(chart.params),
         created_at=chart.created_at,
         updated_at=chart.updated_at,
@@ -126,7 +126,9 @@ def _commit(db: Session, name: str) -> None:
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status.HTTP_409_CONFLICT, f'A chart named "{name}" already exists') from None
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, f'A chart named "{name}" already exists'
+        ) from None
 
 
 @router.get("/charts", response_model=list[ChartOut])

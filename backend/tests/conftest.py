@@ -4,16 +4,21 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from alembic import command
 from alembic.config import Config
+from argon2 import PasswordHasher
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
+import app.auth as auth_module
+import app.main as app_main
+from alembic import command
+from app.auth import hash_password
 from app.config import settings
 from app.db import get_db
 from app.main import app
+from app.models import User
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 TEST_DB_NAME = "vita_test"
@@ -49,20 +54,57 @@ def test_engine() -> Iterator[Engine]:
 @pytest.fixture
 def session_factory(test_engine: Engine) -> sessionmaker[Session]:
     with test_engine.begin() as conn:
-        conn.execute(text("TRUNCATE dashboard_charts, dashboards, charts, dataset_metrics, dataset_columns, datasets, saved_queries, query_history, connections RESTART IDENTITY"))
+        conn.execute(
+            text(
+                "TRUNCATE login_failures, sessions, users, dashboard_charts, dashboards, charts, dataset_metrics, dataset_columns, datasets, saved_queries, query_history, connections RESTART IDENTITY"
+            )
+        )
     return sessionmaker(bind=test_engine, autoflush=False, expire_on_commit=False)
 
 
+@pytest.fixture(autouse=True, scope="session")
+def fast_password_hashing() -> Iterator[None]:
+    """Real argon2, but with tiny cost parameters so tests stay fast."""
+    original = auth_module._hasher
+    auth_module._hasher = PasswordHasher(time_cost=1, memory_cost=1024, parallelism=1)
+    yield
+    auth_module._hasher = original
+
+
+TEST_USERNAME = "tester"
+TEST_PASSWORD = "correct horse battery"
+
+
 @pytest.fixture
-def client(session_factory: sessionmaker[Session]) -> Iterator[TestClient]:
+def anon_client(
+    session_factory: sessionmaker[Session], monkeypatch: pytest.MonkeyPatch
+) -> Iterator[TestClient]:
+    """A client that is not logged in. A test user (TEST_USERNAME / TEST_PASSWORD) exists."""
+
     def override_get_db() -> Iterator[Session]:
         with session_factory() as session:
             yield session
 
+    with session_factory() as db:
+        db.add(User(username=TEST_USERNAME, password_hash=hash_password(TEST_PASSWORD)))
+        db.commit()
+    # Startup (admin user from env vars) must use the test database too.
+    monkeypatch.setattr(app_main, "SessionLocal", session_factory)
     app.dependency_overrides[get_db] = override_get_db
-    with TestClient(app) as test_client:
+    # "localhost": the session cookie isn't Secure, so it is sent back over http.
+    with TestClient(app, base_url="http://localhost") as test_client:
         yield test_client
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def client(anon_client: TestClient) -> TestClient:
+    """A client logged in as the test user."""
+    response = anon_client.post(
+        "/api/auth/login", json={"username": TEST_USERNAME, "password": TEST_PASSWORD}
+    )
+    assert response.status_code == 200, response.text
+    return anon_client
 
 
 @pytest.fixture

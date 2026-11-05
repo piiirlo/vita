@@ -12,6 +12,8 @@ import {
   type TestResult,
 } from "../api.ts";
 import TestResultMessage from "../components/TestResultMessage.tsx";
+import { usePageTitle } from "../components/usePageTitle.ts";
+import { toast } from "../components/toast.ts";
 
 /** Form values are kept as strings; converted when submitting. */
 type FormState = {
@@ -97,6 +99,7 @@ export default function ConnectionFormPage() {
   const editId = params.id ? Number(params.id) : null;
   const isEdit = editId !== null;
   const navigate = useNavigate();
+  usePageTitle(isEdit ? "Edit connection" : "New connection");
 
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [savedHasPassword, setSavedHasPassword] = useState(false);
@@ -186,7 +189,8 @@ export default function ConnectionFormPage() {
       const input = { ...fields, name: form.name.trim() };
       if (editId !== null) await updateConnection(editId, input);
       else await createConnection(input);
-      navigate("/connections");
+      toast.success(`Saved "${input.name}".`);
+      void navigate("/connections");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setBusy(null);

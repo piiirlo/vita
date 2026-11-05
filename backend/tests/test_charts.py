@@ -73,7 +73,12 @@ def lines(client: TestClient, connection_id: int) -> int:
     """A SQL dataset (so the FROM clause is a subquery) with a saved revenue metric."""
     response = client.post(
         "/api/datasets",
-        json={"name": "Order lines", "connection_id": connection_id, "kind": "sql", "sql": LINES_SQL},
+        json={
+            "name": "Order lines",
+            "connection_id": connection_id,
+            "kind": "sql",
+            "sql": LINES_SQL,
+        },
     )
     assert response.status_code == 201, response.text
     dataset_id = int(response.json()["id"])
@@ -123,7 +128,9 @@ def total(client: TestClient, dataset_id: int, **query: Any) -> Any:
 
 
 @pytest.mark.parametrize("grain", ["day", "week", "month", "quarter", "year"])
-def test_time_grains(client: TestClient, lines: int, expect: Callable[..., Any], grain: str) -> None:
+def test_time_grains(
+    client: TestClient, lines: int, expect: Callable[..., Any], grain: str
+) -> None:
     data = chart_data(client, "line", lines, metrics=["revenue"], time={"grain": grain})
     assert [c["name"] for c in data["columns"]] == ["order_date", "revenue"]
     assert data["columns"][0]["type"] == "date"  # a real date column
@@ -139,7 +146,9 @@ def test_weeks_start_on_monday(client: TestClient, lines: int) -> None:
     assert {date.fromisoformat(row[0]).weekday() for row in data["rows"]} == {0}
 
 
-def test_table_dataset_with_grain(client: TestClient, orders: int, expect: Callable[..., Any]) -> None:
+def test_table_dataset_with_grain(
+    client: TestClient, orders: int, expect: Callable[..., Any]
+) -> None:
     data = chart_data(client, "bar", orders, metrics=["count"], time={"grain": "quarter"})
     assert data["rows"] == expect(
         "SELECT date_trunc('quarter', order_date)::date, COUNT(*) FROM sales.orders GROUP BY 1 ORDER BY 1"
@@ -185,22 +194,39 @@ def test_filter_values_are_plain_text(
     client: TestClient, lines: int, sampledb: Engine, value: str
 ) -> None:
     for operator in ("=", "LIKE"):
-        assert total(client, lines, filters=[{"column": "status", "operator": operator, "value": value}]) == 0
-    assert total(client, lines, filters=[{"column": "status", "operator": "IN", "value": [value]}]) == 0
+        assert (
+            total(
+                client, lines, filters=[{"column": "status", "operator": operator, "value": value}]
+            )
+            == 0
+        )
+    assert (
+        total(client, lines, filters=[{"column": "status", "operator": "IN", "value": [value]}])
+        == 0
+    )
     with sampledb.connect() as conn:
         assert conn.scalar(text("SELECT COUNT(*) FROM sales.orders")) == 800  # still there
 
 
 def test_like_matches_wildcards_literally(client: TestClient, lines: int) -> None:
     # "_" would match any single character if it weren't escaped.
-    assert total(client, lines, filters=[{"column": "status", "operator": "LIKE", "value": "c_mpleted"}]) == 0
-    assert total(client, lines, filters=[{"column": "status", "operator": "LIKE", "value": "ple"}]) > 0
+    assert (
+        total(
+            client, lines, filters=[{"column": "status", "operator": "LIKE", "value": "c_mpleted"}]
+        )
+        == 0
+    )
+    assert (
+        total(client, lines, filters=[{"column": "status", "operator": "LIKE", "value": "ple"}]) > 0
+    )
 
 
 # ---------- metrics and dimensions ----------
 
 
-def test_saved_and_adhoc_metrics(client: TestClient, lines: int, expect: Callable[..., Any]) -> None:
+def test_saved_and_adhoc_metrics(
+    client: TestClient, lines: int, expect: Callable[..., Any]
+) -> None:
     data = chart_data(
         client, "big_number", lines,
         metrics=["revenue"],
@@ -242,8 +268,7 @@ def test_multiple_dimensions(client: TestClient, lines: int, expect: Callable[..
         order_by={"by": "revenue", "descending": True},
     )  # fmt: skip
     assert data["rows"] == expect(
-        "SELECT status, channel, COUNT(*), SUM(line_total) FROM lines "
-        "GROUP BY 1, 2 ORDER BY 4 DESC"
+        "SELECT status, channel, COUNT(*), SUM(line_total) FROM lines GROUP BY 1, 2 ORDER BY 4 DESC"
     )
     assert len(data["rows"]) == 12
 
@@ -260,7 +285,10 @@ def test_null_dimension_values_come_back_as_null(client: TestClient, lines: int)
 def test_series_limit_keeps_top_n_series(
     client: TestClient, lines: int, expect: Callable[..., Any]
 ) -> None:
-    top2 = [r[0] for r in expect("SELECT status FROM lines GROUP BY 1 ORDER BY SUM(line_total) DESC LIMIT 2")]
+    top2 = [
+        r[0]
+        for r in expect("SELECT status FROM lines GROUP BY 1 ORDER BY SUM(line_total) DESC LIMIT 2")
+    ]
     data = chart_data(
         client, "line", lines,
         metrics=["revenue"], series="status", series_limit=2, time={"grain": "quarter"},
@@ -270,11 +298,16 @@ def test_series_limit_keeps_top_n_series(
         "SELECT date_trunc('quarter', order_date)::date, status, SUM(line_total) FROM lines "
         f"WHERE status IN ('{top2[0]}', '{top2[1]}') GROUP BY 1, 2 ORDER BY 1, 2"
     )
-    assert 'JOIN (' in data["sql"] and "LIMIT 2" in data["sql"]
+    assert "JOIN (" in data["sql"] and "LIMIT 2" in data["sql"]
 
     everything = chart_data(client, "line", lines, metrics=["revenue"], series="status",
                             series_limit=None, time={"grain": "quarter"})  # fmt: skip
-    assert {row[1] for row in everything["rows"]} == {"completed", "shipped", "cancelled", "returned"}
+    assert {row[1] for row in everything["rows"]} == {
+        "completed",
+        "shipped",
+        "cancelled",
+        "returned",
+    }
 
 
 def test_series_limit_respects_filters_and_keeps_null_series(
@@ -329,7 +362,9 @@ def test_time_ranges(
 def test_custom_time_range_includes_the_end_date(
     client: TestClient, lines: int, expect: Callable[..., Any]
 ) -> None:
-    [[expected]] = expect("SELECT COUNT(*) FROM lines WHERE order_date BETWEEN '2025-06-01' AND '2025-06-30'")
+    [[expected]] = expect(
+        "SELECT COUNT(*) FROM lines WHERE order_date BETWEEN '2025-06-01' AND '2025-06-30'"
+    )
     rng = {"kind": "custom", "start": "2025-06-01", "end": "2025-06-30"}
     assert total(client, lines, time={"range": rng}) == expected
     # Time range + grain + explicit column together.
@@ -355,11 +390,15 @@ def test_order_by_and_row_limit(client: TestClient, lines: int, expect: Callable
 
     data = chart_data(client, "bar", lines, metrics=["revenue"], dimensions=["status"],
                       order_by={"by": "revenue", "descending": False}, row_limit=2)  # fmt: skip
-    assert data["rows"] == expect("SELECT status, SUM(line_total) FROM lines GROUP BY 1 ORDER BY 2 LIMIT 2")
+    assert data["rows"] == expect(
+        "SELECT status, SUM(line_total) FROM lines GROUP BY 1 ORDER BY 2 LIMIT 2"
+    )
     assert data["truncated"] is True and data["row_count"] == 2
     assert data["sql"].rstrip().endswith("LIMIT 3")
 
-    exact = chart_data(client, "bar", lines, metrics=["revenue"], dimensions=["status"], row_limit=4)
+    exact = chart_data(
+        client, "bar", lines, metrics=["revenue"], dimensions=["status"], row_limit=4
+    )
     assert exact["truncated"] is False and exact["row_count"] == 4
 
 
@@ -372,7 +411,10 @@ def test_raw_records(client: TestClient, lines: int, expect: Callable[..., Any])
     )  # fmt: skip
     assert [c["name"] for c in data["columns"]] == ["order_id", "status", "line_total"]
     assert [r[2] for r in data["rows"]] == [
-        r[0] for r in expect("SELECT line_total FROM lines WHERE channel = 'store' ORDER BY 1 DESC LIMIT 5")
+        r[0]
+        for r in expect(
+            "SELECT line_total FROM lines WHERE channel = 'store' ORDER BY 1 DESC LIMIT 5"
+        )
     ]
 
 
@@ -380,15 +422,22 @@ def test_raw_records(client: TestClient, lines: int, expect: Callable[..., Any])
 
 
 def test_validation_errors_are_clear_400s(client: TestClient, lines: int) -> None:
-    assert chart_error(client, "table", lines, metrics=["nope"])["message"].startswith('Unknown metric "nope"')
+    assert chart_error(client, "table", lines, metrics=["nope"])["message"].startswith(
+        'Unknown metric "nope"'
+    )
     detail = chart_error(client, "table", lines, metrics=["count"], dimensions=["quantity"])
     assert detail["kind"] == "invalid" and "Mark it as a dimension" in detail["message"]
-    detail = chart_error(client, "line", lines, metrics=["count"], time={"column": "status", "grain": "day"})
+    detail = chart_error(
+        client, "line", lines, metrics=["count"], time={"column": "status", "grain": "day"}
+    )
     assert "is not a time column" in detail["message"]
     detail = chart_error(client, "table", lines, metrics=["count"],
                          filters=[{"column": "quantity", "operator": "=", "value": "two"}])  # fmt: skip
     assert "is not a number" in detail["message"]
-    response = client.post("/api/chart-data", json={"viz_type": "table", "query": {"dataset_id": 999, "metrics": ["count"]}})
+    response = client.post(
+        "/api/chart-data",
+        json={"viz_type": "table", "query": {"dataset_id": 999, "metrics": ["count"]}},
+    )
     assert response.status_code == 404
 
 
@@ -401,19 +450,27 @@ def test_hidden_and_missing_columns_are_rejected(client: TestClient, lines: int)
         "name": dataset["name"], "description": None, "main_time_column": "order_date",
         "columns": [settings]})  # fmt: skip
     assert response.status_code == 200, response.text
-    assert "is hidden" in chart_error(client, "table", lines, metrics=["count"], dimensions=["status"])["message"]
+    assert (
+        "is hidden"
+        in chart_error(client, "table", lines, metrics=["count"], dimensions=["status"])["message"]
+    )
 
     # A column dropped from the SQL is "missing".
     response = client.put(f"/api/datasets/{lines}", json={
         "name": dataset["name"], "description": None, "main_time_column": "order_date",
         "sql": LINES_SQL.replace("o.channel, o.customer_id", "o.customer_id")})  # fmt: skip
     assert response.status_code == 200, response.text
-    assert "no longer exists" in chart_error(client, "table", lines, metrics=["count"], dimensions=["channel"])["message"]
+    assert (
+        "no longer exists"
+        in chart_error(client, "table", lines, metrics=["count"], dimensions=["channel"])["message"]
+    )
 
 
 def test_query_errors_from_the_database(client: TestClient, connection_id: int, lines: int) -> None:
     # A saved metric that is valid SQL but fails on the data: the database error comes back.
-    client.post(f"/api/datasets/{lines}/metrics", json={"name": "broken", "expression": "SUM(status::int)"})
+    client.post(
+        f"/api/datasets/{lines}/metrics", json={"name": "broken", "expression": "SUM(status::int)"}
+    )
     detail = chart_error(client, "big_number", lines, metrics=["broken"])
     assert detail["kind"] != "invalid"
     assert "invalid input syntax" in detail["message"]
@@ -428,7 +485,12 @@ def chart_payload(dataset_id: int, name: str = "Revenue by month", **query: Any)
         "description": "Monthly revenue",
         "viz_type": "line",
         "params": {
-            "query": {"dataset_id": dataset_id, "metrics": ["revenue"], "time": {"grain": "month"}, **query},
+            "query": {
+                "dataset_id": dataset_id,
+                "metrics": ["revenue"],
+                "time": {"grain": "month"},
+                **query,
+            },
             "display": {"show_points": True},
         },
     }
@@ -442,7 +504,10 @@ def test_chart_crud(client: TestClient, lines: int, orders: int) -> None:
     assert chart["params"]["display"] == {"show_points": True}
     assert chart["params"]["query"]["row_limit"] == 1000  # defaults filled in
 
-    assert client.post("/api/charts", json=chart_payload(lines, name="revenue BY month")).status_code == 409
+    assert (
+        client.post("/api/charts", json=chart_payload(lines, name="revenue BY month")).status_code
+        == 409
+    )
 
     other = client.post("/api/charts", json={**chart_payload(orders, name="Orders"),
                                              "params": {"query": {"dataset_id": orders, "metrics": ["count"],
@@ -451,9 +516,13 @@ def test_chart_crud(client: TestClient, lines: int, orders: int) -> None:
 
     names = [c["name"] for c in client.get("/api/charts").json()]
     assert sorted(names) == ["Orders", "Revenue by month"]
-    assert [c["name"] for c in client.get("/api/charts", params={"q": "order lines"}).json()] == ["Revenue by month"]
+    assert [c["name"] for c in client.get("/api/charts", params={"q": "order lines"}).json()] == [
+        "Revenue by month"
+    ]
 
-    updated = client.put(f"/api/charts/{chart['id']}", json={**chart_payload(lines), "viz_type": "bar"})
+    updated = client.put(
+        f"/api/charts/{chart['id']}", json={**chart_payload(lines), "viz_type": "bar"}
+    )
     assert updated.status_code == 200 and updated.json()["viz_type"] == "bar"
     assert client.get(f"/api/charts/{chart['id']}").json()["viz_type"] == "bar"
 
@@ -500,7 +569,9 @@ def test_first_bucket_is_a_whole_period(
         "WHERE order_date >= '2025-12-01' AND order_date < '2026-03-16' GROUP BY 1 ORDER BY 1"
     )
     # Without a grain the exact dates are kept.
-    [[exact]] = expect("SELECT COUNT(*) FROM lines WHERE order_date >= '2025-12-15' AND order_date < '2026-03-16'")
+    [[exact]] = expect(
+        "SELECT COUNT(*) FROM lines WHERE order_date >= '2025-12-15' AND order_date < '2026-03-16'"
+    )
     assert total(client, lines, time={"range": {"kind": "last_90_days"}}) == exact
 
 
@@ -532,11 +603,21 @@ def test_saved_chart_pins_its_time_column(client: TestClient, lines: int) -> Non
 
 def column_settings(dataset: dict[str, Any], name: str, **changes: Any) -> dict[str, Any]:
     col = next(c for c in dataset["columns"] if c["name"] == name)
-    keys = ("id", "label", "generic_type_override", "is_temporal", "is_dimension", "is_hidden", "description")
+    keys = (
+        "id",
+        "label",
+        "generic_type_override",
+        "is_temporal",
+        "is_dimension",
+        "is_hidden",
+        "description",
+    )
     return {**{k: col[k] for k in keys}, **changes}
 
 
-def save_columns(client: TestClient, dataset_id: int, *settings: dict[str, Any], **extra: Any) -> Any:
+def save_columns(
+    client: TestClient, dataset_id: int, *settings: dict[str, Any], **extra: Any
+) -> Any:
     dataset = client.get(f"/api/datasets/{dataset_id}").json()
     return client.put(f"/api/datasets/{dataset_id}", json={
         "name": dataset["name"], "description": None, "main_time_column": dataset["main_time_column"],
@@ -558,10 +639,14 @@ def test_metric_used_by_charts_cannot_be_deleted_or_renamed(client: TestClient, 
     renamed = client.put(url, json={"name": "rev", "expression": "SUM(line_total)"})
     assert renamed.status_code == 409
     # Changing the label or expression is fine.
-    relabeled = client.put(url, json={"name": "revenue", "label": "Turnover", "expression": "SUM(line_total)"})
+    relabeled = client.put(
+        url, json={"name": "revenue", "label": "Turnover", "expression": "SUM(line_total)"}
+    )
     assert relabeled.status_code == 200
 
-    unused = client.post(f"/api/datasets/{lines}/metrics", json={"name": "unused", "expression": "SUM(quantity)"}).json()
+    unused = client.post(
+        f"/api/datasets/{lines}/metrics", json={"name": "unused", "expression": "SUM(quantity)"}
+    ).json()
     assert client.delete(f"/api/datasets/{lines}/metrics/{unused['id']}").status_code == 204
 
 
@@ -576,7 +661,9 @@ def test_columns_used_by_charts_cannot_be_hidden_or_broken(client: TestClient, l
     assert hide.json()["detail"]["message"] == (
         'Column "quantity" is used by 1 chart: By channel. Remove it from those charts first.'
     )
-    not_a_dimension = save_columns(client, lines, column_settings(dataset, "channel", is_dimension=False))
+    not_a_dimension = save_columns(
+        client, lines, column_settings(dataset, "channel", is_dimension=False)
+    )
     assert not_a_dimension.status_code == 409  # it's the chart's series
     not_temporal = save_columns(client, lines, column_settings(dataset, "order_date", is_temporal=False),
                                 main_time_column=None)  # fmt: skip

@@ -200,9 +200,9 @@ function noGrain(query: ChartQuery): ChartQuery["time"] {
 
 export function toParams(state: ChartState): ChartParams {
   const query = { ...state.query, filters: completeFilters(state.query.filters) };
-  return { query, display: state.display as Record<string, unknown> };
+  return { query, display: state.display };
 }
 
 export function fromParams(vizType: VizType, params: ChartParams, dataset: Dataset): ChartState {
-  return { vizType, query: { ...defaultQuery(dataset), ...params.query }, display: params.display as DisplayOptions };
+  return { vizType, query: { ...defaultQuery(dataset), ...params.query }, display: params.display };
 }

@@ -146,10 +146,8 @@ def _watchdog(pg_conn: Any | None, seconds: float) -> Iterator[None]:
 def _execute_and_fetch(
     conn: Any, prepared: PreparedQuery, fetch_limit: int
 ) -> tuple[Sequence[Any] | None, list[Sequence[Any]]]:
-    if prepared.streamable:
-        cursor = conn.cursor(name="vita_query")  # psycopg server-side cursor
-    else:
-        cursor = conn.cursor()
+    # psycopg server-side cursor when streamable
+    cursor = conn.cursor(name="vita_query") if prepared.streamable else conn.cursor()
     try:
         cursor.execute(prepared.sql)  # no parameters: '%' and ':' in the SQL are left alone
         if cursor.description is None:  # statement returned no rows
@@ -203,7 +201,7 @@ _PG_NUMBER = {"int2", "int4", "int8", "numeric", "float4", "float8", "oid", "mon
 _PG_STRING = {"text", "varchar", "bpchar", "char", "name", "citext"}
 _PG_GENERIC: dict[str, GenericType] = {
     **{t: "number" for t in _PG_NUMBER if t != "money"},
-    **{t: "string" for t in _PG_STRING},
+    **dict.fromkeys(_PG_STRING, "string"),
     "money": "string",
     "timestamp": "datetime",
     "timestamptz": "datetime",
@@ -217,10 +215,16 @@ _MYSQL_NAMES = {
     if name.isupper() and isinstance(value, int) and name not in {"CHAR", "INTERVAL"}
 }
 _MYSQL_GENERIC: dict[str, GenericType] = {
-    **{t: "number" for t in ("DECIMAL", "NEWDECIMAL", "TINY", "SHORT", "LONG", "FLOAT",
-                             "DOUBLE", "LONGLONG", "INT24", "YEAR")},
-    **{t: "string" for t in ("VARCHAR", "VAR_STRING", "STRING", "ENUM", "SET",
-                             "TINY_BLOB", "MEDIUM_BLOB", "LONG_BLOB", "BLOB")},
+    **dict.fromkeys(
+        ("DECIMAL", "NEWDECIMAL", "TINY", "SHORT", "LONG", "FLOAT", "DOUBLE", "LONGLONG", "INT24"),
+        "number",
+    ),
+    "YEAR": "number",
+    **dict.fromkeys(
+        ("VARCHAR", "VAR_STRING", "STRING", "ENUM", "SET"),
+        "string",
+    ),
+    **dict.fromkeys(("TINY_BLOB", "MEDIUM_BLOB", "LONG_BLOB", "BLOB"), "string"),
     "DATETIME": "datetime",
     "TIMESTAMP": "datetime",
     "DATE": "date",

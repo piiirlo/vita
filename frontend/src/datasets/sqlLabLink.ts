@@ -12,7 +12,7 @@ export type SqlLabLocationState = { openTab: OpenTabRequest };
 
 export function isSqlLabLocationState(value: unknown): value is SqlLabLocationState {
   if (typeof value !== "object" || value === null || !("openTab" in value)) return false;
-  const tab = (value as { openTab: unknown }).openTab;
+  const tab = (value).openTab;
   return (
     typeof tab === "object" &&
     tab !== null &&

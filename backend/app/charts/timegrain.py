@@ -20,21 +20,27 @@ _MYSQL_TEMPLATES: dict[str, str] = {
     # WEEKDAY(): Monday = 0 ... Sunday = 6
     "week": f"DATE(DATE_SUB({_PLACEHOLDER}, INTERVAL WEEKDAY({_PLACEHOLDER}) DAY))",
     "month": f"DATE(DATE_SUB({_PLACEHOLDER}, INTERVAL DAYOFMONTH({_PLACEHOLDER}) - 1 DAY))",
-    "quarter": f"MAKEDATE(YEAR({_PLACEHOLDER}), 1) + INTERVAL (QUARTER({_PLACEHOLDER}) - 1) QUARTER",
+    "quarter": (
+        f"MAKEDATE(YEAR({_PLACEHOLDER}), 1) + INTERVAL (QUARTER({_PLACEHOLDER}) - 1) QUARTER"
+    ),
     "year": f"MAKEDATE(YEAR({_PLACEHOLDER}), 1)",
 }
 
 
-def time_bucket(column: exp.Expression, grain: Grain, db_type: str) -> exp.Expression:
+def time_bucket(column: exp.Expr, grain: Grain, db_type: str) -> exp.Expr:
     """The start of the grain bucket that `column` falls in, as a DATE."""
     if db_type == "postgresql":
-        trunc = exp.Anonymous(this="DATE_TRUNC", expressions=[exp.Literal.string(grain), column.copy()])
+        trunc = exp.Anonymous(
+            this="DATE_TRUNC", expressions=[exp.Literal.string(grain), column.copy()]
+        )
         return exp.cast(trunc, exp.DataType.build("DATE"))
     if db_type == "mysql":
         template = sqlglot.parse_one(_MYSQL_TEMPLATES[grain], read="mysql")
         return template.transform(
-            lambda node: column.copy()
-            if isinstance(node, exp.Column) and node.name == _PLACEHOLDER
-            else node
+            lambda node: (
+                column.copy()
+                if isinstance(node, exp.Column) and node.name == _PLACEHOLDER
+                else node
+            )
         )
     raise ValueError(f"Unsupported database type: {db_type}")

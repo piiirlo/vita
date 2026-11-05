@@ -9,14 +9,20 @@ import {
   type TestResult,
 } from "../api.ts";
 import TestResultMessage from "../components/TestResultMessage.tsx";
+import { usePageTitle } from "../components/usePageTitle.ts";
+import EmptyState from "../components/EmptyState.tsx";
+import ConfirmDialog from "../components/ConfirmDialog.tsx";
+import { toast } from "../components/toast.ts";
 
 export default function ConnectionsPage() {
+  usePageTitle("Connections");
   const [connections, setConnections] = useState<Connection[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Set when a delete was refused because datasets still use the connection.
   const [inUse, setInUse] = useState(false);
   const [testing, setTesting] = useState<number | null>(null);
   const [testResults, setTestResults] = useState<Record<number, TestResult>>({});
+  const [toDelete, setToDelete] = useState<Connection | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -45,14 +51,16 @@ export default function ConnectionsPage() {
   }
 
   async function handleDelete(conn: Connection) {
-    if (!window.confirm(`Delete connection "${conn.name}"? This cannot be undone.`)) return;
     try {
       await deleteConnection(conn.id);
       setInUse(false);
+      setToDelete(null);
+      toast.success(`Deleted "${conn.name}".`);
       await load();
     } catch (err) {
       // 409: "This connection is used by 2 datasets: X, Y. Delete those first."
       setInUse(err instanceof ApiError && err.status === 409);
+      setToDelete(null);
       setError(err instanceof Error ? err.message : String(err));
     }
   }
@@ -80,13 +88,16 @@ export default function ConnectionsPage() {
       {connections === null && !error && <p className="muted">Loading…</p>}
 
       {connections?.length === 0 && (
-        <div className="card empty">
-          <p>No connections yet.</p>
-          <p className="muted small">
-            Try the demo database: host <code>sampledb</code>, port <code>5432</code>, database{" "}
-            <code>sampledb</code>.
-          </p>
-        </div>
+        <EmptyState
+          title="No connections yet"
+          action={
+            <Link to="/connections/new" className="button primary">
+              Add connection
+            </Link>
+          }
+        >
+          Try the demo database: host <code>sampledb</code>, port <code>5432</code>, database <code>sampledb</code>.
+        </EmptyState>
       )}
 
       {connections && connections.length > 0 && (
@@ -128,7 +139,7 @@ export default function ConnectionsPage() {
                     <Link to={`/connections/${conn.id}/edit`} className="button">
                       Edit
                     </Link>
-                    <button className="danger" onClick={() => void handleDelete(conn)}>
+                    <button className="danger" onClick={() => setToDelete(conn)}>
                       Delete
                     </button>
                   </td>
@@ -137,6 +148,19 @@ export default function ConnectionsPage() {
             })}
           </tbody>
         </table>
+      )}
+
+      {toDelete && (
+        <ConfirmDialog
+          title="Delete connection"
+          confirmLabel="Delete"
+          onConfirm={() => handleDelete(toDelete)}
+          onCancel={() => setToDelete(null)}
+        >
+          <p>
+            Delete the connection <strong>{toDelete.name}</strong>? This cannot be undone.
+          </p>
+        </ConfirmDialog>
       )}
     </div>
   );

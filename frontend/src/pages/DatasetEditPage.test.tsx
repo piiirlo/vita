@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { MemoryRouter, Route, Routes } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 import type { Dataset, DatasetColumn } from "../api.ts";
+import Toaster from "../components/Toaster.tsx";
 import DatasetEditPage from "./DatasetEditPage.tsx";
 
 function column(id: number, name: string, type: DatasetColumn["generic_type"], extra: Partial<DatasetColumn> = {}): DatasetColumn {
@@ -108,6 +109,7 @@ function renderPage() {
       <Routes>
         <Route path="/datasets/:id" element={<DatasetEditPage />} />
       </Routes>
+      <Toaster />
     </MemoryRouter>,
   );
 }

@@ -9,6 +9,7 @@ import {
   type Connection,
   type TableInfo,
 } from "../api.ts";
+import { usePageTitle } from "../components/usePageTitle.ts";
 
 /** Result of an async load: null while loading, or data, or an error message. */
 type Loaded<T> = { data: T; error: null } | { data: null; error: string } | null;
@@ -27,7 +28,9 @@ function useLoad<T>(load: (() => Promise<T>) | null, deps: unknown[]): Loaded<T>
     return () => {
       cancelled = true;
     };
-  }, deps); // `load` is a new function every render; `deps` says when to reload
+    // `load` is a new function every render; `deps` says when to reload.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
 
   return state;
 }
@@ -39,6 +42,7 @@ function Status({ state }: { state: Loaded<unknown> }) {
 }
 
 export default function BrowsePage() {
+  usePageTitle("Browse");
   const id = Number(useParams().id);
   const [schema, setSchema] = useState<string | null>(null);
   const [table, setTable] = useState<string | null>(null);

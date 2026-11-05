@@ -97,6 +97,7 @@ def test_password_never_appears_in_responses(
     with session_factory() as session:
         row = session.get(Connection, conn_id)
         assert row is not None
+        assert row.password_encrypted is not None
         assert new_secret not in row.password_encrypted
         assert decrypt_password(row.password_encrypted) == new_secret
 
@@ -218,9 +219,7 @@ def test_unknown_host_gives_clear_error(client: TestClient, sampledb_payload: Pa
     assert "could not be found" in result["error"]
 
 
-def test_unknown_database_gives_clear_error(
-    client: TestClient, sampledb_payload: Payload
-) -> None:
+def test_unknown_database_gives_clear_error(client: TestClient, sampledb_payload: Payload) -> None:
     result = client.post(
         "/api/connections/test", json=sampledb_payload(database="no_such_db")
     ).json()
@@ -235,9 +234,7 @@ def test_closed_port_gives_clear_error(client: TestClient, sampledb_payload: Pay
 
 
 def test_saved_connection_test_failure(client: TestClient, sampledb_payload: Payload) -> None:
-    conn_id = client.post(
-        "/api/connections", json=sampledb_payload(password="wrong")
-    ).json()["id"]
+    conn_id = client.post("/api/connections", json=sampledb_payload(password="wrong")).json()["id"]
     result = client.post(f"/api/connections/{conn_id}/test").json()
     assert result["ok"] is False
     assert "Wrong username or password" in result["error"]
@@ -300,9 +297,7 @@ def restricted_sampledb(sampledb_payload: Payload) -> Iterator[dict[str, Any]]:
     """A sampledb user that can read sales.* but not pg_collation, like the
     public RNAcentral server. The SQLAlchemy Postgres inspector needs pg_collation."""
     admin = create_engine_for(
-        ConnectionDetails(
-            **{k: v for k, v in sampledb_payload().items() if k != "name"}  # type: ignore[arg-type]
-        )
+        ConnectionDetails(**{k: v for k, v in sampledb_payload().items() if k != "name"})
     ).execution_options(isolation_level="AUTOCOMMIT")
 
     def cleanup(conn: SAConnection) -> None:
@@ -350,8 +345,12 @@ def test_browse_columns_without_access_to_system_catalogs(
     products = client.get(
         f"/api/connections/{conn_id}/schemas/sales/tables/products/columns"
     ).json()
-    assert {"name": "unit_price", "type": "NUMERIC(10, 2)", "nullable": False,
-            "primary_key": False} in products
+    assert {
+        "name": "unit_price",
+        "type": "NUMERIC(10, 2)",
+        "nullable": False,
+        "primary_key": False,
+    } in products
 
     missing = client.get(f"/api/connections/{conn_id}/schemas/sales/tables/nope/columns")
     assert missing.status_code == 404
@@ -392,9 +391,7 @@ def test_valid_extra_option_is_passed_to_driver(
 def test_browse_with_wrong_password_returns_clear_400(
     client: TestClient, sampledb_payload: Payload
 ) -> None:
-    conn_id = client.post(
-        "/api/connections", json=sampledb_payload(password="wrong")
-    ).json()["id"]
+    conn_id = client.post("/api/connections", json=sampledb_payload(password="wrong")).json()["id"]
     response = client.get(f"/api/connections/{conn_id}/schemas")
     assert response.status_code == 400
     assert "Wrong username or password" in response.json()["detail"]

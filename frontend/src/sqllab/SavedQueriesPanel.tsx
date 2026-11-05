@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { deleteSavedQuery, listSavedQueries, type SavedQuery } from "../api.ts";
 import { relativeTime } from "./results.ts";
+import ConfirmDialog from "../components/ConfirmDialog.tsx";
+import { toast } from "../components/toast.ts";
 
 type Props = {
   /** Bump to reload (after saving). */
@@ -14,6 +16,7 @@ export default function SavedQueriesPanel({ refreshKey, onOpen, onDeleted }: Pro
   const [items, setItems] = useState<SavedQuery[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
+  const [toDelete, setToDelete] = useState<SavedQuery | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -35,14 +38,11 @@ export default function SavedQueriesPanel({ refreshKey, onOpen, onDeleted }: Pro
   }, [search, refreshKey, reload]);
 
   async function remove(query: SavedQuery) {
-    if (!window.confirm(`Delete saved query "${query.name}"?`)) return;
-    try {
-      await deleteSavedQuery(query.id);
-      onDeleted(query.id);
-      setReload((r) => r + 1);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
+    await deleteSavedQuery(query.id); // errors are shown in the dialog
+    setToDelete(null);
+    toast.success(`Deleted "${query.name}".`);
+    onDeleted(query.id);
+    setReload((r) => r + 1);
   }
 
   return (
@@ -73,12 +73,24 @@ export default function SavedQueriesPanel({ refreshKey, onOpen, onDeleted }: Pro
                 {q.connection_name ?? "no connection"} · {relativeTime(q.updated_at)}
               </span>
             </button>
-            <button className="tree-action danger-text" title="Delete" onClick={() => void remove(q)}>
+            <button className="tree-action danger-text" title="Delete" onClick={() => setToDelete(q)}>
               ✕
             </button>
           </li>
         ))}
       </ul>
+      {toDelete && (
+        <ConfirmDialog
+          title="Delete saved query"
+          confirmLabel="Delete"
+          onConfirm={() => remove(toDelete)}
+          onCancel={() => setToDelete(null)}
+        >
+          <p>
+            Delete the saved query <strong>{toDelete.name}</strong>? This cannot be undone.
+          </p>
+        </ConfirmDialog>
+      )}
     </div>
   );
 }

@@ -40,7 +40,9 @@ export default function SchemaTree({ connectionId, dbType, schema, onInsert, onP
     return () => {
       cancelled = true;
     };
-  }, [connectionId, version]); // not `schema`: picking a schema must not reset the tree
+    // Not `schema`: picking a schema must not reset the tree.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connectionId, version]);
 
   // The toolbar's schema is open by default.
   useEffect(() => {

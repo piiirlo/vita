@@ -68,16 +68,19 @@ def test_list_newest_first_with_search_and_filter(client: TestClient, conn_id: i
 
 
 def test_validation_and_not_found(client: TestClient) -> None:
-    assert client.post("/api/saved-queries", json={"name": "", "sql": "SELECT 1"}).status_code == 422
+    assert (
+        client.post("/api/saved-queries", json={"name": "", "sql": "SELECT 1"}).status_code == 422
+    )
     assert client.post("/api/saved-queries", json={"name": "x", "sql": ""}).status_code == 422
     response = client.post(
         "/api/saved-queries", json={"name": "x", "sql": "SELECT 1", "connection_id": 999}
     )
     assert response.status_code == 404
     assert client.get("/api/saved-queries/999").status_code == 404
-    assert client.put(
-        "/api/saved-queries/999", json={"name": "x", "sql": "SELECT 1"}
-    ).status_code == 404
+    assert (
+        client.put("/api/saved-queries/999", json={"name": "x", "sql": "SELECT 1"}).status_code
+        == 404
+    )
     assert client.delete("/api/saved-queries/999").status_code == 404
 
 

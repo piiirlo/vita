@@ -135,7 +135,9 @@ def test_unsafe_or_broken_sql_is_rejected(
 
 
 def test_missing_table(client: TestClient, connection_id: int) -> None:
-    response = create(client, connection_id, name="X", kind="table", schema="sales", table_name="nope")
+    response = create(
+        client, connection_id, name="X", kind="table", schema="sales", table_name="nope"
+    )
     assert response.status_code == 400
     assert response.json()["detail"]["kind"] == "not_found"
 
@@ -156,7 +158,9 @@ def test_duplicate_name(client: TestClient, connection_id: int) -> None:
 
 def test_list_and_search(client: TestClient, connection_id: int) -> None:
     orders(client, connection_id)
-    create_ok(client, connection_id, name="Customers", kind="sql", sql="SELECT * FROM sales.customers")
+    create_ok(
+        client, connection_id, name="Customers", kind="sql", sql="SELECT * FROM sales.customers"
+    )
     names = [d["name"] for d in client.get("/api/datasets").json()]
     assert sorted(names) == ["Customers", "Orders"]
     found = client.get("/api/datasets", params={"q": "custom"}).json()
@@ -293,7 +297,11 @@ def test_preview(client: TestClient, connection_id: int) -> None:
 
 def test_preview_sql_dataset(client: TestClient, connection_id: int) -> None:
     dataset = create_ok(
-        client, connection_id, name="Few", kind="sql", sql="SELECT id FROM sales.orders WHERE id <= 3"
+        client,
+        connection_id,
+        name="Few",
+        kind="sql",
+        sql="SELECT id FROM sales.orders WHERE id <= 3",
     )
     data = client.get(f"/api/datasets/{dataset['id']}/preview").json()
     assert data["rows"] == [[1], [2], [3]]
@@ -376,7 +384,8 @@ def test_count_metric_cannot_be_deleted_or_changed(client: TestClient, connectio
     changed = client.put(url, json={"name": "count", "expression": "COUNT(id)"})
     assert changed.status_code == 400
     relabeled = client.put(
-        url, json={"name": "count", "label": "Rows", "expression": "COUNT(*)", "number_format": "0,0"}
+        url,
+        json={"name": "count", "label": "Rows", "expression": "COUNT(*)", "number_format": "0,0"},
     )
     assert relabeled.status_code == 200 and relabeled.json()["label"] == "Rows"
 
@@ -393,7 +402,9 @@ def test_delete_dataset(client: TestClient, connection_id: int) -> None:
 
 def test_connection_in_use_cannot_be_deleted(client: TestClient, connection_id: int) -> None:
     orders(client, connection_id)
-    create_ok(client, connection_id, name="Customers", kind="sql", sql="SELECT * FROM sales.customers")
+    create_ok(
+        client, connection_id, name="Customers", kind="sql", sql="SELECT * FROM sales.customers"
+    )
     response = client.delete(f"/api/connections/{connection_id}")
     assert response.status_code == 409
     detail = response.json()["detail"]

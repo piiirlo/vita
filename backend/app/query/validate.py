@@ -15,7 +15,7 @@ from dataclasses import dataclass
 import sqlglot
 from sqlglot import exp
 from sqlglot.errors import ParseError, TokenError
-from sqlglot.tokens import TokenType
+from sqlglot.tokenizer_core import TokenType
 
 from app.query.errors import QueryError, read_only_error
 
@@ -30,7 +30,7 @@ _WRITE_NODE_NAMES = (
     "Copy", "Grant", "Revoke", "Comment", "Commit", "Rollback", "Transaction", "Execute",
     "Analyze", "Kill", "Refresh", "LoadData", "Attach", "Detach", "Set", "Use", "Lock",
 )  # fmt: skip
-WRITE_NODES: tuple[type[exp.Expression], ...] = tuple(
+WRITE_NODES: tuple[type[exp.Expr], ...] = tuple(
     getattr(exp, name) for name in _WRITE_NODE_NAMES if hasattr(exp, name)
 )
 
@@ -110,7 +110,7 @@ def _readable(description: str) -> str:
     return description
 
 
-def _parse(sql: str, dialect: str) -> list[exp.Expression]:
+def _parse(sql: str, dialect: str) -> list[exp.Expr]:
     try:
         # None = empty statement (";;"); Semicolon = only a comment after the last ";".
         return [
@@ -125,17 +125,19 @@ def _parse(sql: str, dialect: str) -> list[exp.Expression]:
         if line and col:
             near = _ANSI.sub("", str(first.get("highlight") or "")).strip()
             near_text = f" near '{near}'" if near else ""
-            return _raise_syntax(f"Syntax error at line {line}, column {col}{near_text}: {description}", line, col)
+            return _raise_syntax(
+                f"Syntax error at line {line}, column {col}{near_text}: {description}", line, col
+            )
         return _raise_syntax(f"Syntax error: {description}", None, None)
     except TokenError as e:
         return _raise_syntax(f"Syntax error: {_ANSI.sub('', str(e))}", None, None)
 
 
-def _raise_syntax(message: str, line: int | None, col: int | None) -> list[exp.Expression]:
+def _raise_syntax(message: str, line: int | None, col: int | None) -> list[exp.Expr]:
     raise QueryError("syntax", message, line, col)
 
 
-def _keyword(node: exp.Expression) -> str:
+def _keyword(node: exp.Expr) -> str:
     names = {
         "truncatetable": "TRUNCATE",
         "loaddata": "LOAD DATA",
@@ -144,7 +146,7 @@ def _keyword(node: exp.Expression) -> str:
     return names.get(node.key, node.key.upper())
 
 
-def check_read_only(statement: exp.Expression, dialect: str) -> None:
+def check_read_only(statement: exp.Expr, dialect: str) -> None:
     """Raise QueryError unless the statement only reads data."""
     if isinstance(statement, exp.Command):
         name = str(statement.this).upper()
@@ -156,7 +158,9 @@ def check_read_only(statement: exp.Expression, dialect: str) -> None:
         first_word = name.split()[0] if name else "This"
         if first_word in _WRITE_WORDS:
             raise read_only_error(first_word)
-        raise QueryError("not_allowed", f"{first_word} statements are not supported. {ALLOWED_HINT}")
+        raise QueryError(
+            "not_allowed", f"{first_word} statements are not supported. {ALLOWED_HINT}"
+        )
 
     if not isinstance(statement, (exp.Query, exp.Values, exp.Show, exp.Describe)):
         if isinstance(statement, WRITE_NODES) and not isinstance(statement, (exp.Set, exp.Use)):
@@ -182,16 +186,20 @@ def _check_explain(statement: exp.Command, dialect: str) -> None:
     try:
         inner = [s for s in sqlglot.parse(rest, dialect=dialect) if s is not None]
     except (ParseError, TokenError):
-        raise QueryError("not_allowed", f"Vita couldn't check this EXPLAIN statement. {ALLOWED_HINT}") from None
+        raise QueryError(
+            "not_allowed", f"Vita couldn't check this EXPLAIN statement. {ALLOWED_HINT}"
+        ) from None
     if len(inner) != 1:
-        raise QueryError("not_allowed", f"Vita couldn't check this EXPLAIN statement. {ALLOWED_HINT}")
+        raise QueryError(
+            "not_allowed", f"Vita couldn't check this EXPLAIN statement. {ALLOWED_HINT}"
+        )
     check_read_only(inner[0], dialect)
 
 
 def _strip_trailing_semicolons(sql: str, dialect: str) -> str:
     """Cut the SQL right after its last real token, dropping trailing ';' and comments.
     Everything before stays byte-for-byte the same, so error positions still match."""
-    tokens = [t for t in sqlglot.Dialect.get_or_raise(dialect).tokenize(sql)]
+    tokens = list(sqlglot.Dialect.get_or_raise(dialect).tokenize(sql))
     while tokens and tokens[-1].token_type == TokenType.SEMICOLON:
         tokens.pop()
     if not tokens:

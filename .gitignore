@@ -21,3 +21,6 @@ dist/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Database backups (scripts/backup.sh)
+backups/

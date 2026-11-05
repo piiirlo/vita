@@ -34,7 +34,7 @@ ROWS: list[tuple[date, datetime, str | None, float]] = [
     (date(2024, 12, 30), datetime(2024, 12, 30, 0, 0), "paid", 20.0),  # Monday
     (date(2025, 1, 1), datetime(2025, 1, 1, 12, 0), "open", 5.5),  # Wednesday
     (date(2025, 1, 5), datetime(2025, 1, 5, 8, 15), "paid", 7.25),  # Sunday
-    (date(2025, 1, 6), datetime(2025, 1, 6, 9, 0), "it's \"odd\"", 1.0),  # Monday
+    (date(2025, 1, 6), datetime(2025, 1, 6, 9, 0), 'it\'s "odd"', 1.0),  # Monday
     (date(2025, 3, 31), datetime(2025, 3, 31, 23, 59, 59), "100% off_x", 3.0),
     (date(2025, 4, 1), datetime(2025, 4, 1, 0, 0, 1), None, 4.0),
     (date(2025, 12, 31), datetime(2025, 12, 31, 23, 59, 59), "paid", 50.0),
@@ -58,7 +58,9 @@ def bucket(day: date, grain: str) -> date:
 @pytest.fixture(scope="module")
 def details() -> Iterator[ConnectionDetails]:
     password = os.environ.get("VITA_TEST_MYSQL_PASSWORD", "")
-    conn = pymysql.connect(host=HOST, user="root", password=password, database=DATABASE, autocommit=True)
+    conn = pymysql.connect(
+        host=HOST, user="root", password=password, database=DATABASE, autocommit=True
+    )
     try:
         with conn.cursor() as cur:
             cur.execute(f"DROP TABLE IF EXISTS `{TABLE}`")
@@ -161,25 +163,39 @@ def test_table_survives_injection_attempts(details: ConnectionDetails) -> None:
 
 def test_top_series_join_with_null(details: ConnectionDetails) -> None:
     # Totals per status: paid 87.25, open 5.5, NULL 4.0, "100% off_x" 3.0, it's "odd" 1.0
-    rows = run(details, "bar", metrics=["total"], time={"grain": "year"}, series="status", series_limit=2)
-    assert rows == [["2024-01-01", "paid", 30.0], ["2025-01-01", "open", 5.5], ["2025-01-01", "paid", 57.25]]
-    rows = run(details, "bar", metrics=["total"], time={"grain": "year"}, series="status", series_limit=3)
+    rows = run(
+        details, "bar", metrics=["total"], time={"grain": "year"}, series="status", series_limit=2
+    )
+    assert rows == [
+        ["2024-01-01", "paid", 30.0],
+        ["2025-01-01", "open", 5.5],
+        ["2025-01-01", "paid", 57.25],
+    ]
+    rows = run(
+        details, "bar", metrics=["total"], time={"grain": "year"}, series="status", series_limit=3
+    )
     assert {r[1] for r in rows} == {"paid", "open", None}  # the NULL series is joined too
 
 
 def test_range_start_snaps_to_the_grain(details: ConnectionDetails) -> None:
     # today = 2025-01-10; last 7 days starts 2025-01-03, snapped to Monday 2024-12-30.
-    rows = run(details, "line", metrics=["count"], time={"grain": "week", "range": {"kind": "last_7_days"}})
+    rows = run(
+        details, "line", metrics=["count"], time={"grain": "week", "range": {"kind": "last_7_days"}}
+    )
     assert rows == [["2024-12-30", 3], ["2025-01-06", 1]]
 
 
 def test_time_range_and_saved_metric(details: ConnectionDetails) -> None:
     # today = 2025-01-10: last 7 days = 2025-01-03 .. 2025-01-10
-    assert run(details, "big_number", metrics=["total"], time={"range": {"kind": "last_7_days"}}) == [[8.25]]
-    assert run(details, "big_number", metrics=["count"], time={"range": {"kind": "last_year"}}) == [[2]]
+    assert run(
+        details, "big_number", metrics=["total"], time={"range": {"kind": "last_7_days"}}
+    ) == [[8.25]]
+    assert run(details, "big_number", metrics=["count"], time={"range": {"kind": "last_year"}}) == [
+        [2]
+    ]
 
 
 def test_dimensions_order_and_limit(details: ConnectionDetails) -> None:
     rows = run(details, "table", metrics=["count", {"column": "select", "aggregate": "MAX"}],
                dimensions=["status"], order_by={"by": "status", "descending": False}, row_limit=3)  # fmt: skip
-    assert rows == [[None, 1, 4.0], ["100% off_x", 1, 3.0], ["it's \"odd\"", 1, 1.0]]
+    assert rows == [[None, 1, 4.0], ["100% off_x", 1, 3.0], ['it\'s "odd"', 1, 1.0]]

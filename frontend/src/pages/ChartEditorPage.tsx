@@ -34,6 +34,9 @@ import AddToDashboardDialog from "../dashboards/AddToDashboardDialog.tsx";
 import type { SqlLabLocationState } from "../datasets/sqlLabLink.ts";
 import ResultsPane, { type RunState } from "../sqllab/ResultsPane.tsx";
 import SaveDialog from "../sqllab/SaveDialog.tsx";
+import { usePageTitle } from "../components/usePageTitle.ts";
+import { toast } from "../components/toast.ts";
+import EmptyState from "../components/EmptyState.tsx";
 
 const AUTO_UPDATE_MS = 600;
 
@@ -73,12 +76,12 @@ export default function ChartEditorPage() {
   const [results, setResults] = useState<Results>({ status: "idle" });
   const [tab, setTab] = useState<Tab>("chart");
   const [saveDialog, setSaveDialog] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
   const [addToDashboard, setAddToDashboard] = useState(false);
   // Opened from a dashboard tile ("Edit chart"): link back to it.
   const fromDashboardId = Number(search.get("dashboard")) || null;
   const [fromDashboard, setFromDashboard] = useState<{ id: number; name: string } | null>(null);
   const controller = useRef<AbortController | null>(null);
+  usePageTitle(chart?.name ?? (chartId === null ? "New chart" : "Chart"));
 
   // ---------- loading ----------
 
@@ -196,11 +199,6 @@ export default function ChartEditorPage() {
 
   // ---------- saving ----------
 
-  function flash(text: string) {
-    setNotice(text);
-    setTimeout(() => setNotice(null), 3000);
-  }
-
   async function saveAs(newName: string, description: string) {
     if (!state) return;
     const created = await createChart({
@@ -213,8 +211,8 @@ export default function ChartEditorPage() {
     setChart(created);
     setName(created.name);
     setSavedSnapshot(snapshot(created.name, state));
-    flash(`Saved "${created.name}".`);
-    navigate(`/charts/${created.id}`, { replace: chartId === null });
+    toast.success(`Saved "${created.name}".`);
+    void navigate(`/charts/${created.id}`, { replace: chartId === null });
   }
 
   async function save() {
@@ -233,9 +231,9 @@ export default function ChartEditorPage() {
       setChart(updated);
       setName(updated.name);
       setSavedSnapshot(snapshot(updated.name, state));
-      flash(`Saved "${updated.name}".`);
+      toast.success(`Saved "${updated.name}".`);
     } catch (err) {
-      flash(`Couldn't save: ${asError(err).message}`);
+      toast.error(`Couldn't save: ${asError(err).message}`);
     }
   }
 
@@ -251,11 +249,15 @@ export default function ChartEditorPage() {
   }
   if (datasets !== null && datasets.length === 0 && chartId === null) {
     return (
-      <div className="card empty page-pad">
-        <p>Charts are built on datasets. Create a dataset first.</p>
-        <Link to="/datasets/new" className="button primary">
-          New dataset
-        </Link>
+      <div className="page-pad">
+        <EmptyState
+          title="Charts are built on datasets. Create a dataset first."
+          action={
+            <Link to="/datasets/new" className="button primary">
+              New dataset
+            </Link>
+          }
+        />
       </div>
     );
   }
@@ -305,7 +307,6 @@ export default function ChartEditorPage() {
               ← Back to {fromDashboard.name}
             </Link>
           )}
-          {notice && <span className="toolbar-notice">{notice}</span>}
           <button onClick={() => void run()} disabled={results.status === "loading"} title="Run the chart query now">
             Update chart
           </button>
@@ -373,7 +374,7 @@ export default function ChartEditorPage() {
                   const location: SqlLabLocationState = {
                     openTab: { title: name || `${vizLabel} chart`, sql: sqls[0]!, connectionId: dataset.connection_id, schema: null },
                   };
-                  navigate("/sql-lab", { state: location });
+                  void navigate("/sql-lab", { state: location });
                 }}
               >
                 Open in SQL Lab

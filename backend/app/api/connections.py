@@ -128,7 +128,9 @@ def test_unsaved_connection(payload: ConnectionTestRequest, db: DbSession) -> Te
     elif payload.password:
         password = payload.password
     elif payload.connection_id is not None:
-        password = saved_connection_details(get_connection_or_404(db, payload.connection_id)).password
+        password = saved_connection_details(
+            get_connection_or_404(db, payload.connection_id)
+        ).password
     else:
         password = None
     details = ConnectionDetails(
@@ -162,7 +164,9 @@ def update_connection(connection_id: int, payload: ConnectionUpdate, db: DbSessi
 def delete_connection(connection_id: int, db: DbSession) -> Response:
     conn = get_connection_or_404(db, connection_id)
     used_by = list(
-        db.scalars(select(Dataset.name).where(Dataset.connection_id == conn.id).order_by(Dataset.name))
+        db.scalars(
+            select(Dataset.name).where(Dataset.connection_id == conn.id).order_by(Dataset.name)
+        )
     )
     if used_by:
         noun = "dataset" if len(used_by) == 1 else "datasets"

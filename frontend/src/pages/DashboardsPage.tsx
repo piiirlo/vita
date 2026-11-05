@@ -10,8 +10,12 @@ import {
 import ConfirmDialog from "../components/ConfirmDialog.tsx";
 import { errorText, relativeTime } from "../datasets/format.ts";
 import SaveDialog from "../sqllab/SaveDialog.tsx";
+import { usePageTitle } from "../components/usePageTitle.ts";
+import { toast } from "../components/toast.ts";
+import EmptyState from "../components/EmptyState.tsx";
 
 export default function DashboardsPage() {
+  usePageTitle("Dashboards");
   const navigate = useNavigate();
   const [dashboards, setDashboards] = useState<DashboardListItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -39,20 +43,22 @@ export default function DashboardsPage() {
 
   async function create(name: string, description: string) {
     const created = await createDashboard({ name, description: description || null, layout: [], refresh_interval: "off" });
-    navigate(`/dashboards/${created.id}?edit=1`);
+    void navigate(`/dashboards/${created.id}?edit=1`);
   }
 
   async function duplicate(d: DashboardListItem) {
     try {
-      await duplicateDashboard(d.id);
+      const copy = await duplicateDashboard(d.id);
+      toast.success(`Created "${copy.name}".`);
       setReloadKey((k) => k + 1);
     } catch (err) {
-      setError(errorText(err));
+      toast.error(`Couldn't duplicate: ${errorText(err)}`);
     }
   }
 
   async function confirmDelete(d: DashboardListItem) {
     await deleteDashboard(d.id);
+    toast.success(`Deleted "${d.name}".`);
     setToDelete(null);
     setReloadKey((k) => k + 1);
   }
@@ -79,20 +85,14 @@ export default function DashboardsPage() {
       {error && <p className="alert alert-error">{error}</p>}
       {dashboards === null && !error && <p className="muted">Loading…</p>}
 
-      {dashboards?.length === 0 && (
-        <div className="card empty">
-          {search.trim() ? (
-            <p>No dashboards match “{search.trim()}”.</p>
-          ) : (
-            <>
-              <p>No dashboards yet.</p>
-              <p className="muted small">
-                Click “New dashboard”, or use “Add to dashboard” in a <Link to="/charts">chart</Link>.
-              </p>
-            </>
-          )}
-        </div>
-      )}
+      {dashboards?.length === 0 &&
+        (search.trim() ? (
+          <EmptyState title={`No dashboards match “${search.trim()}”.`}>Try a different search.</EmptyState>
+        ) : (
+          <EmptyState title="No dashboards yet">
+            Click “New dashboard”, or use “Add to dashboard” in a <Link to="/charts">chart</Link>.
+          </EmptyState>
+        ))}
 
       {dashboards && dashboards.length > 0 && (
         <table className="data-table">

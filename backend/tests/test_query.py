@@ -155,7 +155,9 @@ def test_type_mapping(client: TestClient, conn_id: int) -> None:
 
 def test_percent_and_colon_in_sql_are_not_parameters(client: TestClient, conn_id: int) -> None:
     code, body = run(
-        client, conn_id, "SELECT 'x%y' AS a, ':name' AS b, count(*) FROM sales.customers WHERE email LIKE '%@example.com'"
+        client,
+        conn_id,
+        "SELECT 'x%y' AS a, ':name' AS b, count(*) FROM sales.customers WHERE email LIKE '%@example.com'",
     )
     assert code == 200, body
     assert body["rows"] == [["x%y", ":name", 150]]
@@ -248,7 +250,7 @@ def test_database_read_only_transaction_blocks_writes_on_its_own(
 def test_data_unchanged_after_write_attempts(client: TestClient, conn_id: int) -> None:
     for sql in ("DELETE FROM sales.orders", "SELECT nextval('sales.orders_id_seq')"):
         assert run(client, conn_id, sql)[0] == 400
-    code, body = run(client, conn_id, "SELECT count(*) FROM sales.orders")
+    _code, body = run(client, conn_id, "SELECT count(*) FROM sales.orders")
     assert body["rows"] == [[800]]
 
 
@@ -295,9 +297,7 @@ def test_syntax_error_with_position(client: TestClient, conn_id: int) -> None:
     assert "line 3" in error["message"]
 
 
-def test_syntax_error_reported_by_postgres_has_position(
-    client: TestClient, conn_id: int
-) -> None:
+def test_syntax_error_reported_by_postgres_has_position(client: TestClient, conn_id: int) -> None:
     # sqlglot accepts this, Postgres doesn't. The position must point into *our* SQL
     # (not the DECLARE ... CURSOR statement used for streaming).
     code, body = run(client, conn_id, "SELECT * FROM sales.orders\nWHERE id IN ()")

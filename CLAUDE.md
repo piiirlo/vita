@@ -22,7 +22,7 @@ One part at a time, in order:
 5. **Datasets** — table or saved query + column metadata, time column
 6. **Chart builder** — table, big number, bar, line; backend generates SQL from chart config
 7. **Dashboards** — grid layout, save positions, refresh *(done)*
-8. **Polish** — simple login, loading/error states, CSV export
+8. **Polish** — simple login, loading/error states, CSV export *(done)*
 
 **Out of scope for v1:** dashboard filters, caching, multi-user permissions, alerts,
 scheduled reports, extra chart types.
@@ -92,6 +92,18 @@ This folder may contain the Apache Superset source code. It is **read-only refer
     `dashboard_charts` is rebuilt from it on every save (chart_id FK RESTRICT), so deleting a
     used chart returns 409 "used by N dashboards" and the DB blocks it too. Dashboard endpoints
     never query user DBs: the frontend loads each tile via `/api/charts/{id}` + `/api/chart-data`.
+  - Login: `app/auth.py` (argon2 hashing, sessions, failed-login throttling; no FastAPI) and
+    `app/api/auth.py` (`/api/auth/login|logout|me|password`, `require_user`). Every router
+    except health and auth is included with `dependencies=[Depends(require_user)]` in
+    `app/main.py`: **new routers must be added there the same way**
+    (`tests/test_auth.py` checks every /api route). Session cookie `vita_session` holds a
+    random token; the DB stores only its SHA-256. Throttling state is in the DB
+    (`login_failures`) so it works across workers. The admin user is created on startup from
+    `VITA_ADMIN_*` and never overwritten (`python -m app.reset_password` for that).
+    Tests: `client` is logged in, `anon_client` is not; argon2 uses cheap params in tests.
+  - Lint/types: `ruff check .`, `ruff format .`, `mypy .` (strict, pydantic plugin; config in
+    `pyproject.toml`). sqlglot 30 type hints use `exp.Expr` (the base class), not
+    `exp.Expression`.
 - `frontend/` — Vite React TS app (`src/`, pages in `src/pages/`, typed API calls in
   `src/api.ts`); dev server proxies `/api` to the backend. Routing: react-router.
   - SQL Lab = `src/pages/SqlLabPage.tsx` (lazy-loaded) + `src/sqllab/`:
@@ -122,12 +134,27 @@ This folder may contain the Apache Superset source code. It is **read-only refer
     in `layout.ts`. Narrow screens stack tiles (view mode). The router is a data router
     (`createBrowserRouter` in `main.tsx`) so pages can use `useBlocker`; tests of pages that
     use it need `createMemoryRouter`. "Edit chart" links to `/charts/:id?dashboard=<id>`.
+  - App shell (`App.tsx`): login gate (`auth/`: `AuthProvider` in `AuthContext.tsx`,
+    `useAuth`/`safeNext` in `auth.ts`). Any API 401 fires `UNAUTHORIZED_EVENT` (api.ts) and
+    sends the user to `/login?next=…`. Routes are wrapped in an `ErrorBoundary` keyed by path.
+  - Shared UI: `components/toast.ts` (`toast.success/error/info` from anywhere; one
+    `<Toaster />` in the shell; use it for saves, deletes and errors), `ConfirmDialog` (never
+    `window.confirm`/`alert`), `EmptyState` for empty lists, `usePageTitle("…")` in every
+    page (tab title "X · Vita").
+  - Lint: `npm run lint` (ESLint flat config `eslint.config.js`, type-aware, max 0 warnings).
   - Tests: Vitest + Testing Library (`*.test.ts(x)` next to the code, setup in
     `src/test/setup.ts`). Monaco is mocked with a textarea in page tests.
 - `sampledb/init/` — seed SQL for the demo database (`sales` schema: customers, products,
   orders, order_items, view order_totals; ~2 years of orders, deterministic).
 - `docker-compose.yml` — `db` (Vita metadata), `sampledb` (demo data), `backend`, `frontend`.
-  There is no login yet, so every published port is bound to `127.0.0.1` only; keep it that way.
+  Every published port is bound to `127.0.0.1` only; keep it that way.
+- `docker-compose.prod.yml` — production (project name `vita-prod`, separate data): nginx
+  (`frontend/Dockerfile.prod`, `frontend/nginx.conf`, proxies `/api`) on 127.0.0.1:8080,
+  backend without reload (`INSTALL_DEV=false`, migrations then `--workers`, `--proxy-headers`),
+  `sampledb` only with `--profile demo`. Use a list-form `command:` (folded YAML broke args).
+- `scripts/backup.sh` / `scripts/restore.sh` — pg_dump / pg_restore of the metadata DB
+  (`-f docker-compose.prod.yml` for prod). Restore takes a safety backup first. Backups also
+  need `VITA_SECRET_KEY`. `.sh` files must stay LF (`.gitattributes`).
 - API endpoints are plain `def` (FastAPI runs them in a threadpool) so slow user queries don't
   block other requests. Don't make an endpoint `async def` if it does blocking DB calls
   (`tests/test_concurrency.py` guards this).
@@ -143,10 +170,13 @@ This folder may contain the Apache Superset source code. It is **read-only refer
 cp .env.example .env                       # first time only
 docker compose up --build                  # start everything
 docker compose exec backend pytest         # backend tests
+docker compose exec backend ruff check . && docker compose exec backend mypy .   # lint + types
 docker compose exec backend alembic revision --autogenerate -m "msg"   # new migration
 docker compose exec backend alembic upgrade head                       # apply migrations
 docker compose exec frontend npm run typecheck   # frontend type check (strict)
 docker compose exec frontend npm test            # frontend tests (Vitest)
+docker compose exec frontend npm run lint        # ESLint
+docker compose -f docker-compose.prod.yml up -d --build   # production stack
 ```
 After adding frontend dependencies: `docker compose up -d --build -V frontend`.
 No local Python is required; run Python tooling inside the `backend` container.

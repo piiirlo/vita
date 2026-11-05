@@ -29,11 +29,11 @@ def _invalid(message: str) -> NoReturn:
     raise QueryError("invalid", message)
 
 
-def date_literal(value: date) -> exp.Expression:
+def date_literal(value: date) -> exp.Expr:
     return exp.cast(exp.Literal.string(value.isoformat()), exp.DataType.build("DATE"))
 
 
-def _literal(value: Scalar, column: DatasetColumn) -> exp.Expression:
+def _literal(value: Scalar, column: DatasetColumn) -> exp.Expr:
     """One value as a literal of the column's type."""
     kind = column.effective_type
     name = column.name
@@ -87,7 +87,7 @@ def _like_pattern(value: Scalar) -> str:
     return f"%{text}%"
 
 
-def filter_condition(f: Filter, column: DatasetColumn, ref: exp.Expression) -> exp.Expression:
+def filter_condition(f: Filter, column: DatasetColumn, ref: exp.Expr) -> exp.Expr:
     kind = column.effective_type
     op = f.operator
     if op not in ALLOWED_OPERATORS.get(kind, ALLOWED_OPERATORS["other"]):
@@ -126,9 +126,7 @@ def filter_condition(f: Filter, column: DatasetColumn, ref: exp.Expression) -> e
         low, high = f.value
         if low is None or high is None:
             _invalid(f'The BETWEEN filter on "{f.column}" needs two values: [low, high].')
-        return exp.Between(
-            this=ref.copy(), low=_literal(low, column), high=_literal(high, column)
-        )
+        return exp.Between(this=ref.copy(), low=_literal(low, column), high=_literal(high, column))
 
     value = _one(f.value, f)
     if op == "LIKE":  # "contains", case-insensitive (MySQL: LOWER(..) LIKE LOWER(..))

@@ -23,7 +23,8 @@ def check_database() -> str | None:
             conn.execute(text("SELECT 1"))
     except SQLAlchemyError as exc:
         # First line only: driver errors can be long and multi-line.
-        return str(exc.orig or exc).strip().splitlines()[0]
+        orig = getattr(exc, "orig", None)  # DBAPIError has the driver error here
+        return str(orig or exc).strip().splitlines()[0]
     return None
 
 

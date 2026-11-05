@@ -1,0 +1,92 @@
+# Production: built frontend served by nginx, backend without hot reload.
+#
+#   docker compose -f docker-compose.prod.yml up -d --build
+#   docker compose -f docker-compose.prod.yml --profile demo up -d --build   # with the demo DB
+#
+# Open http://127.0.0.1:8080 (VITA_HTTP_PORT). Ports are bound to 127.0.0.1 unless
+# VITA_BIND_ADDRESS says otherwise: put Vita behind an HTTPS reverse proxy before
+# exposing it to a network.
+#
+# Its own project name, so containers and data volumes are separate from the dev setup.
+name: vita-prod
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      args:
+        INSTALL_DEV: "false"
+    restart: unless-stopped
+    env_file: .env
+    # Migrations first, then a few workers. --proxy-headers: nginx is the only client.
+    command:
+      - sh
+      - -c
+      - >-
+        alembic upgrade head &&
+        exec uvicorn app.main:app --host 0.0.0.0 --port 8000
+        --workers ${VITA_WORKERS:-4} --proxy-headers --forwarded-allow-ips=*
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    restart: unless-stopped
+    ports:
+      - "${VITA_BIND_ADDRESS:-127.0.0.1}:${VITA_HTTP_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  # Demo database for trying Vita out (only with --profile demo). From Vita, connect with
+  # host "sampledb", port 5432. Not published on the host.
+  sampledb:
+    image: postgres:16-alpine
+    profiles: ["demo"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${SAMPLEDB_USER}
+      POSTGRES_PASSWORD: ${SAMPLEDB_PASSWORD}
+      POSTGRES_DB: ${SAMPLEDB_DB}
+    volumes:
+      - sampledb-data:/var/lib/postgresql/data
+      - ./sampledb/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  db-data:
+  sampledb-data:

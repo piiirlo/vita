@@ -51,13 +51,17 @@ def create(client: TestClient, name: str, layout: list[dict[str, Any]], **extra:
 
 def test_dashboard_crud(client: TestClient, make_chart: Callable[..., int]) -> None:
     total = make_chart("Total orders")
-    line = make_chart("Orders by day", viz_type="line", time={"column": "order_date", "grain": "day"})
+    line = make_chart(
+        "Orders by day", viz_type="line", time={"column": "order_date", "grain": "day"}
+    )
     layout = [
         text_tile("t1"),
         chart_tile("c1", total, y=2),
         chart_tile("c2", line, x=6, y=2),
     ]
-    created = create(client, "Sales overview", layout, description="Main KPIs", refresh_interval="5m")
+    created = create(
+        client, "Sales overview", layout, description="Main KPIs", refresh_interval="5m"
+    )
     assert created.status_code == 201, created.text
     body = created.json()
     assert body["layout"] == layout
@@ -87,7 +91,12 @@ def test_dashboard_crud(client: TestClient, make_chart: Callable[..., int]) -> N
     got = client.get(f"/api/dashboards/{dashboard_id}").json()
     assert got["layout"][2]["y"] == 10 and got["layout"][2]["x"] == 0
     assert got["refresh_interval"] == "off" and got["description"] is None
-    assert client.put(f"/api/dashboards/{dashboard_id}", json={"name": "other", "layout": []}).status_code == 409
+    assert (
+        client.put(
+            f"/api/dashboards/{dashboard_id}", json={"name": "other", "layout": []}
+        ).status_code
+        == 409
+    )
 
     assert client.delete(f"/api/dashboards/{dashboard_id}").status_code == 204
     assert client.get(f"/api/dashboards/{dashboard_id}").status_code == 404
@@ -124,10 +133,16 @@ def test_layout_validation(client: TestClient, make_chart: Callable[..., int]) -
     assert client.get("/api/dashboards").json() == []
 
     assert create(client, "Bad", [{"bogus": 1}]).status_code == 422
-    assert client.post("/api/dashboards", json={"name": "Bad", "refresh_interval": "2m"}).status_code == 422
+    assert (
+        client.post("/api/dashboards", json={"name": "Bad", "refresh_interval": "2m"}).status_code
+        == 422
+    )
 
     # The same chart may appear twice on one dashboard.
-    assert create(client, "Twice", [chart_tile("a", chart), chart_tile("b", chart, x=6)]).status_code == 201
+    assert (
+        create(client, "Twice", [chart_tile("a", chart), chart_tile("b", chart, x=6)]).status_code
+        == 201
+    )
 
 
 def test_duplicate(client: TestClient, make_chart: Callable[..., int]) -> None:
@@ -140,7 +155,9 @@ def test_duplicate(client: TestClient, make_chart: Callable[..., int]) -> None:
     copy = first.json()
     assert copy["id"] != source["id"]
     assert copy["name"] == "Sales (copy)"
-    assert copy["layout"] == layout and copy["description"] == "d" and copy["refresh_interval"] == "1h"
+    assert (
+        copy["layout"] == layout and copy["description"] == "d" and copy["refresh_interval"] == "1h"
+    )
     assert copy["charts"] == source["charts"]
 
     second = client.post(f"/api/dashboards/{source['id']}/duplicate").json()
@@ -152,18 +169,29 @@ def test_duplicate(client: TestClient, make_chart: Callable[..., int]) -> None:
     assert client.get(f"/api/dashboards/{source['id']}").json()["layout"] == layout
 
 
-def test_add_chart_puts_it_below_the_other_tiles(client: TestClient, make_chart: Callable[..., int]) -> None:
+def test_add_chart_puts_it_below_the_other_tiles(
+    client: TestClient, make_chart: Callable[..., int]
+) -> None:
     chart = make_chart("Total orders")
-    dashboard = create(client, "Sales", [text_tile("t", h=3), chart_tile("c", chart, y=3, h=5)]).json()
+    dashboard = create(
+        client, "Sales", [text_tile("t", h=3), chart_tile("c", chart, y=3, h=5)]
+    ).json()
     response = client.post(f"/api/dashboards/{dashboard['id']}/charts", json={"chart_id": chart})
     assert response.status_code == 200, response.text
     added = response.json()["layout"][-1]
     assert added["type"] == "chart" and added["chart_id"] == chart
     assert (added["x"], added["y"]) == (0, 8)
-    assert client.post(f"/api/dashboards/{dashboard['id']}/charts", json={"chart_id": 9999}).status_code == 400
+    assert (
+        client.post(
+            f"/api/dashboards/{dashboard['id']}/charts", json={"chart_id": 9999}
+        ).status_code
+        == 400
+    )
 
 
-def test_chart_used_by_dashboards_cannot_be_deleted(client: TestClient, make_chart: Callable[..., int]) -> None:
+def test_chart_used_by_dashboards_cannot_be_deleted(
+    client: TestClient, make_chart: Callable[..., int]
+) -> None:
     chart = make_chart("Total orders")
     create(client, "B board", [chart_tile("c", chart)])
     a_board = create(client, "A board", [chart_tile("c", chart)]).json()
@@ -178,7 +206,9 @@ def test_chart_used_by_dashboards_cannot_be_deleted(client: TestClient, make_cha
     assert client.get(f"/api/charts/{chart}").status_code == 200
 
     # Removing the tile from one dashboard updates the block.
-    client.put(f"/api/dashboards/{a_board['id']}", json={"name": "A board", "layout": [text_tile("t")]})
+    client.put(
+        f"/api/dashboards/{a_board['id']}", json={"name": "A board", "layout": [text_tile("t")]}
+    )
     response = client.delete(f"/api/charts/{chart}")
     assert response.status_code == 409
     assert response.json()["detail"]["dashboards"] == ["B board"]

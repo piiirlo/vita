@@ -74,7 +74,10 @@ def friendly_db_error(exc: BaseException, details: ConnectionDetails | None = No
         )
 
     if "connection refused" in low or "can't connect to mysql server" in low:
-        message = f"Could not connect to {host}: connection refused. Is the database running on that port?"
+        message = (
+            f"Could not connect to {host}: connection refused. "
+            "Is the database running on that port?"
+        )
         if details and details.host in LOCAL_HOSTS:
             message += (
                 f' Note: "{details.host}" is the Vita backend container itself. '

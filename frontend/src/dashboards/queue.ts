@@ -41,7 +41,7 @@ export class RequestQueue {
   schedule<T>(run: () => Promise<T>, visible = false): QueuedTask<T> {
     let job!: Job;
     const promise = new Promise<T>((resolve, reject) => {
-      job = { run, visible, resolve: resolve as (value: unknown) => void, reject };
+      job = { run, visible, resolve, reject };
     });
     this.waiting.push(job);
     this.schedulePump();

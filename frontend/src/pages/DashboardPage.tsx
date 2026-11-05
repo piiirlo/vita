@@ -31,6 +31,9 @@ import { RequestQueue } from "../dashboards/queue.ts";
 import TextTile from "../dashboards/TextTile.tsx";
 import { DashboardContext, DatasetCache, MAX_PARALLEL_TILES, type DashboardContextValue } from "../dashboards/tileData.ts";
 import { errorText, relativeTime } from "../datasets/format.ts";
+import { usePageTitle } from "../components/usePageTitle.ts";
+import { toast } from "../components/toast.ts";
+import EmptyState from "../components/EmptyState.tsx";
 
 type Draft = { name: string; layout: DashboardTile[] };
 
@@ -44,10 +47,10 @@ export default function DashboardPage() {
   const [addedCharts, setAddedCharts] = useState<Record<string, DashboardChartInfo>>({});
   const [addingChart, setAddingChart] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [notice, setNotice] = useState<{ text: string; error: boolean } | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [lastUpdated, setLastUpdated] = useState(() => Date.now());
 
+  usePageTitle(dashboard?.name ?? "Dashboard");
   const narrow = useMediaQuery(NARROW_QUERY);
   const pageVisible = usePageVisible();
   const now = useNow(15_000);
@@ -116,7 +119,7 @@ export default function DashboardPage() {
       });
       setDashboard(saved);
     } catch (err) {
-      setNotice({ text: `Couldn't save the refresh interval: ${errorText(err)}`, error: true });
+      toast.error(`Couldn't save the refresh interval: ${errorText(err)}`);
     }
   }
 
@@ -137,14 +140,12 @@ export default function DashboardPage() {
 
   function edit() {
     if (!dashboard) return;
-    setNotice(null);
     setDraft({ name: dashboard.name, layout: dashboard.layout });
   }
 
   function cancel() {
     setDraft(null);
     setAddedCharts({});
-    setNotice(null);
   }
 
   const setLayout = (update: (tiles: DashboardTile[]) => DashboardTile[]) =>
@@ -163,7 +164,7 @@ export default function DashboardPage() {
   async function save() {
     if (!dashboard || !draft) return;
     if (!draft.name.trim()) {
-      setNotice({ text: "Please enter a name.", error: true });
+      toast.error("Please enter a name for the dashboard.");
       return;
     }
     setSaving(true);
@@ -177,10 +178,9 @@ export default function DashboardPage() {
       setDashboard(saved);
       setDraft(null);
       setAddedCharts({});
-      setNotice({ text: "Saved.", error: false });
-      setTimeout(() => setNotice((n) => (n?.text === "Saved." ? null : n)), 3000);
+      toast.success(`Saved "${saved.name}".`);
     } catch (err) {
-      setNotice({ text: `Couldn't save: ${errorText(err)}`, error: true });
+      toast.error(`Couldn't save: ${errorText(err)}`);
     } finally {
       setSaving(false);
     }
@@ -238,11 +238,6 @@ export default function DashboardPage() {
         )}
         {dirty && <span className="dirty-dot" title="Unsaved changes" aria-label="Unsaved changes" />}
         <span className="spacer" />
-        {notice && (
-          <span className={notice.error ? "toolbar-notice text-error" : "toolbar-notice"} role="status">
-            {notice.text}
-          </span>
-        )}
         {editing ? (
           <>
             <button onClick={() => setAddingChart(true)}>Add chart</button>
@@ -284,12 +279,9 @@ export default function DashboardPage() {
 
       <DashboardContext.Provider value={context}>
         {tiles.length === 0 ? (
-          <div className="card empty">
-            <p>This dashboard is empty.</p>
-            <p className="muted small">
-              {editing ? "Use “Add chart” and “Add text” above." : "Click “Edit” to add charts and text."}
-            </p>
-          </div>
+          <EmptyState title="This dashboard is empty">
+            {editing ? "Use “Add chart” and “Add text” above." : "Click “Edit” to add charts and text."}
+          </EmptyState>
         ) : narrow && !editing ? (
           <div className="dash-stack">
             {stackOrder(tiles).map((tile) => (
@@ -323,7 +315,7 @@ export default function DashboardPage() {
         <ConfirmDialog
           title="Leave without saving?"
           confirmLabel="Leave"
-          onConfirm={async () => blocker.proceed()}
+          onConfirm={() => blocker.proceed?.()}
           onCancel={() => blocker.reset()}
         >
           <p>Your changes to this dashboard's layout haven't been saved.</p>

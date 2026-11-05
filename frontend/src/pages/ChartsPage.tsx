@@ -4,10 +4,14 @@ import { deleteChart, listCharts, type SavedChart } from "../api.ts";
 import { VIZ_TYPES } from "../charts/model.ts";
 import ConfirmDialog from "../components/ConfirmDialog.tsx";
 import { errorText, relativeTime } from "../datasets/format.ts";
+import { usePageTitle } from "../components/usePageTitle.ts";
+import { toast } from "../components/toast.ts";
+import EmptyState from "../components/EmptyState.tsx";
 
 const vizLabel = (viz: string) => VIZ_TYPES.find((v) => v.value === viz)?.label ?? viz;
 
 export default function ChartsPage() {
+  usePageTitle("Charts");
   const [charts, setCharts] = useState<SavedChart[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -33,6 +37,7 @@ export default function ChartsPage() {
 
   async function confirmDelete(chart: SavedChart) {
     await deleteChart(chart.id);
+    toast.success(`Deleted "${chart.name}".`);
     setToDelete(null);
     setReloadKey((k) => k + 1);
   }
@@ -59,20 +64,14 @@ export default function ChartsPage() {
       {error && <p className="alert alert-error">{error}</p>}
       {charts === null && !error && <p className="muted">Loading…</p>}
 
-      {charts?.length === 0 && (
-        <div className="card empty">
-          {search.trim() ? (
-            <p>No charts match “{search.trim()}”.</p>
-          ) : (
-            <>
-              <p>No charts yet.</p>
-              <p className="muted small">
-                Start from a <Link to="/datasets">dataset</Link> (“Create chart”) or click “New chart”.
-              </p>
-            </>
-          )}
-        </div>
-      )}
+      {charts?.length === 0 &&
+        (search.trim() ? (
+          <EmptyState title={`No charts match “${search.trim()}”.`}>Try a different search.</EmptyState>
+        ) : (
+          <EmptyState title="No charts yet">
+            Start from a <Link to="/datasets">dataset</Link> (“Create chart”), or click “New chart”.
+          </EmptyState>
+        ))}
 
       {charts && charts.length > 0 && (
         <table className="data-table">

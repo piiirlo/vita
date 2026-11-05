@@ -12,5 +12,6 @@ def encrypt_password(plain: str, fernet: Fernet | None = None) -> str:
 
 
 def decrypt_password(token: str, fernet: Fernet | None = None) -> str:
-    """Raises cryptography.fernet.InvalidToken if the key is wrong or the token was tampered with."""
+    """Raises cryptography.fernet.InvalidToken if the key is wrong or the token was
+    tampered with."""
     return (fernet or _fernet).decrypt(token.encode()).decode()

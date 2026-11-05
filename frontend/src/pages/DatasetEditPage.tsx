@@ -17,6 +17,8 @@ import { errorText } from "../datasets/format.ts";
 import MetricsTab from "../datasets/MetricsTab.tsx";
 import PreviewTab from "../datasets/PreviewTab.tsx";
 import { openDatasetInSqlLab } from "../datasets/sqlLabLink.ts";
+import { usePageTitle } from "../components/usePageTitle.ts";
+import { toast } from "../components/toast.ts";
 
 type TabName = "columns" | "metrics" | "preview";
 
@@ -88,8 +90,8 @@ export default function DatasetEditPage() {
   const [tab, setTab] = useState<TabName>("columns");
   const [busy, setBusy] = useState<"save" | "sync" | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  usePageTitle(dataset?.name ?? "Dataset");
   const [previewKey, setPreviewKey] = useState(0);
 
   const loaded = useCallback((data: Dataset) => {
@@ -138,12 +140,11 @@ export default function DatasetEditPage() {
   if (!dataset || !draft || !saved) return <p className="muted">Loading…</p>;
 
   function flash(text: string) {
-    setNotice(text);
+    toast.success(text);
     setError(null);
   }
 
   function fail(err: unknown) {
-    setNotice(null);
     setError(err instanceof ApiError && isQueryErrorDetail(err.detail) ? err.detail.message : errorText(err));
   }
 
@@ -200,7 +201,8 @@ export default function DatasetEditPage() {
   async function remove() {
     if (!dataset) return;
     await deleteDataset(dataset.id);
-    navigate("/datasets");
+    toast.success(`Deleted "${dataset.name}".`);
+    void navigate("/datasets");
   }
 
   const update = (patch: Partial<Draft>) => setDraft((d) => (d ? { ...d, ...patch } : d));
@@ -219,7 +221,7 @@ export default function DatasetEditPage() {
           <Link to={`/charts/new?dataset=${dataset.id}`} className="button primary">
             Create chart
           </Link>
-          <button onClick={() => navigate("/sql-lab", { state: openDatasetInSqlLab(dataset) })}>
+          <button onClick={() => void navigate("/sql-lab", { state: openDatasetInSqlLab(dataset) })}>
             Open in SQL Lab
           </button>
           <button className="danger" onClick={() => setConfirmDelete(true)}>
@@ -305,7 +307,6 @@ export default function DatasetEditPage() {
       </div>
 
       {error && <p className="alert alert-error">{error}</p>}
-      {notice && !error && <p className="alert alert-ok">{notice}</p>}
 
       {tab === "columns" && (
         <ColumnsTab

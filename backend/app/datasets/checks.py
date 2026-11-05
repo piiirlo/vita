@@ -43,7 +43,7 @@ def query_warnings(statement: exp.Query) -> list[str]:
     return warnings
 
 
-def parse_metric_expression(expression: str, db_type: str) -> exp.Expression:
+def parse_metric_expression(expression: str, db_type: str) -> exp.Expr:
     """Parse a metric expression like SUM(amount) or COUNT(DISTINCT customer_id).
 
     It must be exactly one SQL expression: no second statement, no FROM/WHERE/alias,
@@ -77,7 +77,7 @@ def parse_metric_expression(expression: str, db_type: str) -> exp.Expression:
             "The expression must be a single SQL expression like SUM(amount), "
             "without FROM, WHERE, commas or other clauses.",
         )
-    projection = select.expressions[0]
+    projection: exp.Expr = select.expressions[0]
     if isinstance(projection, exp.Alias):
         raise QueryError(
             "invalid", "Leave out the alias (AS ...); the metric name is used as the column name."
@@ -88,7 +88,7 @@ def parse_metric_expression(expression: str, db_type: str) -> exp.Expression:
     return projection
 
 
-def metric_warning(expression: exp.Expression) -> str | None:
+def metric_warning(expression: exp.Expr) -> str | None:
     """A hint when a metric isn't an aggregate (allowed, but rarely what you want)."""
     if expression.find(exp.AggFunc) is None:
         return (

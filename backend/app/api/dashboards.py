@@ -52,15 +52,13 @@ def _chart_ids(layout: list[dict[str, Any]]) -> list[int]:
 
 def _out(db: Session, dashboard: Dashboard) -> DashboardOut:
     ids = _chart_ids(dashboard.layout)
-    charts = db.execute(
-        select(Chart.id, Chart.name, Chart.viz_type).where(Chart.id.in_(ids))
-    ).all()
+    charts = db.execute(select(Chart.id, Chart.name, Chart.viz_type).where(Chart.id.in_(ids))).all()
     return DashboardOut(
         id=dashboard.id,
         name=dashboard.name,
         description=dashboard.description,
-        layout=dashboard.layout,  # type: ignore[arg-type]
-        refresh_interval=dashboard.refresh_interval,  # type: ignore[arg-type]
+        layout=dashboard.layout,
+        refresh_interval=dashboard.refresh_interval,
         charts={
             c.id: DashboardChartInfo(id=c.id, name=c.name, viz_type=c.viz_type) for c in charts
         },
@@ -213,7 +211,9 @@ def add_chart(dashboard_id: int, payload: AddChartIn, db: DbSession) -> Dashboar
     """Add a chart tile below the existing tiles ("Add to dashboard" in the chart editor)."""
     dashboard = _get_or_404(db, dashboard_id)
     if len(dashboard.layout) >= MAX_TILES:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"A dashboard has at most {MAX_TILES} tiles")
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, f"A dashboard has at most {MAX_TILES} tiles"
+        )
     bottom = max((int(t["y"]) + int(t["h"]) for t in dashboard.layout), default=0)
     tile = ChartTile(
         id=uuid.uuid4().hex[:12],
