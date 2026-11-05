@@ -26,11 +26,12 @@ from app.datasets import (
     sqllab_sql,
     validate_metric,
 )
+from app.charts.usage import GROUP, TIME, QueryUsage, query_usage, used_by_message
 from app.datasets.checks import query_warnings
 from app.datasets.sql import parse_dataset_query
 from app.db import get_db
 from app.engines import ConnectionDetails
-from app.models import Dataset, DatasetMetric
+from app.models import Chart, Dataset, DatasetColumn, DatasetMetric
 from app.query import QueryError
 from app.schemas.datasets import (
     DatasetColumnOut,
@@ -46,6 +47,7 @@ from app.schemas.datasets import (
     SyncOut,
     SyncSummary,
 )
+from app.schemas.charts import ChartParams
 from app.schemas.query import QueryErrorOut
 
 router = APIRouter()
@@ -66,7 +68,7 @@ def _query_error(error: QueryError) -> NoReturn:
     raise HTTPException(status.HTTP_400_BAD_REQUEST, QueryErrorOut(**asdict(error)).model_dump())
 
 
-def _get_or_404(db: Session, dataset_id: int) -> Dataset:
+def get_dataset_or_404(db: Session, dataset_id: int) -> Dataset:
     dataset = db.scalar(
         select(Dataset)
         .where(Dataset.id == dataset_id)
@@ -157,6 +159,51 @@ def _main_time_column_problem(dataset: Dataset, name: str | None) -> str | None:
     return None
 
 
+def _chart_usages(db: Session, dataset: Dataset) -> list[tuple[str, QueryUsage]]:
+    """(chart name, what it uses) for every saved chart on this dataset."""
+    usages: list[tuple[str, QueryUsage]] = []
+    for chart in db.scalars(select(Chart).where(Chart.dataset_id == dataset.id)):
+        try:
+            params = ChartParams.model_validate(chart.params)
+        except ValueError:
+            continue  # unreadable params can't be broken further
+        usages.append((chart.name, query_usage(params.query, dataset.main_time_column)))
+    return usages
+
+
+def _blocked(what: str, chart_names: list[str]) -> NoReturn:
+    raise HTTPException(
+        status.HTTP_409_CONFLICT,
+        {"message": used_by_message(what, chart_names), "charts": sorted(chart_names)},
+    )
+
+
+def _check_column_change(
+    usages: list[tuple[str, QueryUsage]],
+    col: DatasetColumn,
+    *,
+    removed: bool = False,
+    hidden: bool = False,
+    dimension: bool = True,
+    temporal: bool = True,
+) -> None:
+    """Refuse a column change that would break saved charts using that column."""
+    breaking: list[str] = []
+    for chart_name, usage in usages:
+        roles = usage.columns.get(col.name)
+        if not roles:
+            continue
+        if (
+            removed
+            or (hidden and not col.is_hidden)
+            or (GROUP in roles and not (dimension or temporal))
+            or (TIME in roles and not temporal)
+        ):
+            breaking.append(chart_name)
+    if breaking:
+        _blocked(f'Column "{col.name}"', breaking)
+
+
 def _clean(text: str | None) -> str | None:
     return (text or "").strip() or None
 
@@ -232,17 +279,17 @@ def create_dataset(payload: DatasetCreate, db: DbSession) -> DatasetOut:
     dataset.metrics.append(DatasetMetric(**COUNT_METRIC, is_builtin=True))
     db.add(dataset)
     _commit(db, f'A dataset named "{name}" already exists')
-    return _out(_get_or_404(db, dataset.id))
+    return _out(get_dataset_or_404(db, dataset.id))
 
 
 @router.get("/{dataset_id}", response_model=DatasetOut)
 def get_dataset(dataset_id: int, db: DbSession) -> DatasetOut:
-    return _out(_get_or_404(db, dataset_id))
+    return _out(get_dataset_or_404(db, dataset_id))
 
 
 @router.put("/{dataset_id}", response_model=DatasetOut, responses=QUERY_ERROR_RESPONSES)
 def update_dataset(dataset_id: int, payload: DatasetUpdate, db: DbSession) -> DatasetOut:
-    dataset = _get_or_404(db, dataset_id)
+    dataset = get_dataset_or_404(db, dataset_id)
     name = payload.name.strip()
     _check_name_free(db, name, dataset_id)
 
@@ -261,13 +308,14 @@ def update_dataset(dataset_id: int, payload: DatasetUpdate, db: DbSession) -> Da
             detected = detect_columns(details, new_source)
         except QueryError as error:
             _query_error(error)
-        dataset = _get_or_404(db, dataset_id)
+        dataset = get_dataset_or_404(db, dataset_id)
         dataset.sql = payload.sql
         merge_columns(dataset, detected)
 
     dataset.name = name
     dataset.description = _clean(payload.description)
 
+    usages = _chart_usages(db, dataset)
     by_id = {c.id: c for c in dataset.columns}
     for settings in payload.columns or []:
         col = by_id.get(settings.id)
@@ -275,6 +323,13 @@ def update_dataset(dataset_id: int, payload: DatasetUpdate, db: DbSession) -> Da
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST, f"Column {settings.id} is not part of this dataset"
             )
+        _check_column_change(
+            usages,
+            col,
+            hidden=settings.is_hidden,
+            dimension=settings.is_dimension,
+            temporal=settings.is_temporal,
+        )
         col.label = _clean(settings.label)
         col.generic_type_override = settings.generic_type_override
         col.is_temporal = settings.is_temporal
@@ -293,6 +348,7 @@ def update_dataset(dataset_id: int, payload: DatasetUpdate, db: DbSession) -> Da
                 status.HTTP_400_BAD_REQUEST,
                 f'Column "{col.name}" still exists in the database; hide it instead',
             )
+        _check_column_change(usages, col, removed=True)
         dataset.columns.remove(col)
 
     main = payload.main_time_column or None
@@ -306,12 +362,26 @@ def update_dataset(dataset_id: int, payload: DatasetUpdate, db: DbSession) -> Da
     _touch(dataset)
     _commit(db, f'A dataset named "{name}" already exists')
     db.expire_all()
-    return _out(_get_or_404(db, dataset_id))
+    return _out(get_dataset_or_404(db, dataset_id))
 
 
 @router.delete("/{dataset_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_dataset(dataset_id: int, db: DbSession) -> Response:
-    db.delete(_get_or_404(db, dataset_id))
+    dataset = get_dataset_or_404(db, dataset_id)
+    used_by = list(
+        db.scalars(select(Chart.name).where(Chart.dataset_id == dataset.id).order_by(Chart.name))
+    )
+    if used_by:
+        noun = "chart" if len(used_by) == 1 else "charts"
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            {
+                "message": f"This dataset is used by {len(used_by)} {noun}: "
+                f"{', '.join(used_by)}. Delete those first.",
+                "charts": used_by,
+            },
+        )
+    db.delete(dataset)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -319,7 +389,7 @@ def delete_dataset(dataset_id: int, db: DbSession) -> Response:
 @router.post("/{dataset_id}/sync", response_model=SyncOut, responses=QUERY_ERROR_RESPONSES)
 def sync_dataset(dataset_id: int, db: DbSession) -> SyncOut:
     """Re-read the columns from the database, keeping the user's settings."""
-    dataset = _get_or_404(db, dataset_id)
+    dataset = get_dataset_or_404(db, dataset_id)
     details = _details(dataset)
     source = source_of(dataset)
     db.close()
@@ -328,18 +398,18 @@ def sync_dataset(dataset_id: int, db: DbSession) -> SyncOut:
     except QueryError as error:
         _query_error(error)
 
-    dataset = _get_or_404(db, dataset_id)
+    dataset = get_dataset_or_404(db, dataset_id)
     result = merge_columns(dataset, detected)
     _touch(dataset)
     db.commit()
     db.expire_all()
-    return SyncOut(dataset=_out(_get_or_404(db, dataset_id)), summary=SyncSummary(**asdict(result)))
+    return SyncOut(dataset=_out(get_dataset_or_404(db, dataset_id)), summary=SyncSummary(**asdict(result)))
 
 
 @router.get("/{dataset_id}/preview", response_model=PreviewOut, responses=QUERY_ERROR_RESPONSES)
 def preview_dataset(dataset_id: int, db: DbSession) -> PreviewOut:
     """The first 100 rows: SELECT * FROM <dataset>."""
-    dataset = _get_or_404(db, dataset_id)
+    dataset = get_dataset_or_404(db, dataset_id)
     details = _details(dataset)
     source = source_of(dataset)
     db.close()
@@ -369,6 +439,13 @@ def _check_expression(expression: str, db_type: str) -> None:
         _query_error(error)
 
 
+def _check_metric_unused(db: Session, dataset: Dataset, metric: DatasetMetric) -> None:
+    """Saved charts refer to metrics by name: block deleting or renaming a used one."""
+    users = [name for name, usage in _chart_usages(db, dataset) if metric.name in usage.metrics]
+    if users:
+        _blocked(f'Metric "{metric.name}"', users)
+
+
 def _metric_conflict(name: str) -> str:
     return f'This dataset already has a metric named "{name}"'
 
@@ -380,7 +457,7 @@ def _metric_conflict(name: str) -> str:
     responses=QUERY_ERROR_RESPONSES,
 )
 def create_metric(dataset_id: int, payload: MetricIn, db: DbSession) -> DatasetMetric:
-    dataset = _get_or_404(db, dataset_id)
+    dataset = get_dataset_or_404(db, dataset_id)
     name = payload.name.strip()
     if any(m.name.lower() == name.lower() for m in dataset.metrics):
         raise HTTPException(status.HTTP_409_CONFLICT, _metric_conflict(name))
@@ -406,7 +483,7 @@ def create_metric(dataset_id: int, payload: MetricIn, db: DbSession) -> DatasetM
     responses=QUERY_ERROR_RESPONSES,
 )
 def update_metric(dataset_id: int, metric_id: int, payload: MetricIn, db: DbSession) -> DatasetMetric:
-    dataset = _get_or_404(db, dataset_id)
+    dataset = get_dataset_or_404(db, dataset_id)
     metric = _metric_or_404(dataset, metric_id)
     name = payload.name.strip()
     expression = payload.expression.strip()
@@ -417,6 +494,8 @@ def update_metric(dataset_id: int, metric_id: int, payload: MetricIn, db: DbSess
         )
     if any(m.name.lower() == name.lower() and m.id != metric.id for m in dataset.metrics):
         raise HTTPException(status.HTTP_409_CONFLICT, _metric_conflict(name))
+    if name != metric.name:
+        _check_metric_unused(db, dataset, metric)
     _check_expression(expression, dataset.connection.db_type)
     metric.name = name
     metric.label = _clean(payload.label)
@@ -431,10 +510,11 @@ def update_metric(dataset_id: int, metric_id: int, payload: MetricIn, db: DbSess
 
 @router.delete("/{dataset_id}/metrics/{metric_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_metric(dataset_id: int, metric_id: int, db: DbSession) -> Response:
-    dataset = _get_or_404(db, dataset_id)
+    dataset = get_dataset_or_404(db, dataset_id)
     metric = _metric_or_404(dataset, metric_id)
     if metric.is_builtin:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "The built-in count metric can't be deleted")
+    _check_metric_unused(db, dataset, metric)
     dataset.metrics.remove(metric)
     _touch(dataset)
     db.commit()
@@ -446,7 +526,7 @@ def validate_metric_expression(
     dataset_id: int, payload: MetricValidateIn, db: DbSession
 ) -> MetricValidateOut:
     """Run SELECT <expression> FROM <dataset> LIMIT 1. Errors are returned, not raised."""
-    dataset = _get_or_404(db, dataset_id)
+    dataset = get_dataset_or_404(db, dataset_id)
     details = _details(dataset)
     source = source_of(dataset)
     db.close()

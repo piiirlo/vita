@@ -72,6 +72,20 @@ This folder may contain the Apache Superset source code. It is **read-only refer
     The user's type override is `generic_type_override` (sync refreshes `generic_type`).
     The built-in `count` metric (`is_builtin`) can't be deleted. Datasets → connections FK is
     RESTRICT; deleting a used connection returns 409 listing the datasets.
+  - `app/charts/` — chart query builder (no FastAPI imports). `build_chart_query(dataset,
+    db_type, viz_type, ChartQuery, today)` validates the query against the dataset and returns
+    SQL built only from sqlglot ASTs on top of `from_clause`; run it with `run_query`.
+    `timegrain.py` (bucket is always a DATE; Postgres `CAST(DATE_TRUNC(..) AS DATE)`, MySQL
+    templates, weeks start Monday), `timerange.py` ([start, end) dates from `today`),
+    `filters.py` (values become typed sqlglot literals; LIKE = contains, wildcards escaped).
+    Series top-N is a JOIN on a derived table with `<=>` / `IS NOT DISTINCT FROM` (MySQL
+    can't LIMIT inside IN). GROUP BY repeats expressions (Postgres would read an alias as the
+    raw column); ORDER BY uses output names with explicit NULLS-lowest ordering (otherwise
+    sqlglot emulates with CASE on MySQL). SQL gets `LIMIT row_limit + 1` so `truncated` is exact.
+    Query model: `app/schemas/charts.py`. API: `app/api/charts.py` (`POST /api/chart-data`,
+    not logged; `/api/charts` CRUD, params = {query, display}). Charts → datasets FK RESTRICT.
+    `tests/test_charts_mysql.py` runs only with `VITA_TEST_MYSQL_HOST` (throwaway mysql:8.4
+    container on the compose network; see the file's docstring).
 - `frontend/` — Vite React TS app (`src/`, pages in `src/pages/`, typed API calls in
   `src/api.ts`); dev server proxies `/api` to the backend. Routing: react-router.
   - SQL Lab = `src/pages/SqlLabPage.tsx` (lazy-loaded) + `src/sqllab/`:
@@ -85,6 +99,15 @@ This folder may contain the Apache Superset source code. It is **read-only refer
     `{ openTab }` (`src/datasets/sqlLabLink.ts`); "Open in SQL Lab" uses it.
   - Datasets: `src/pages/Dataset*Page.tsx` + `src/datasets/` (Columns/Metrics/Preview tabs,
     SQL Lab's "Save as dataset" dialog). Preview reuses `ResultsPane`.
+  - Charts: `src/pages/ChartsPage.tsx`, `ChartEditorPage.tsx` (lazy-loaded with ECharts) +
+    `src/charts/`. Pure, unit-tested logic: `model.ts` (editor state, `adaptToViz` when the
+    chart type changes, `chartRequests`: a big number with trend sends two queries — the
+    total without grain and the trend line), `options.ts` (pivot rows into series, ECharts
+    options), `format.ts` (numeral.js formats like "0,0.00" / "0.0%", bucket labels by grain,
+    NULL → "(empty)"; numbers may arrive as strings). `EChart.tsx` imports only the ECharts
+    parts it uses (bundled, no CDN) and resizes with its container; page tests mock it.
+    Results are drawn with the chart state they were made for (no stale result drawn as a
+    different chart type). Saved charts store their time column explicitly.
   - Tests: Vitest + Testing Library (`*.test.ts(x)` next to the code, setup in
     `src/test/setup.ts`). Monaco is mocked with a textarea in page tests.
 - `sampledb/init/` — seed SQL for the demo database (`sales` schema: customers, products,

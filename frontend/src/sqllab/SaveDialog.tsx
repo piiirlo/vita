@@ -1,13 +1,15 @@
 import { useState, type FormEvent } from "react";
 
 type Props = {
+  /** Dialog title; defaults to "Save query". */
+  title?: string;
   initialName: string;
   initialDescription: string;
   onSave(name: string, description: string): Promise<void>;
   onCancel(): void;
 };
 
-export default function SaveDialog({ initialName, initialDescription, onSave, onCancel }: Props) {
+export default function SaveDialog({ title = "Save query", initialName, initialDescription, onSave, onCancel }: Props) {
   const [name, setName] = useState(initialName);
   const [description, setDescription] = useState(initialDescription);
   const [error, setError] = useState<string | null>(null);
@@ -36,9 +38,9 @@ export default function SaveDialog({ initialName, initialDescription, onSave, on
         onMouseDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.key === "Escape" && onCancel()}
         role="dialog"
-        aria-label="Save query"
+        aria-label={title}
       >
-        <h2 className="modal-title">Save query</h2>
+        <h2 className="modal-title">{title}</h2>
         <label>
           Name
           <input value={name} onChange={(e) => setName(e.target.value)} autoFocus />

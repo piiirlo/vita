@@ -216,6 +216,9 @@ export default function DatasetEditPage() {
           / {dataset.name}
         </h1>
         <div className="actions">
+          <Link to={`/charts/new?dataset=${dataset.id}`} className="button primary">
+            Create chart
+          </Link>
           <button onClick={() => navigate("/sql-lab", { state: openDatasetInSqlLab(dataset) })}>
             Open in SQL Lab
           </button>

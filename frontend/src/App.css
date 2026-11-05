@@ -1215,3 +1215,319 @@ button.small,
 .confirm-body p {
   margin-top: 0;
 }
+
+/* ---------- chart editor ---------- */
+
+.chart-editor {
+  display: flex;
+  height: 100%;
+}
+
+.chart-editor-side {
+  width: 320px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  overflow-y: auto;
+}
+
+.chart-controls section {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.chart-controls .control {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.chart-controls .control > span {
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.chart-controls select,
+.chart-controls input:not([type="checkbox"]) {
+  font: inherit;
+  font-size: 13px;
+  padding: 5px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  min-width: 0;
+}
+
+.chart-controls .checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.checkbox-row {
+  display: flex;
+  gap: 16px;
+}
+
+.inline-controls {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.inline-controls > select,
+.inline-controls > input {
+  flex: 1;
+}
+
+.viz-picker,
+.segmented {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+
+.segmented {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.viz-picker button,
+.segmented button {
+  font-size: 13px;
+  padding: 5px 4px;
+}
+
+.viz-picker button.active,
+.segmented button.active {
+  border-color: var(--primary);
+  background: var(--selected-bg);
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  padding: 2px 4px 2px 8px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.chip-metric {
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+}
+
+.chip button {
+  border: none;
+  background: none;
+  padding: 0 4px;
+  line-height: 1;
+  color: var(--muted);
+}
+
+.filter-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+button.icon {
+  padding: 2px 8px;
+}
+
+.chart-editor-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 18px 16px;
+  gap: 8px;
+}
+
+.chart-editor-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chart-name,
+.chart-name-input {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.chart-name-input {
+  font: inherit;
+  font-size: 18px;
+  font-weight: 600;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 2px 6px;
+  min-width: 240px;
+  background: transparent;
+}
+
+.chart-name-input:hover,
+.chart-name-input:focus {
+  border-color: var(--border-strong);
+  background: var(--surface);
+}
+
+.chart-tabs {
+  margin-bottom: 0;
+}
+
+.chart-canvas,
+.chart-data,
+.chart-sql {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.chart-canvas {
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+}
+
+.chart-data {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.chart-sql {
+  padding: 12px;
+  overflow: auto;
+}
+
+.chart-sql pre {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+  white-space: pre-wrap;
+}
+
+.echart {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+}
+
+.chart-empty {
+  margin: auto;
+  color: var(--muted);
+  font-size: 16px;
+}
+
+.chart-error {
+  margin: 0 0 8px;
+}
+
+.chart-loading {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.9);
+  padding: 4px 8px;
+  border-radius: 6px;
+  z-index: 2;
+}
+
+.chart-table-wrap {
+  flex: 1;
+  overflow: auto;
+}
+
+.chart-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.th-sort {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.big-number {
+  margin: auto;
+  width: min(560px, 100%);
+  text-align: center;
+}
+
+.big-number-value {
+  font-size: clamp(40px, 8vw, 84px);
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.big-number-subtitle {
+  color: var(--muted);
+  font-size: 16px;
+  margin-top: 4px;
+}
+
+.big-number-trend {
+  height: 90px;
+  width: 100%;
+  margin-top: 16px;
+}
+
+@media (max-width: 760px) {
+  .page-full.page-chart {
+    height: auto;
+    min-height: calc(100vh - 52px);
+    overflow: auto;
+  }
+  .chart-editor {
+    flex-direction: column;
+    height: auto;
+  }
+  .chart-editor-side {
+    width: 100%;
+    border-right: none;
+  }
+  .chart-canvas {
+    min-height: 380px;
+  }
+}

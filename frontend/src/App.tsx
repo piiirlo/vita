@@ -2,18 +2,22 @@ import { lazy, Suspense } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation } from "react-router";
 import BrowsePage from "./pages/BrowsePage.tsx";
 import ConnectionFormPage from "./pages/ConnectionFormPage.tsx";
+import ChartsPage from "./pages/ChartsPage.tsx";
 import ConnectionsPage from "./pages/ConnectionsPage.tsx";
 import DatasetEditPage from "./pages/DatasetEditPage.tsx";
 import DatasetNewPage from "./pages/DatasetNewPage.tsx";
 import DatasetsPage from "./pages/DatasetsPage.tsx";
 import StatusPage from "./pages/StatusPage.tsx";
 
-// Monaco + sql-formatter are big: load SQL Lab only when it is opened.
+// Monaco + sql-formatter are big: load SQL Lab only when it is opened. Same for ECharts.
 const SqlLabPage = lazy(() => import("./pages/SqlLabPage.tsx"));
+const ChartEditorPage = lazy(() => import("./pages/ChartEditorPage.tsx"));
 
 export default function App() {
   // SQL Lab uses the full window width and height.
-  const fullScreen = useLocation().pathname.startsWith("/sql-lab");
+  const path = useLocation().pathname;
+  const chartEditor = /^\/charts\/(new|\d+)/.test(path);
+  const fullScreen = path.startsWith("/sql-lab") || chartEditor;
 
   return (
     <>
@@ -21,13 +25,14 @@ export default function App() {
         <span className="brand">Vita</span>
         <nav>
           <NavLink to="/sql-lab">SQL Lab</NavLink>
+          <NavLink to="/charts">Charts</NavLink>
           <NavLink to="/datasets">Datasets</NavLink>
           <NavLink to="/connections">Connections</NavLink>
           <NavLink to="/status">Status</NavLink>
         </nav>
       </header>
 
-      <main className={fullScreen ? "page-full" : "page"}>
+      <main className={fullScreen ? `page-full${chartEditor ? " page-chart" : ""}` : "page"}>
         <Routes>
           <Route path="/" element={<Navigate to="/sql-lab" replace />} />
           <Route
@@ -38,6 +43,18 @@ export default function App() {
               </Suspense>
             }
           />
+          <Route path="/charts" element={<ChartsPage />} />
+          {["/charts/new", "/charts/:id"].map((p) => (
+            <Route
+              key={p}
+              path={p}
+              element={
+                <Suspense fallback={<p className="muted page-pad">Loading chart editor…</p>}>
+                  <ChartEditorPage />
+                </Suspense>
+              }
+            />
+          ))}
           <Route path="/datasets" element={<DatasetsPage />} />
           <Route path="/datasets/new" element={<DatasetNewPage />} />
           <Route path="/datasets/:id" element={<DatasetEditPage />} />

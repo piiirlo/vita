@@ -413,3 +413,108 @@ export const validateMetric = (datasetId: number, expression: string) =>
     method: "POST",
     body: json({ expression }),
   });
+
+// ---------- charts ----------
+
+export type VizType = "table" | "big_number" | "bar" | "line";
+export type Aggregate = "SUM" | "AVG" | "MIN" | "MAX" | "COUNT" | "COUNT_DISTINCT";
+export type Grain = "day" | "week" | "month" | "quarter" | "year";
+export type RangeKind =
+  | "none"
+  | "last_7_days"
+  | "last_30_days"
+  | "last_90_days"
+  | "last_12_months"
+  | "this_year"
+  | "last_year"
+  | "custom";
+export type FilterOperator =
+  | "="
+  | "!="
+  | ">"
+  | ">="
+  | "<"
+  | "<="
+  | "IN"
+  | "NOT IN"
+  | "BETWEEN"
+  | "IS NULL"
+  | "IS NOT NULL"
+  | "LIKE";
+
+export type AdhocMetric = { column: string; aggregate: Aggregate; label?: string | null };
+/** A saved metric of the dataset (by name), or an ad-hoc one. */
+export type MetricRef = string | AdhocMetric;
+export type FilterScalar = string | number | boolean | null;
+
+export type ChartFilter = {
+  column: string;
+  operator: FilterOperator;
+  value: FilterScalar | FilterScalar[];
+};
+
+export type ChartQuery = {
+  dataset_id: number;
+  metrics: MetricRef[];
+  dimensions: string[];
+  series: string | null;
+  /** Table "raw records" mode. */
+  columns: string[];
+  time: {
+    column: string | null;
+    grain: Grain | null;
+    range: { kind: RangeKind; start?: string | null; end?: string | null };
+  } | null;
+  filters: ChartFilter[];
+  order_by: { by: string; descending: boolean } | null;
+  row_limit: number;
+  series_limit: number | null;
+};
+
+export type ChartDataResult = QueryResult & { sql: string };
+
+export type ChartParams = { query: ChartQuery; display: Record<string, unknown> };
+
+export type SavedChart = {
+  id: number;
+  name: string;
+  description: string | null;
+  dataset_id: number;
+  dataset_name: string;
+  viz_type: VizType;
+  params: ChartParams;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ChartInput = {
+  name: string;
+  description: string | null;
+  viz_type: VizType;
+  params: ChartParams;
+};
+
+/** Throws ApiError; invalid queries and failed queries have a QueryErrorDetail `detail`. */
+export const fetchChartData = (vizType: VizType, query: ChartQuery, signal?: AbortSignal) =>
+  request<ChartDataResult>("/api/chart-data", {
+    method: "POST",
+    body: json({ viz_type: vizType, query }),
+    signal,
+  });
+
+export function listCharts(q?: string) {
+  const params = new URLSearchParams();
+  if (q) params.set("q", q);
+  const query = params.toString();
+  return request<SavedChart[]>(`/api/charts${query ? `?${query}` : ""}`);
+}
+
+export const getChart = (id: number) => request<SavedChart>(`/api/charts/${id}`);
+
+export const createChart = (input: ChartInput) =>
+  request<SavedChart>("/api/charts", { method: "POST", body: json(input) });
+
+export const updateChart = (id: number, input: ChartInput) =>
+  request<SavedChart>(`/api/charts/${id}`, { method: "PUT", body: json(input) });
+
+export const deleteChart = (id: number) => request<void>(`/api/charts/${id}`, { method: "DELETE" });

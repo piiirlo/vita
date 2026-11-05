@@ -193,3 +193,31 @@ class DatasetMetric(Base):
     is_builtin: Mapped[bool] = mapped_column(default=False)
 
     dataset: Mapped[Dataset] = relationship(back_populates="metrics")
+
+
+class Chart(Base):
+    """A saved chart: a dataset, a chart type, and params = {query, display}."""
+
+    __tablename__ = "charts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), unique=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # RESTRICT: a dataset can't be deleted while charts use it.
+    dataset_id: Mapped[int] = mapped_column(
+        ForeignKey("datasets.id", ondelete="RESTRICT"), index=True
+    )
+    viz_type: Mapped[str] = mapped_column(String(20))  # table | big_number | bar | line
+    params: Mapped[dict[str, Any]] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    dataset: Mapped[Dataset] = relationship()
+
+    @property
+    def dataset_name(self) -> str:
+        return self.dataset.name
