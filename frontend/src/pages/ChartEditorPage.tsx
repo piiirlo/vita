@@ -5,6 +5,7 @@ import {
   createChart,
   fetchChartData,
   getChart,
+  getDashboard,
   getDataset,
   isQueryErrorDetail,
   listDatasets,
@@ -29,6 +30,7 @@ import {
   type ChartState,
   type DisplayOptions,
 } from "../charts/model.ts";
+import AddToDashboardDialog from "../dashboards/AddToDashboardDialog.tsx";
 import type { SqlLabLocationState } from "../datasets/sqlLabLink.ts";
 import ResultsPane, { type RunState } from "../sqllab/ResultsPane.tsx";
 import SaveDialog from "../sqllab/SaveDialog.tsx";
@@ -72,6 +74,10 @@ export default function ChartEditorPage() {
   const [tab, setTab] = useState<Tab>("chart");
   const [saveDialog, setSaveDialog] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [addToDashboard, setAddToDashboard] = useState(false);
+  // Opened from a dashboard tile ("Edit chart"): link back to it.
+  const fromDashboardId = Number(search.get("dashboard")) || null;
+  const [fromDashboard, setFromDashboard] = useState<{ id: number; name: string } | null>(null);
   const controller = useRef<AbortController | null>(null);
 
   // ---------- loading ----------
@@ -116,6 +122,17 @@ export default function ChartEditorPage() {
       cancelled = true;
     };
   }, [chartId, search, datasets, startNew]);
+
+  useEffect(() => {
+    if (fromDashboardId === null) return;
+    let cancelled = false;
+    getDashboard(fromDashboardId)
+      .then((d) => !cancelled && setFromDashboard({ id: d.id, name: d.name }))
+      .catch(() => undefined); // just no link back
+    return () => {
+      cancelled = true;
+    };
+  }, [fromDashboardId]);
 
   // ---------- running ----------
 
@@ -283,6 +300,11 @@ export default function ChartEditorPage() {
           )}
           {dirty && <span className="dirty-dot" title="Unsaved changes" aria-label="Unsaved changes" />}
           <span className="spacer" />
+          {fromDashboard && (
+            <Link to={`/dashboards/${fromDashboard.id}`} className="back-link">
+              ← Back to {fromDashboard.name}
+            </Link>
+          )}
           {notice && <span className="toolbar-notice">{notice}</span>}
           <button onClick={() => void run()} disabled={results.status === "loading"} title="Run the chart query now">
             Update chart
@@ -291,6 +313,11 @@ export default function ChartEditorPage() {
             Save
           </button>
           {chart && <button onClick={() => setSaveDialog(true)}>Save as new</button>}
+          {chart && (
+            <button onClick={() => setAddToDashboard(true)} title="Add this saved chart to a dashboard">
+              Add to dashboard
+            </button>
+          )}
         </div>
 
         <div className="dataset-tabs chart-tabs" role="tablist">
@@ -355,6 +382,10 @@ export default function ChartEditorPage() {
           </div>
         )}
       </section>
+
+      {addToDashboard && chart && (
+        <AddToDashboardDialog chartId={chart.id} chartName={chart.name} onClose={() => setAddToDashboard(false)} />
+      )}
 
       {saveDialog && (
         <SaveDialog

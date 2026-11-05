@@ -518,3 +518,62 @@ export const updateChart = (id: number, input: ChartInput) =>
   request<SavedChart>(`/api/charts/${id}`, { method: "PUT", body: json(input) });
 
 export const deleteChart = (id: number) => request<void>(`/api/charts/${id}`, { method: "DELETE" });
+
+// ---------- dashboards ----------
+
+export type RefreshInterval = "off" | "1m" | "5m" | "15m" | "1h";
+
+type TilePosition = { id: string; x: number; y: number; w: number; h: number };
+export type ChartTileSpec = TilePosition & { type: "chart"; chart_id: number };
+export type TextTileSpec = TilePosition & { type: "text"; text: string };
+export type DashboardTile = ChartTileSpec | TextTileSpec;
+
+export type DashboardChartInfo = { id: number; name: string; viz_type: VizType };
+
+export type DashboardListItem = {
+  id: number;
+  name: string;
+  description: string | null;
+  chart_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Dashboard = Omit<DashboardListItem, "chart_count"> & {
+  layout: DashboardTile[];
+  refresh_interval: RefreshInterval;
+  /** Basic info of the charts in the layout, keyed by chart id. */
+  charts: Record<string, DashboardChartInfo>;
+};
+
+export type DashboardInput = {
+  name: string;
+  description: string | null;
+  layout: DashboardTile[];
+  refresh_interval: RefreshInterval;
+};
+
+export function listDashboards(q?: string) {
+  const params = new URLSearchParams();
+  if (q) params.set("q", q);
+  const query = params.toString();
+  return request<DashboardListItem[]>(`/api/dashboards${query ? `?${query}` : ""}`);
+}
+
+export const getDashboard = (id: number) => request<Dashboard>(`/api/dashboards/${id}`);
+
+export const createDashboard = (input: DashboardInput) =>
+  request<Dashboard>("/api/dashboards", { method: "POST", body: json(input) });
+
+export const updateDashboard = (id: number, input: DashboardInput) =>
+  request<Dashboard>(`/api/dashboards/${id}`, { method: "PUT", body: json(input) });
+
+export const deleteDashboard = (id: number) =>
+  request<void>(`/api/dashboards/${id}`, { method: "DELETE" });
+
+export const duplicateDashboard = (id: number) =>
+  request<Dashboard>(`/api/dashboards/${id}/duplicate`, { method: "POST" });
+
+/** Adds a chart tile below the existing tiles. */
+export const addChartToDashboard = (id: number, chartId: number) =>
+  request<Dashboard>(`/api/dashboards/${id}/charts`, { method: "POST", body: json({ chart_id: chartId }) });

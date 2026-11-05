@@ -13,7 +13,7 @@ from app.api.connections import saved_connection_details
 from app.api.datasets import get_dataset_or_404
 from app.charts import build_chart_query
 from app.db import get_db
-from app.models import Chart, Dataset
+from app.models import Chart, Dashboard, DashboardChart, Dataset
 from app.query import DEFAULT_TIMEOUT_SECONDS, QueryError, run_query
 from app.schemas.charts import ChartDataOut, ChartDataRequest, ChartIn, ChartOut, ChartParams
 from app.schemas.query import QueryErrorOut
@@ -180,6 +180,25 @@ def update_chart(chart_id: int, payload: ChartIn, db: DbSession) -> ChartOut:
 
 @router.delete("/charts/{chart_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_chart(chart_id: int, db: DbSession) -> Response:
-    db.delete(_get_or_404(db, chart_id))
+    chart = _get_or_404(db, chart_id)
+    used_by = list(
+        db.scalars(
+            select(Dashboard.name)
+            .join(DashboardChart, DashboardChart.dashboard_id == Dashboard.id)
+            .where(DashboardChart.chart_id == chart.id)
+            .order_by(Dashboard.name)
+        )
+    )
+    if used_by:
+        noun = "dashboard" if len(used_by) == 1 else "dashboards"
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            {
+                "message": f"This chart is used by {len(used_by)} {noun}: "
+                f"{', '.join(used_by)}. Remove it from those dashboards first.",
+                "dashboards": used_by,
+            },
+        )
+    db.delete(chart)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

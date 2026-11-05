@@ -119,6 +119,8 @@ function escapeHtml(text: string): string {
 }
 
 const GRID = { left: 16, right: 24, top: 48, bottom: 16, containLabel: true };
+/** So two or three bars don't fill the whole chart. */
+export const BAR_MAX_WIDTH = 48;
 
 export function cartesianOption(
   state: ChartState,
@@ -137,11 +139,20 @@ export function cartesianOption(
   const labels = pivoted.categories.map((c) => categoryLabel(c, timeAxis ? grain : null));
   const axisFormat = query.metrics[0] ? metricFormat(query.metrics[0], dataset) : null;
   const categoryAxis = { type: "category" as const, data: labels, axisTick: { alignWithLabel: true } };
+  const horizontal = vizType === "bar" && Boolean(display.horizontal);
+  // Say what is measured: with one metric the value axis is titled with its label (several
+  // metrics are told apart by the legend instead).
+  const axisTitle = query.metrics.length === 1 ? metricLabel(query.metrics[0]!, dataset) : undefined;
+  const titleStyle = { color: "#6b7280" };
   const valueAxis = {
     type: "value" as const,
     axisLabel: { formatter: (v: number) => formatNumber(v, axisFormat) },
+    ...(axisTitle === undefined
+      ? {}
+      : horizontal
+        ? { name: axisTitle, nameLocation: "middle" as const, nameGap: 28, nameTextStyle: titleStyle }
+        : { name: axisTitle, nameLocation: "end" as const, nameTextStyle: { ...titleStyle, align: "left" as const } }),
   };
-  const horizontal = vizType === "bar" && Boolean(display.horizontal);
 
   const series: SeriesOption[] = pivoted.series.map((s) =>
     vizType === "bar"
@@ -150,6 +161,7 @@ export function cartesianOption(
           name: s.name,
           data: s.values,
           stack: display.stacked ? "total" : undefined,
+          barMaxWidth: BAR_MAX_WIDTH,
           emphasis: { focus: "series" },
         }
       : {
@@ -165,7 +177,12 @@ export function cartesianOption(
 
   return {
     animation: false,
-    grid: { ...GRID, top: pivoted.series.length > 1 ? 48 : 24 },
+    grid: {
+      ...GRID,
+      // Room above the plot for the legend and/or the axis title (or below it, horizontal).
+      top: pivoted.series.length > 1 ? 48 : axisTitle && !horizontal ? 36 : 24,
+      bottom: axisTitle && horizontal ? 36 : GRID.bottom,
+    },
     legend: pivoted.series.length > 1 ? { type: "scroll", top: 0 } : undefined,
     tooltip: {
       trigger: "axis",

@@ -1531,3 +1531,301 @@ button.icon {
     min-height: 380px;
   }
 }
+
+/* ======================= Dashboards ======================= */
+
+.page-wide {
+  padding: 20px 24px 40px;
+}
+
+.dash-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.dash-title {
+  font-size: 20px;
+  margin: 0;
+}
+
+.dash-description {
+  margin: -4px 0 12px;
+}
+
+.dash-header .inline-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+}
+
+.dash-header select {
+  font: inherit;
+  font-size: 13px;
+  padding: 4px 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.toolbar-notice.text-error {
+  color: var(--error);
+}
+
+.back-link {
+  font-size: 14px;
+}
+
+/* tiles */
+
+.dash-tile {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+}
+
+.dash-tile:focus-within,
+.dash-tile:has(.tile-menu-list) {
+  z-index: 5;
+}
+
+.dash-tile-text {
+  background: transparent;
+  border-color: transparent;
+}
+
+.dash-grid.editing .dash-tile {
+  border-style: dashed;
+  border-color: var(--border-strong);
+}
+
+.dash-grid.editing .dash-tile-text {
+  background: var(--surface);
+}
+
+.dash-tile-inner {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+
+.dash-tile-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px 6px 12px;
+  min-height: 36px;
+}
+
+.dash-drag-handle {
+  cursor: move;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  border-radius: 8px 8px 0 0;
+}
+
+.dash-tile-title {
+  font-weight: 600;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dash-tile-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0 8px 8px;
+  overflow: hidden;
+  /* Big numbers scale with the tile (cqmin units below). */
+  container-type: size;
+}
+
+.dash-tile-body .big-number {
+  width: 100%;
+}
+
+.dash-tile-body .big-number-value {
+  font-size: clamp(18px, 22cqmin, 120px);
+}
+
+.dash-tile-body .big-number-subtitle {
+  font-size: clamp(12px, 5cqmin, 18px);
+}
+
+.dash-tile-body .big-number-trend {
+  height: 28cqh;
+  margin-top: 4cqh;
+}
+
+.dash-tile-body .chart-empty {
+  font-size: 14px;
+}
+
+.dash-tile-loading {
+  margin: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.dash-tile-error {
+  margin: auto;
+  max-width: 100%;
+  padding: 8px 12px;
+  color: var(--error);
+  background: var(--error-bg);
+  border-radius: 6px;
+  font-size: 13px;
+  overflow: auto;
+}
+
+.dash-tile-error p {
+  margin: 0 0 6px;
+  white-space: pre-wrap;
+}
+
+.dash-text {
+  padding: 4px 4px;
+  overflow: auto;
+}
+
+.markdown > :first-child {
+  margin-top: 0;
+}
+
+.markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown h1,
+.markdown h2,
+.markdown h3 {
+  color: var(--text);
+  text-transform: none;
+  letter-spacing: 0;
+  border: none;
+  padding: 0;
+  margin: 0 0 6px;
+}
+
+.markdown h1 {
+  font-size: 26px;
+}
+
+.markdown h2 {
+  font-size: 20px;
+}
+
+.markdown h3 {
+  font-size: 16px;
+}
+
+.dash-text-editor {
+  flex: 1;
+  min-height: 0;
+  resize: none;
+  border: none;
+  padding: 8px 12px;
+  font-size: 13px;
+  border-radius: 0 0 8px 8px;
+  outline: none;
+}
+
+.sql-block {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+  white-space: pre-wrap;
+  max-height: 50vh;
+  overflow: auto;
+}
+
+.modal-wide {
+  width: min(720px, calc(100vw - 32px));
+}
+
+.pick-list .pick-item {
+  justify-content: flex-start;
+  gap: 10px;
+}
+
+.pick-item > :first-child {
+  flex: 1;
+}
+
+/* tile menu */
+
+.tile-menu {
+  position: relative;
+}
+
+.tile-menu-list {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  min-width: 160px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+  padding: 4px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+}
+
+.tile-menu-item,
+button.tile-menu-item {
+  display: block;
+  text-align: left;
+  border: none;
+  background: none;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.tile-menu-item:hover:not(:disabled) {
+  background: var(--bg);
+  text-decoration: none;
+}
+
+.tile-menu-item:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+
+/* react-grid-layout: show the placeholder in the app's colours */
+.dash-grid .react-grid-placeholder {
+  background: var(--primary);
+  opacity: 0.12;
+  border-radius: 8px;
+}
+
+/* narrow screens: one column (view mode) */
+.dash-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+@media (max-width: 767px) {
+  .page-wide {
+    padding: 16px;
+  }
+}

@@ -221,3 +221,40 @@ class Chart(Base):
     @property
     def dataset_name(self) -> str:
         return self.dataset.name
+
+
+class Dashboard(Base):
+    """A dashboard: a grid layout of chart and text tiles (see app/schemas/dashboards.py)."""
+
+    __tablename__ = "dashboards"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), unique=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # List of tiles; the source of truth for what the dashboard shows.
+    layout: Mapped[list[dict[str, Any]]] = mapped_column(JSON)
+    refresh_interval: Mapped[str] = mapped_column(String(10), default="off")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    chart_links: Mapped[list["DashboardChart"]] = relationship(
+        cascade="all, delete-orphan", passive_deletes=True
+    )
+
+
+class DashboardChart(Base):
+    """Which charts a dashboard's layout uses; rebuilt from the layout on every save.
+    RESTRICT: a chart can't be deleted (even directly in the DB) while a dashboard uses it."""
+
+    __tablename__ = "dashboard_charts"
+
+    dashboard_id: Mapped[int] = mapped_column(
+        ForeignKey("dashboards.id", ondelete="CASCADE"), primary_key=True
+    )
+    chart_id: Mapped[int] = mapped_column(
+        ForeignKey("charts.id", ondelete="RESTRICT"), primary_key=True, index=True
+    )

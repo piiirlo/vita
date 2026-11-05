@@ -122,4 +122,24 @@ describe("options", () => {
     expect(series.every((s) => s.type === "bar" && s.stack === "total")).toBe(true);
     expect(option.legend).toBeDefined();
   });
+
+  it("caps bar width and titles the value axis with a single metric's label", () => {
+    const state: ChartState = {
+      vizType: "bar",
+      query: { ...defaultQuery(DATASET), metrics: ["revenue"], dimensions: ["status"] },
+      display: {},
+    };
+    const option = cartesianOption(state, result(["status", "revenue"], [["a", 1], ["b", 2]]), DATASET);
+    expect((option.series as { barMaxWidth?: number }[])[0]!.barMaxWidth).toBe(48);
+    expect((option.yAxis as { name?: string }).name).toBe("Revenue");
+    expect(option.legend).toBeUndefined();
+
+    const two = cartesianOption(
+      { ...state, query: { ...state.query, metrics: ["revenue", "count"] } },
+      result(["status", "revenue", "count"], [["a", 1, 2]]),
+      DATASET,
+    );
+    expect((two.yAxis as { name?: string }).name).toBeUndefined();
+    expect(two.legend).toBeDefined();
+  });
 });

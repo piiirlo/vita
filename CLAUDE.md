@@ -21,7 +21,7 @@ One part at a time, in order:
 4. **SQL editor** — Monaco, results table, schema browser, saved queries *(done)*
 5. **Datasets** — table or saved query + column metadata, time column
 6. **Chart builder** — table, big number, bar, line; backend generates SQL from chart config
-7. **Dashboards** — grid layout, save positions, refresh
+7. **Dashboards** — grid layout, save positions, refresh *(done)*
 8. **Polish** — simple login, loading/error states, CSV export
 
 **Out of scope for v1:** dashboard filters, caching, multi-user permissions, alerts,
@@ -86,6 +86,12 @@ This folder may contain the Apache Superset source code. It is **read-only refer
     not logged; `/api/charts` CRUD, params = {query, display}). Charts → datasets FK RESTRICT.
     `tests/test_charts_mysql.py` runs only with `VITA_TEST_MYSQL_HOST` (throwaway mysql:8.4
     container on the compose network; see the file's docstring).
+  - Dashboards: `app/api/dashboards.py` (`/api/dashboards`: list/get/create/update/delete,
+    `/{id}/duplicate`, `/{id}/charts` appends a chart tile). `layout` JSON (schema in
+    `app/schemas/dashboards.py`: 12-column grid, chart / text tiles) is the source of truth;
+    `dashboard_charts` is rebuilt from it on every save (chart_id FK RESTRICT), so deleting a
+    used chart returns 409 "used by N dashboards" and the DB blocks it too. Dashboard endpoints
+    never query user DBs: the frontend loads each tile via `/api/charts/{id}` + `/api/chart-data`.
 - `frontend/` — Vite React TS app (`src/`, pages in `src/pages/`, typed API calls in
   `src/api.ts`); dev server proxies `/api` to the backend. Routing: react-router.
   - SQL Lab = `src/pages/SqlLabPage.tsx` (lazy-loaded) + `src/sqllab/`:
@@ -108,6 +114,14 @@ This folder may contain the Apache Superset source code. It is **read-only refer
     parts it uses (bundled, no CDN) and resizes with its container; page tests mock it.
     Results are drawn with the chart state they were made for (no stale result drawn as a
     different chart type). Saved charts store their time column explicitly.
+  - Dashboards: `src/pages/Dashboard(s)Page.tsx` (DashboardPage lazy-loaded) + `src/dashboards/`.
+    Each `ChartTile` loads on its own through a per-page `RequestQueue` (4 at a time, tiles on
+    screen first) and a shared `DatasetCache`; errors stay inside the tile (plus an error
+    boundary). `DashboardGrid.tsx` wraps react-grid-layout v2 (page tests mock it). Text tiles
+    are markdown rendered by `markdown.ts` (marked + DOMPurify — always sanitize). Pure helpers
+    in `layout.ts`. Narrow screens stack tiles (view mode). The router is a data router
+    (`createBrowserRouter` in `main.tsx`) so pages can use `useBlocker`; tests of pages that
+    use it need `createMemoryRouter`. "Edit chart" links to `/charts/:id?dashboard=<id>`.
   - Tests: Vitest + Testing Library (`*.test.ts(x)` next to the code, setup in
     `src/test/setup.ts`). Monaco is mocked with a textarea in page tests.
 - `sampledb/init/` — seed SQL for the demo database (`sales` schema: customers, products,
