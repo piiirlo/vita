@@ -56,3 +56,30 @@ class QueryHistory(Base):
     @property
     def connection_name(self) -> str | None:
         return self.connection.name if self.connection else None
+
+
+class SavedQuery(Base):
+    """A named SQL query saved from SQL Lab."""
+
+    __tablename__ = "saved_queries"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # SET NULL keeps the query when its connection is deleted.
+    connection_id: Mapped[int | None] = mapped_column(
+        ForeignKey("connections.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    sql: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    connection: Mapped[Connection | None] = relationship()
+
+    @property
+    def connection_name(self) -> str | None:
+        return self.connection.name if self.connection else None

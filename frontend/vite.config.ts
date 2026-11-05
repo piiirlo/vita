@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
 // In Docker the backend is reachable as http://backend:8000; locally it's localhost.
@@ -15,5 +15,10 @@ export default defineConfig({
     proxy: {
       "/api": { target: backendUrl, changeOrigin: true },
     },
+  },
+  test: {
+    environment: "jsdom",
+    setupFiles: ["./src/test/setup.ts"],
+    include: ["src/**/*.test.{ts,tsx}"],
   },
 });

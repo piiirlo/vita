@@ -18,7 +18,7 @@ One part at a time, in order:
 1. **Foundation** — repo, backend, frontend, DB, Docker *(done)*
 2. **Database connections** — save, test, browse schemas/tables/columns; encrypted credentials *(done)*
 3. **Query engine** — run SQL with row limits, timeouts, clean errors *(done)*
-4. **SQL editor** — Monaco, results table, schema browser, saved queries
+4. **SQL editor** — Monaco, results table, schema browser, saved queries *(done)*
 5. **Datasets** — table or saved query + column metadata, time column
 6. **Chart builder** — table, big number, bar, line; backend generates SQL from chart config
 7. **Dashboards** — grid layout, save positions, refresh
@@ -59,12 +59,24 @@ This folder may contain the Apache Superset source code. It is **read-only refer
     never returned by the API (only `has_password`); response schemas must not include them.
     `password_encrypted` NULL = no password. Save/test password rules: `clear_password` → none,
     non-empty password → use it, empty → keep the saved one.
+  - `app/api/saved_queries.py` — saved queries CRUD (`/api/saved-queries`).
 - `frontend/` — Vite React TS app (`src/`, pages in `src/pages/`, typed API calls in
   `src/api.ts`); dev server proxies `/api` to the backend. Routing: react-router.
-  `PlaygroundPage.tsx` is a temporary page from Part 3; replace it in Part 4.
+  - SQL Lab = `src/pages/SqlLabPage.tsx` (lazy-loaded) + `src/sqllab/`:
+    `SqlEditor.tsx` (Monaco, bundled locally via `monacoSetup.ts` — no CDN; one global
+    completion provider), `schemaCache.ts` (per-connection metadata cache — use it instead of
+    calling browse endpoints directly), `ResultsPane.tsx` (TanStack Table + Virtual grid),
+    `tabs.ts` (tab state, localStorage `vita.sqllab.tabs.v1`), pure helpers in
+    `completion.ts` / `results.ts` (unit-tested).
+  - Tests: Vitest + Testing Library (`*.test.ts(x)` next to the code, setup in
+    `src/test/setup.ts`). Monaco is mocked with a textarea in page tests.
 - `sampledb/init/` — seed SQL for the demo database (`sales` schema: customers, products,
   orders, order_items, view order_totals; ~2 years of orders, deterministic).
-- `docker-compose.yml` — `db` (Vita metadata), `sampledb` (demo data), `backend`, `frontend`
+- `docker-compose.yml` — `db` (Vita metadata), `sampledb` (demo data), `backend`, `frontend`.
+  There is no login yet, so every published port is bound to `127.0.0.1` only; keep it that way.
+- API endpoints are plain `def` (FastAPI runs them in a threadpool) so slow user queries don't
+  block other requests. Don't make an endpoint `async def` if it does blocking DB calls
+  (`tests/test_concurrency.py` guards this).
 
 ## Testing notes
 - Backend tests run against a separate `vita_test` database (created and migrated
@@ -79,6 +91,8 @@ docker compose up --build                  # start everything
 docker compose exec backend pytest         # backend tests
 docker compose exec backend alembic revision --autogenerate -m "msg"   # new migration
 docker compose exec backend alembic upgrade head                       # apply migrations
-docker compose exec frontend npx tsc -b    # frontend type check
+docker compose exec frontend npm run typecheck   # frontend type check (strict)
+docker compose exec frontend npm test            # frontend tests (Vitest)
 ```
+After adding frontend dependencies: `docker compose up -d --build -V frontend`.
 No local Python is required; run Python tooling inside the `backend` container.

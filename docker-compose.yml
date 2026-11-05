@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
     volumes:
       - db-data:/var/lib/postgresql/data
     healthcheck:
@@ -25,7 +25,7 @@ services:
       POSTGRES_PASSWORD: ${SAMPLEDB_PASSWORD}
       POSTGRES_DB: ${SAMPLEDB_DB}
     ports:
-      - "5434:5432"
+      - "127.0.0.1:5434:5432"
     volumes:
       - sampledb-data:/var/lib/postgresql/data
       - ./sampledb/init:/docker-entrypoint-initdb.d:ro
@@ -45,7 +45,7 @@ services:
       sh -c "alembic upgrade head &&
              uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       - ./backend:/app
     extra_hosts:
@@ -62,7 +62,7 @@ services:
     environment:
       BACKEND_URL: http://backend:8000
     ports:
-      - "5173:5173"
+      - "127.0.0.1:5173:5173"
     volumes:
       - ./frontend:/app
       - /app/node_modules

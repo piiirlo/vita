@@ -3,8 +3,8 @@
 A small, self-hosted data visualization tool — a much simpler alternative to Apache Superset.
 Connect a database, write SQL, turn results into charts, put charts on dashboards.
 
-**Status:** Part 3: save, test and browse database connections (PostgreSQL, MySQL), and run
-read-only SQL queries on them (temporary "Query playground" page).
+**Status:** Part 4: connections (PostgreSQL, MySQL), a read-only query engine, and SQL Lab,
+a SQL editor with autocomplete, a schema browser, saved queries and history.
 
 ## Requirements
 - Docker with Docker Compose
@@ -25,6 +25,9 @@ docker compose up --build
 | API docs        | http://localhost:8000/docs         |
 | Vita metadata DB| `localhost:5433` (from your host)  |
 | Demo DB         | `localhost:5434` (from your host)  |
+
+All ports listen on `127.0.0.1` only (there's no login yet), so other machines on your
+network can't reach Vita.
 
 Both backend (uvicorn `--reload`) and frontend (Vite) hot-reload when you edit files.
 Migrations run automatically (`alembic upgrade head`) when the backend container starts.
@@ -57,7 +60,25 @@ docker compose up -d sampledb
 The backend runs inside Docker, so `localhost` there means the backend container itself.
 For a database running on your own (Windows) machine, use the host **`host.docker.internal`**.
 
-## Running queries
+## SQL Lab
+Open http://localhost:5173/sql-lab.
+
+| Action | How |
+|---|---|
+| Run the query (or only the selected text) | **Ctrl+Enter** (Cmd+Enter on Mac) or ▶ Run |
+| Stop waiting for a query | ■ Stop (the database stops it at its 30 s timeout) |
+| Save the tab as a saved query / update it | **Ctrl+S** or Save |
+| Autocomplete | type, or Ctrl+Space; after `alias.` you get that table's columns |
+| Insert a table/column name | click it in the Schema panel |
+| Look at a table | hover it in the Schema panel → Preview |
+| Sort results | click a column header (asc → desc → off) |
+| Copy a value | click a cell, then Ctrl+C |
+| Close a tab | × or middle-click |
+
+Open tabs are kept in your browser (localStorage), so a page refresh doesn't lose your work.
+Results are not kept; run the query again after a refresh.
+
+## Running queries (API)
 `POST /api/query` with `{"connection_id": 1, "sql": "SELECT ...", "limit": 1000}`.
 
 - One statement per run, read queries only (SELECT, WITH, SHOW, DESCRIBE, EXPLAIN).
@@ -74,6 +95,7 @@ For a database running on your own (Windows) machine, use the host **`host.docke
 ```sh
 docker compose exec backend pytest
 docker compose exec frontend npm run typecheck
+docker compose exec frontend npm test
 ```
 Backend tests use a separate `vita_test` database, so they don't touch your saved connections.
 
