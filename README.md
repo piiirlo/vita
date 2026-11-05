@@ -3,7 +3,8 @@
 A small, self-hosted data visualization tool — a much simpler alternative to Apache Superset.
 Connect a database, write SQL, turn results into charts, put charts on dashboards.
 
-**Status:** Part 2 — save, test and browse database connections (PostgreSQL, MySQL).
+**Status:** Part 3: save, test and browse database connections (PostgreSQL, MySQL), and run
+read-only SQL queries on them (temporary "Query playground" page).
 
 ## Requirements
 - Docker with Docker Compose
@@ -55,6 +56,19 @@ docker compose up -d sampledb
 ## Connecting to your own databases
 The backend runs inside Docker, so `localhost` there means the backend container itself.
 For a database running on your own (Windows) machine, use the host **`host.docker.internal`**.
+
+## Running queries
+`POST /api/query` with `{"connection_id": 1, "sql": "SELECT ...", "limit": 1000}`.
+
+- One statement per run, read queries only (SELECT, WITH, SHOW, DESCRIBE, EXPLAIN).
+- Every query runs in a read-only transaction that is rolled back afterwards.
+- Up to 1,000 rows by default (max 10,000); `truncated: true` means there were more.
+- Queries are stopped after 30 seconds.
+- Every run is logged: `GET /api/query-history?limit=50&offset=0`.
+
+> **Use a read-only database user for your connections.** Vita's checks block writes, but
+> a read-only transaction can't stop everything (for example, functions with side effects
+> such as `pg_terminate_backend()`). The database's own permissions are the real protection.
 
 ## Tests
 ```sh

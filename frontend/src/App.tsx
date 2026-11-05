@@ -2,6 +2,7 @@ import { NavLink, Navigate, Route, Routes } from "react-router";
 import BrowsePage from "./pages/BrowsePage.tsx";
 import ConnectionFormPage from "./pages/ConnectionFormPage.tsx";
 import ConnectionsPage from "./pages/ConnectionsPage.tsx";
+import PlaygroundPage from "./pages/PlaygroundPage.tsx";
 import StatusPage from "./pages/StatusPage.tsx";
 
 export default function App() {
@@ -11,6 +12,7 @@ export default function App() {
         <span className="brand">Vita</span>
         <nav>
           <NavLink to="/connections">Connections</NavLink>
+          <NavLink to="/playground">Query playground</NavLink>
           <NavLink to="/status">Status</NavLink>
         </nav>
       </header>
@@ -23,6 +25,7 @@ export default function App() {
           <Route path="/connections/new" element={<ConnectionFormPage />} />
           <Route path="/connections/:id/edit" element={<ConnectionFormPage />} />
           <Route path="/connections/:id/browse" element={<BrowsePage />} />
+          <Route path="/playground" element={<PlaygroundPage />} />
           <Route path="*" element={<p>Page not found.</p>} />
         </Routes>
       </main>

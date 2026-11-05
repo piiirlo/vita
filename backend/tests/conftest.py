@@ -49,7 +49,7 @@ def test_engine() -> Iterator[Engine]:
 @pytest.fixture
 def session_factory(test_engine: Engine) -> sessionmaker[Session]:
     with test_engine.begin() as conn:
-        conn.execute(text("TRUNCATE connections RESTART IDENTITY"))
+        conn.execute(text("TRUNCATE query_history, connections RESTART IDENTITY"))
     return sessionmaker(bind=test_engine, autoflush=False, expire_on_commit=False)
 
 

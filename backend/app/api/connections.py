@@ -48,14 +48,14 @@ SYSTEM_SCHEMAS = {
 # ---------- helpers ----------
 
 
-def _get_or_404(db: Session, connection_id: int) -> Connection:
+def get_connection_or_404(db: Session, connection_id: int) -> Connection:
     conn = db.get(Connection, connection_id)
     if conn is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Connection not found")
     return conn
 
 
-def _saved_details(conn: Connection) -> ConnectionDetails:
+def saved_connection_details(conn: Connection) -> ConnectionDetails:
     try:
         return details_from_connection(conn)
     except InvalidToken:
@@ -128,7 +128,7 @@ def test_unsaved_connection(payload: ConnectionTestRequest, db: DbSession) -> Te
     elif payload.password:
         password = payload.password
     elif payload.connection_id is not None:
-        password = _saved_details(_get_or_404(db, payload.connection_id)).password
+        password = saved_connection_details(get_connection_or_404(db, payload.connection_id)).password
     else:
         password = None
     details = ConnectionDetails(
@@ -140,12 +140,12 @@ def test_unsaved_connection(payload: ConnectionTestRequest, db: DbSession) -> Te
 
 @router.get("/{connection_id}", response_model=ConnectionOut)
 def get_connection(connection_id: int, db: DbSession) -> Connection:
-    return _get_or_404(db, connection_id)
+    return get_connection_or_404(db, connection_id)
 
 
 @router.put("/{connection_id}", response_model=ConnectionOut)
 def update_connection(connection_id: int, payload: ConnectionUpdate, db: DbSession) -> Connection:
-    conn = _get_or_404(db, connection_id)
+    conn = get_connection_or_404(db, connection_id)
     for field, value in payload.model_dump(exclude={"password", "clear_password"}).items():
         setattr(conn, field, value)
     if payload.clear_password:
@@ -160,14 +160,14 @@ def update_connection(connection_id: int, payload: ConnectionUpdate, db: DbSessi
 
 @router.delete("/{connection_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_connection(connection_id: int, db: DbSession) -> Response:
-    db.delete(_get_or_404(db, connection_id))
+    db.delete(get_connection_or_404(db, connection_id))
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/{connection_id}/test", response_model=TestResult)
 def test_saved_connection(connection_id: int, db: DbSession) -> TestResult:
-    return _run_test(_saved_details(_get_or_404(db, connection_id)))
+    return _run_test(saved_connection_details(get_connection_or_404(db, connection_id)))
 
 
 # ---------- browsing ----------
@@ -175,7 +175,7 @@ def test_saved_connection(connection_id: int, db: DbSession) -> TestResult:
 
 @router.get("/{connection_id}/schemas", response_model=list[str])
 def list_schemas(connection_id: int, db: DbSession) -> list[str]:
-    details = _saved_details(_get_or_404(db, connection_id))
+    details = saved_connection_details(get_connection_or_404(db, connection_id))
     with _inspector(details) as insp:
         names = insp.get_schema_names()
     return sorted(n for n in names if n not in SYSTEM_SCHEMAS and not n.startswith("pg_temp"))
@@ -183,7 +183,7 @@ def list_schemas(connection_id: int, db: DbSession) -> list[str]:
 
 @router.get("/{connection_id}/schemas/{schema}/tables", response_model=list[TableInfo])
 def list_tables(connection_id: int, schema: str, db: DbSession) -> list[TableInfo]:
-    details = _saved_details(_get_or_404(db, connection_id))
+    details = saved_connection_details(get_connection_or_404(db, connection_id))
     with _inspector(details) as insp:
         if not insp.has_schema(schema):
             raise HTTPException(status.HTTP_404_NOT_FOUND, f'Schema "{schema}" not found')
@@ -197,7 +197,7 @@ def list_tables(connection_id: int, schema: str, db: DbSession) -> list[TableInf
     response_model=list[ColumnInfo],
 )
 def list_columns(connection_id: int, schema: str, table: str, db: DbSession) -> list[ColumnInfo]:
-    details = _saved_details(_get_or_404(db, connection_id))
+    details = saved_connection_details(get_connection_or_404(db, connection_id))
     try:
         with _inspector(details) as insp:
             db_conn = insp.bind

@@ -68,10 +68,13 @@ export type ColumnInfo = {
 
 export class ApiError extends Error {
   readonly status: number;
+  /** Raw `detail` from the response body (an object for query errors). */
+  readonly detail: unknown;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, detail?: unknown) {
     super(message);
     this.status = status;
+    this.detail = detail;
   }
 }
 
@@ -80,6 +83,10 @@ function errorMessage(body: unknown, status: number): string {
   if (typeof body === "object" && body !== null && "detail" in body) {
     const detail = (body as { detail: unknown }).detail;
     if (typeof detail === "string") return detail;
+    // Query errors: {kind, message, line, column}
+    if (typeof detail === "object" && detail !== null && "message" in detail) {
+      return String((detail as { message: unknown }).message);
+    }
     // 422 validation errors: [{loc: [...], msg: "..."}]
     if (Array.isArray(detail)) {
       return detail
@@ -100,7 +107,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (response.status === 204) return undefined as T;
   const body: unknown = await response.json().catch(() => null);
-  if (!response.ok) throw new ApiError(response.status, errorMessage(body, response.status));
+  if (!response.ok) {
+    const detail = typeof body === "object" && body !== null && "detail" in body
+      ? (body as { detail: unknown }).detail
+      : undefined;
+    throw new ApiError(response.status, errorMessage(body, response.status), detail);
+  }
   return body as T;
 }
 
@@ -157,6 +169,25 @@ export const listSchemas = (id: number) => request<string[]>(`/api/connections/$
 
 export const listTables = (id: number, schema: string) =>
   request<TableInfo[]>(`/api/connections/${id}/schemas/${seg(schema)}/tables`);
+
+// ---------- query engine ----------
+
+export type GenericType = "number" | "string" | "datetime" | "date" | "boolean" | "other";
+
+export type QueryResult = {
+  columns: { name: string; type: GenericType; db_type: string }[];
+  rows: unknown[][];
+  row_count: number;
+  truncated: boolean;
+  duration_ms: number;
+};
+
+/** Throws ApiError; for failed queries `detail` is {kind, message, line, column}. */
+export const runQuery = (connectionId: number, sql: string, limit?: number) =>
+  request<QueryResult>("/api/query", {
+    method: "POST",
+    body: json({ connection_id: connectionId, sql, limit: limit ?? null }),
+  });
 
 export const listColumns = (id: number, schema: string, table: string) =>
   request<ColumnInfo[]>(

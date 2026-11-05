@@ -69,13 +69,30 @@ def build_url(details: ConnectionDetails) -> URL:
     )
 
 
-def create_engine_for(details: ConnectionDetails) -> Engine:
+def create_engine_for(
+    details: ConnectionDetails, query_timeout_seconds: float | None = None
+) -> Engine:
     """Engine for a user database. `extra` options are passed to the DB driver
-    (e.g. {"sslmode": "require"}); our connect timeout always wins."""
+    (e.g. {"sslmode": "require"}); our timeouts always win.
+
+    With query_timeout_seconds, the driver also gets network-level guards so a
+    query can't hang forever on a dead connection (used by the query engine)."""
     connect_args: dict[str, Any] = {
         **(details.extra or {}),
         "connect_timeout": CONNECT_TIMEOUT_SECONDS,
     }
+    if query_timeout_seconds is not None:
+        guard = int(query_timeout_seconds) + 10
+        if details.db_type == "mysql":
+            connect_args.update(read_timeout=guard, write_timeout=guard)
+        else:
+            connect_args.update(
+                keepalives=1,
+                keepalives_idle=15,
+                keepalives_interval=5,
+                keepalives_count=3,
+                tcp_user_timeout=guard * 1000,
+            )
     return create_engine(build_url(details), poolclass=NullPool, connect_args=connect_args)
 
 

@@ -17,7 +17,7 @@ One part at a time, in order:
 
 1. **Foundation** — repo, backend, frontend, DB, Docker *(done)*
 2. **Database connections** — save, test, browse schemas/tables/columns; encrypted credentials *(done)*
-3. **Query engine** — run SQL with row limits, timeouts, clean errors
+3. **Query engine** — run SQL with row limits, timeouts, clean errors *(done)*
 4. **SQL editor** — Monaco, results table, schema browser, saved queries
 5. **Datasets** — table or saved query + column metadata, time column
 6. **Chart builder** — table, big number, bar, line; backend generates SQL from chart config
@@ -46,6 +46,13 @@ This folder may contain the Apache Superset source code. It is **read-only refer
   - `app/engines.py` — builds SQLAlchemy engines for *user* databases (NullPool, 5s connect
     timeout). Reuse it for anything that talks to a user DB (query engine, datasets, charts).
   - `app/db_errors.py` — turns driver errors into human-readable messages. Reuse it too.
+  - `app/query/` — the query engine. **Always use `run_query(details, sql, limit, timeout)`**
+    to run SQL on a user database (chart builder too); never execute user SQL directly.
+    Safety layers: sqlglot check (one statement, read queries only; `validate.py`), a
+    read-only transaction that is always rolled back, server-side timeout + client-side
+    guard, and at most limit + 1 rows fetched (Postgres server-side cursor; MySQL outer
+    LIMIT capped). Errors are `QueryError(kind, message, line, column)`.
+    Every run via the API is logged in `query_history`.
   - `app/browsing.py` — column metadata for a table. Falls back to `information_schema` on
     Postgres servers that deny access to system catalogs (e.g. public RNAcentral). Reuse it.
   - `app/crypto.py` — Fernet encryption of saved passwords (`VITA_SECRET_KEY`). Passwords are
@@ -54,6 +61,7 @@ This folder may contain the Apache Superset source code. It is **read-only refer
     non-empty password → use it, empty → keep the saved one.
 - `frontend/` — Vite React TS app (`src/`, pages in `src/pages/`, typed API calls in
   `src/api.ts`); dev server proxies `/api` to the backend. Routing: react-router.
+  `PlaygroundPage.tsx` is a temporary page from Part 3; replace it in Part 4.
 - `sampledb/init/` — seed SQL for the demo database (`sales` schema: customers, products,
   orders, order_items, view order_totals; ~2 years of orders, deterministic).
 - `docker-compose.yml` — `db` (Vita metadata), `sampledb` (demo data), `backend`, `frontend`
