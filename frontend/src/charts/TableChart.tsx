@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import type { ChartDataResult, Dataset } from "../api.ts";
 import { categoryLabel, formatNumber, toNumber } from "./format.ts";
-import { metricFormat, metricName, outputLabel, type ChartState } from "./model.ts";
+import { metricFormatter } from "./display.ts";
+import { metricName, outputLabel, type ChartState } from "./model.ts";
 
 type Sort = { index: number; desc: boolean } | null;
 
@@ -25,31 +26,37 @@ export default function TableChart({
   dataset: Dataset | null;
 }) {
   const [sort, setSort] = useState<Sort>(null);
-  const { query } = state;
+  const { query, display } = state;
   const grain = query.time?.grain ?? null;
+
+  // Dataset value labels per column ("1" -> "Lethbridge").
+  const valueLabels = useMemo(() => {
+    const map: Record<string, Record<string, string>> = {};
+    for (const c of dataset?.columns ?? []) if (c.value_labels) map[c.name] = c.value_labels;
+    return map;
+  }, [dataset]);
 
   const columns = useMemo(
     () =>
       result.columns.map((c) => {
         const metric = query.metrics.find((m) => metricName(m) === c.name);
+        const formatMetric = metric ? metricFormatter(display, metric, dataset) : null;
         const isTime = Boolean(grain && c.name === query.time?.column);
         return {
           name: c.name,
           label: outputLabel(c.name, query, dataset),
           numeric: Boolean(metric) || c.type === "number",
           format: (value: unknown) =>
-            metric
-              ? formatNumber(value, metricFormat(metric, dataset))
+            formatMetric
+              ? formatMetric(value)
               : isTime
                 ? categoryLabel(value, grain)
                 : value === null || value === undefined
                   ? "(empty)"
-                  : c.type === "number"
-                    ? formatNumber(value)
-                    : String(value),
+                  : (valueLabels[c.name]?.[String(value)] ?? (c.type === "number" ? formatNumber(value) : String(value))),
         };
       }),
-    [result.columns, query, dataset, grain],
+    [result.columns, query, display, dataset, grain, valueLabels],
   );
 
   const rows = useMemo(() => {

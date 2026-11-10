@@ -190,4 +190,25 @@ describe("Dataset edit page", () => {
     expect(await screen.findByText("completed")).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText('SELECT * FROM "sales"."orders"')).toBeInTheDocument());
   });
+
+  it("edits value labels of a column and saves only them", async () => {
+    const calls = mockApi();
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Value labels of id" }));
+    const dialog = await screen.findByRole("dialog", { name: /Value labels of .id./ });
+    fireEvent.change(within(dialog).getByLabelText("Value 1"), { target: { value: "1" } });
+    fireEvent.change(within(dialog).getByLabelText("Label for value 1"), { target: { value: "Lethbridge" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add value" }));
+    fireEvent.change(within(dialog).getByLabelText("Value 2"), { target: { value: "2" } });
+    fireEvent.change(within(dialog).getByLabelText("Label for value 2"), { target: { value: "Woodridge" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Apply" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Value labels of id" })).toHaveTextContent("2 labels");
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText("Saved.")).toBeInTheDocument();
+    const put = calls.find((c) => c.method === "PUT")!.body as { columns: Record<string, unknown>[] };
+    expect(put.columns).toHaveLength(1);
+    expect(put.columns[0]).toMatchObject({ id: 1, value_labels: { "1": "Lethbridge", "2": "Woodridge" } });
+  });
 });

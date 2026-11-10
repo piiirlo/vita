@@ -28,6 +28,9 @@
   --ink-text: #f3f6f4;
   --ink-muted: #b3bca0;
   --ink-border: rgba(243, 246, 244, 0.12);
+  /* status colors on --surface-ink (big number: conditional color, change vs previous period) */
+  --ink-danger: #ff8f84;
+  --ink-success: #c3d47a;
 
   /* lines */
   --border: rgba(27, 32, 16, 0.1);
@@ -67,14 +70,18 @@
   --warning-border: rgba(196, 120, 12, 0.35);
 
   /* data series (charts, legends, share bars) */
-  --series-1: #ff5a22;
-  --series-2: #7d8d39;
-  --series-3: #3e4b1d;
-  --series-4: #ff9a73;
-  --series-5: #aab86b;
-  --series-6: #6b7a3a;
-  --series-7: #ffc4ab;
-  --series-8: #cbd4a0;
+  /* 10 clearly different hues (checked by scripts/contrast.mjs: 3:1 on cards, CIEDE2000 >= 15
+     between any two). Orange is a touch deeper than --accent so it reaches 3:1 on white. */
+  --series-1: #f0541c; /* orange */
+  --series-2: #6e7d2e; /* olive */
+  --series-3: #3e4b1d; /* dark olive */
+  --series-4: #2f6fa0; /* slate blue */
+  --series-5: #9a7a12; /* ochre */
+  --series-6: #6a4f8f; /* dusk violet */
+  --series-7: #2a8c86; /* teal */
+  --series-8: #a8445e; /* berry */
+  --series-9: #7d8796; /* stone grey */
+  --series-10: #1c2a44; /* night blue */
   --chart-grid: rgba(27, 32, 16, 0.07);
 
   /* code (SQL editor sits on --surface-ink in light mode too) */
@@ -126,6 +133,8 @@
   --ink-text: #f3f6f4;
   --ink-muted: #b3bca0;
   --ink-border: rgba(243, 246, 244, 0.1);
+  --ink-danger: #ff8f84;
+  --ink-success: #c3d47a;
 
   --border: rgba(243, 246, 244, 0.08);
   --border-strong: rgba(243, 246, 244, 0.16);
@@ -157,14 +166,16 @@
   --warning-bg: rgba(255, 176, 32, 0.1);
   --warning-border: rgba(255, 176, 32, 0.3);
 
-  --series-1: #ff5a22;
-  --series-2: #b5c566;
-  --series-3: #6f8235;
-  --series-4: #ff9a73;
-  --series-5: #d4dea0;
-  --series-6: #4e5c25;
-  --series-7: #ffc4ab;
-  --series-8: #8fa04a;
+  --series-1: #ff5a22; /* orange */
+  --series-2: #b5c566; /* olive */
+  --series-3: #6f8235; /* dark olive */
+  --series-4: #4f86c6; /* slate blue */
+  --series-5: #e8c04a; /* ochre */
+  --series-6: #c2b0ec; /* lavender */
+  --series-7: #3fa89f; /* teal */
+  --series-8: #e0789a; /* berry */
+  --series-9: #dcd3bf; /* sand */
+  --series-10: #8a6a4a; /* umber */
   --chart-grid: rgba(243, 246, 244, 0.07);
 
   --code-bg: var(--surface-sunken);

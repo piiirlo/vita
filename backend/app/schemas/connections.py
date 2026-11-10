@@ -77,3 +77,37 @@ class ColumnInfo(BaseModel):
     type: str
     nullable: bool
     primary_key: bool
+
+
+# ---------- schema diagram ----------
+
+
+class DiagramColumn(BaseModel):
+    name: str
+    type: str
+    nullable: bool
+    primary_key: bool
+    foreign_key: bool
+
+
+class DiagramTable(BaseModel):
+    name: str
+    type: Literal["table", "view"]
+    columns: list[DiagramColumn]
+
+
+class DiagramForeignKey(BaseModel):
+    name: str | None
+    table: str
+    columns: list[str]
+    referred_schema: str
+    referred_table: str
+    referred_columns: list[str]
+
+
+class SchemaDiagram(BaseModel):
+    schema_name: str
+    tables: list[DiagramTable]
+    foreign_keys: list[DiagramForeignKey]
+    # More tables than the limit: only the first ones (by name) are included.
+    truncated: bool = False

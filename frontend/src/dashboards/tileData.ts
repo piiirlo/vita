@@ -1,7 +1,8 @@
 /** Loading one chart tile: saved chart -> its dataset (cached per dashboard) -> chart data. */
 import { createContext } from "react";
-import { fetchChartData, getChart, getDataset, type ChartDataResult, type Dataset, type SavedChart } from "../api.ts";
-import { chartRequests, fromParams, type ChartState } from "../charts/model.ts";
+import { getChart, getDataset, type CacheOptions, type ChartDataResult, type Dataset, type SavedChart } from "../api.ts";
+import { loadChartData } from "../charts/load.ts";
+import { fromParams, type ChartState } from "../charts/model.ts";
 import { RequestQueue } from "./queue.ts";
 
 export const MAX_PARALLEL_TILES = 4;
@@ -12,6 +13,8 @@ export type TileData = {
   state: ChartState;
   main: ChartDataResult;
   trend: ChartDataResult | null;
+  previous: ChartDataResult | null;
+  total: ChartDataResult | null;
   loadedAt: number;
 };
 
@@ -34,16 +37,18 @@ export class DatasetCache {
   }
 }
 
-export async function loadTileData(chartId: number, datasets: DatasetCache, signal: AbortSignal): Promise<TileData> {
+/** `cache`: the dashboard's cache lifetime (null: the chart's own) and whether to skip it. */
+export async function loadTileData(
+  chartId: number,
+  datasets: DatasetCache,
+  signal: AbortSignal,
+  cache: CacheOptions = {},
+): Promise<TileData> {
   const chart = await getChart(chartId);
   const dataset = await datasets.get(chart.dataset_id);
   const state = fromParams(chart.viz_type, chart.params, dataset);
-  const requests = chartRequests(state);
-  const [main, trend] = await Promise.all([
-    fetchChartData(state.vizType, requests.main, signal),
-    requests.trend ? fetchChartData("line", requests.trend, signal) : Promise.resolve(null),
-  ]);
-  return { chart, dataset, state, main, trend, loadedAt: Date.now() };
+  const { main, trend, previous, total } = await loadChartData(state, signal, cache);
+  return { chart, dataset, state, main, trend, previous, total: total ?? null, loadedAt: Date.now() };
 }
 
 export type DashboardContextValue = {
@@ -52,6 +57,8 @@ export type DashboardContextValue = {
   dashboardId: number;
   /** Changes on "Refresh all" and auto-refresh. */
   refreshKey: number;
+  /** The dashboard's cache lifetime for every tile (seconds; 0 = off); null = each chart's own. */
+  cacheTtl: number | null;
 };
 
 export const DashboardContext = createContext<DashboardContextValue | null>(null);

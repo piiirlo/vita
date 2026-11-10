@@ -5,7 +5,7 @@ import * as echarts from "echarts/core";
 import { cssVar } from "../lib/cssVar.ts";
 import type { ResolvedTheme } from "../theme/theme.ts";
 
-export const SERIES_COUNT = 8;
+export const SERIES_COUNT = 10;
 
 export function seriesColors(): string[] {
   return Array.from({ length: SERIES_COUNT }, (_, i) => cssVar(`--series-${i + 1}`));

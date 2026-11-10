@@ -28,6 +28,7 @@ import {
   type ChartState,
   type DisplayOptions,
 } from "./model.ts";
+import { CACHE_TTLS, DEFAULT_CACHE_TTL } from "./load.ts";
 
 type Props = {
   state: ChartState;
@@ -156,26 +157,7 @@ export default function ChartControls({ state, dataset, datasets, onDataset, onV
       {vizType === "big_number" && (
         <section>
           <MetricList title="Metric" single dataset={dataset} metrics={query.metrics} onChange={(metrics) => onQuery({ metrics })} />
-          <label className="control">
-            <span>Subtitle</span>
-            <input
-              value={display.subtitle ?? ""}
-              placeholder={query.metrics[0] ? metricLabel(query.metrics[0], dataset) : ""}
-              onChange={(e) => onDisplay({ subtitle: e.target.value })}
-            />
-          </label>
-          <label className="checkbox">
-            <input
-              type="checkbox"
-              checked={Boolean(display.show_trend)}
-              disabled={temporalColumns(dataset).length === 0}
-              onChange={(e) => {
-                onDisplay({ show_trend: e.target.checked });
-                if (e.target.checked && !grain) onQuery({ time: timeWith(query, dataset, { grain: "month" }) });
-              }}
-            />
-            Show trend line
-          </label>
+          <p className="control-hint">Subtitle, colors, trend line and comparison are in Customize.</p>
         </section>
       )}
 
@@ -207,29 +189,40 @@ export default function ChartControls({ state, dataset, datasets, onDataset, onV
           </label>
           <SeriesSelect query={query} dataset={dataset} columns={nonTimeDims} onQuery={onQuery} />
           <MetricList title="Metrics" dataset={dataset} metrics={query.metrics} onChange={(metrics) => onQuery({ metrics })} />
-          <div className="checkbox-row">
-            <label className="checkbox">
-              <input type="checkbox" checked={Boolean(display.stacked)} onChange={(e) => onDisplay({ stacked: e.target.checked })} />
-              Stacked
-            </label>
-            <label className="checkbox">
-              <input
-                type="checkbox"
-                checked={Boolean(display.horizontal)}
-                onChange={(e) => onDisplay({ horizontal: e.target.checked })}
-              />
-              Horizontal
-            </label>
-          </div>
-          {!grain && (
-            <label className="control">
-              <span>Sort bars</span>
-              <select value={display.sort ?? "value"} onChange={(e) => onDisplay({ sort: e.target.value as "value" | "label" })}>
-                <option value="value">By value (largest first)</option>
-                <option value="label">By label</option>
-              </select>
-            </label>
-          )}
+        </section>
+      )}
+
+      {vizType === "pie" && (
+        <section>
+          <label className="control">
+            <span>Slices</span>
+            <select
+              aria-label="Slices"
+              value={query.dimensions[0] ?? ""}
+              onChange={(e) => onQuery({ dimensions: e.target.value ? [e.target.value] : [] })}
+            >
+              {query.dimensions.length === 0 && <option value="">Pick…</option>}
+              {dims
+                .filter((c) => !c.is_temporal)
+                .map((c) => (
+                  <option key={c.name} value={c.name}>
+                    {c.label || c.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <MetricList title="Metric" single dataset={dataset} metrics={query.metrics} onChange={(metrics) => onQuery({ metrics })} />
+          <label className="control">
+            <span>Top slices</span>
+            <NumberInput
+              value={query.series_limit ?? 0}
+              min={0}
+              max={100}
+              title="Keep the N biggest slices and group the rest into Other (0 = every slice)"
+              onChange={(n) => onQuery({ series_limit: n > 0 ? n : null })}
+            />
+          </label>
+          <p className="control-hint">The rest is grouped into “Other”. Donut, sorting and labels are in Customize.</p>
         </section>
       )}
 
@@ -237,10 +230,6 @@ export default function ChartControls({ state, dataset, datasets, onDataset, onV
         <section>
           <SeriesSelect query={query} dataset={dataset} columns={nonTimeDims} onQuery={onQuery} />
           <MetricList title="Metrics" dataset={dataset} metrics={query.metrics} onChange={(metrics) => onQuery({ metrics })} />
-          <label className="checkbox">
-            <input type="checkbox" checked={Boolean(display.show_points)} onChange={(e) => onDisplay({ show_points: e.target.checked })} />
-            Show points
-          </label>
         </section>
       )}
 
@@ -251,7 +240,7 @@ export default function ChartControls({ state, dataset, datasets, onDataset, onV
       </section>
 
       <section>
-        {vizType !== "big_number" && (
+        {vizType !== "big_number" && vizType !== "pie" && (
           <label className="control">
             <span>Order by</span>
             <div className="inline-controls">
@@ -283,7 +272,7 @@ export default function ChartControls({ state, dataset, datasets, onDataset, onV
           </label>
         )}
         <div className="inline-controls">
-          {vizType !== "big_number" && (
+          {vizType !== "big_number" && vizType !== "pie" && (
             <label className="control">
               <span>Row limit</span>
               <NumberInput value={query.row_limit} min={1} max={10000} onChange={(row_limit) => onQuery({ row_limit })} />
@@ -302,6 +291,22 @@ export default function ChartControls({ state, dataset, datasets, onDataset, onV
             </label>
           )}
         </div>
+        <label className="control">
+          <span>Cache results</span>
+          <select
+            aria-label="Cache results"
+            title="Charts reuse a result this long (Update chart and Refresh always query again)"
+            value={display.cache_ttl ?? ""}
+            onChange={(e) => onDisplay({ cache_ttl: e.target.value === "" ? undefined : Number(e.target.value) })}
+          >
+            <option value="">Default (10 minutes)</option>
+            {CACHE_TTLS.filter((t) => t.value !== DEFAULT_CACHE_TTL).map((t) => (
+              <option key={t.value} value={t.value}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+        </label>
       </section>
     </div>
   );
@@ -480,7 +485,8 @@ function TimeSection({ state, dataset, onQuery }: { state: ChartState; dataset: 
   const set = (patch: Partial<NonNullable<ChartQuery["time"]>>) => onQuery({ time: { ...time, ...patch } });
   const raw = vizType === "table" && display.mode === "raw";
   const grainRequired = vizType === "line" || (vizType === "big_number" && display.show_trend);
-  const grainShown = !raw && !(vizType === "big_number" && !display.show_trend) && !(vizType === "bar" && !time.grain);
+  const grainShown =
+    !raw && vizType !== "pie" && !(vizType === "big_number" && !display.show_trend) && !(vizType === "bar" && !time.grain);
 
   return (
     <section>

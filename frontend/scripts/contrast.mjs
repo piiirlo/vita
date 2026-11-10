@@ -59,6 +59,7 @@ const ratio = (a, b) => {
 // [what, text token, background stack (bottom first), minimum]
 const NORMAL = 4.5;
 const LARGE = 3;
+const UI = 3; // icons, borders and other non-text UI parts
 const PAIRS = [
   ["body text on page", "--text", ["--bg"], NORMAL],
   ["body text on card", "--text", ["--bg", "--surface"], NORMAL],
@@ -83,6 +84,10 @@ const PAIRS = [
   ["hero: number on ink", "--ink-text", ["--surface-ink"], NORMAL],
   ["hero: labels on ink", "--ink-muted", ["--surface-ink"], NORMAL],
   ["hero: decimals (large) on ink", "--accent", ["--surface-ink"], LARGE],
+  ["hero: below-target value / change on ink", "--ink-danger", ["--surface-ink"], NORMAL],
+  ["hero: above-target value / change on ink", "--ink-success", ["--surface-ink"], NORMAL],
+  ["big number: below-target value / change on card", "--danger", ["--bg", "--surface"], NORMAL],
+  ["big number: above-target value / change on card", "--success", ["--bg", "--surface"], NORMAL],
   ["danger text on card", "--danger", ["--bg", "--surface"], NORMAL],
   ["danger text on error box", "--danger", ["--bg", "--surface", "--danger-bg"], NORMAL],
   ["body text on error box", "--text", ["--bg", "--surface", "--danger-bg"], NORMAL],
@@ -90,6 +95,9 @@ const PAIRS = [
   ["success text on live chip", "--success", ["--bg", "--success-bg"], NORMAL],
   ["body text on live chip", "--text", ["--bg", "--success-bg"], NORMAL],
   ["live chip label", "--text", ["--bg", "--success-bg"], NORMAL],
+  ["'Connected' text in success box", "--success", ["--bg", "--surface", "--success-bg"], NORMAL],
+  ["'Connected' check circle on success box", "--success", ["--bg", "--surface", "--success-bg"], UI],
+  ["'Connected' tick on check circle", "--surface", ["--success"], UI],
   ["warning text on warning box", "--warning-text", ["--bg", "--surface", "--warning-bg"], NORMAL],
   ["body text on metric chip", "--text", ["--bg", "--surface", "--accent-soft"], NORMAL],
   ["SQL text", "--code-text", ["--code-bg"], NORMAL],
@@ -104,6 +112,57 @@ const PAIRS = [
   ["focus ring vs page", "--focus-ring", ["--bg"], LARGE],
   ["focus ring vs card", "--focus-ring", ["--bg", "--surface"], LARGE],
 ];
+
+// Chart series: each one is a UI part (3:1 on cards), and every two must be clearly different
+// colors (CIEDE2000; 15+ is "clearly different" at a glance, neighbors get 18+).
+const SERIES = Array.from({ length: 10 }, (_, i) => `--series-${i + 1}`);
+for (const token of SERIES) PAIRS.push([`chart ${token.slice(2)} on card`, token, ["--bg", "--surface"], UI]);
+const MIN_DELTA_E = 15;
+const MIN_DELTA_E_NEIGHBORS = 18;
+
+function toLab([r, g, b]) {
+  const lin = (v) => ((v /= 255) <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+  const [R, G, B] = [lin(r), lin(g), lin(b)];
+  const f = (t) => (t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116);
+  const x = f((R * 0.4124 + G * 0.3576 + B * 0.1805) / 0.95047);
+  const y = f(R * 0.2126 + G * 0.7152 + B * 0.0722);
+  const z = f((R * 0.0193 + G * 0.1192 + B * 0.9505) / 1.08883);
+  return [116 * y - 16, 500 * (x - y), 200 * (y - z)];
+}
+
+/** CIEDE2000 color difference. */
+function deltaE(c1, c2) {
+  const [L1, a1, b1] = toLab(c1);
+  const [L2, a2, b2] = toLab(c2);
+  const rad = Math.PI / 180;
+  const Cm = (Math.hypot(a1, b1) + Math.hypot(a2, b2)) / 2;
+  const G = 0.5 * (1 - Math.sqrt(Cm ** 7 / (Cm ** 7 + 25 ** 7)));
+  const a1p = a1 * (1 + G);
+  const a2p = a2 * (1 + G);
+  const C1p = Math.hypot(a1p, b1);
+  const C2p = Math.hypot(a2p, b2);
+  const hue = (a, b) => (Math.atan2(b, a) / rad + 360) % 360;
+  const h1p = hue(a1p, b1);
+  const h2p = hue(a2p, b2);
+  let dhp = h2p - h1p;
+  if (C1p * C2p === 0) dhp = 0;
+  else if (dhp > 180) dhp -= 360;
+  else if (dhp < -180) dhp += 360;
+  const dLp = L2 - L1;
+  const dCp = C2p - C1p;
+  const dHp = 2 * Math.sqrt(C1p * C2p) * Math.sin((dhp / 2) * rad);
+  const Lm = (L1 + L2) / 2;
+  const Cmp = (C1p + C2p) / 2;
+  let hm = h1p + h2p;
+  if (C1p * C2p !== 0) hm = Math.abs(h1p - h2p) > 180 ? (hm + (hm < 360 ? 360 : -360)) / 2 : hm / 2;
+  const T =
+    1 - 0.17 * Math.cos((hm - 30) * rad) + 0.24 * Math.cos(2 * hm * rad) + 0.32 * Math.cos((3 * hm + 6) * rad) - 0.2 * Math.cos((4 * hm - 63) * rad);
+  const SL = 1 + (0.015 * (Lm - 50) ** 2) / Math.sqrt(20 + (Lm - 50) ** 2);
+  const SC = 1 + 0.045 * Cmp;
+  const SH = 1 + 0.015 * Cmp * T;
+  const RT = -2 * Math.sqrt(Cmp ** 7 / (Cmp ** 7 + 25 ** 7)) * Math.sin(60 * Math.exp(-(((hm - 275) / 25) ** 2)) * rad);
+  return Math.sqrt((dLp / SL) ** 2 + (dCp / SC) ** 2 + (dHp / SH) ** 2 + RT * (dCp / SC) * (dHp / SH));
+}
 
 let failed = 0;
 for (const [theme, vars] of [
@@ -120,6 +179,26 @@ for (const [theme, vars] of [
     if (!ok) failed += 1;
     console.log(`${ok ? "  ok  " : "  FAIL"} ${r.toFixed(2).padStart(5)}:1 (min ${min})  ${what}  [${fg}]`);
   }
+}
+
+for (const [theme, vars] of [
+  ["light", light],
+  ["dark", dark],
+]) {
+  console.log(`\n${theme}: chart series must be clearly different`);
+  const colors = SERIES.map((t) => parse(resolve(vars, vars[t])));
+  let worst = { d: Infinity, what: "" };
+  for (let i = 0; i < colors.length; i++)
+    for (let j = i + 1; j < colors.length; j++) {
+      const d = deltaE(colors[i], colors[j]);
+      const min = j === i + 1 ? MIN_DELTA_E_NEIGHBORS : MIN_DELTA_E;
+      if (d < min) {
+        failed += 1;
+        console.log(`  FAIL ΔE ${d.toFixed(1)} (min ${min})  series-${i + 1} vs series-${j + 1}`);
+      }
+      if (d < worst.d) worst = { d, what: `series-${i + 1} vs series-${j + 1}` };
+    }
+  console.log(`  closest pair: ${worst.what}, ΔE ${worst.d.toFixed(1)} (min ${MIN_DELTA_E}, neighbors ${MIN_DELTA_E_NEIGHBORS})`);
 }
 console.log(failed ? `\n${failed} pair(s) below the minimum.` : "\nAll pairs pass.");
 process.exit(failed ? 1 : 0);

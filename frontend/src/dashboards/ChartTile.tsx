@@ -21,7 +21,12 @@ type Props = {
 export default function ChartTile({ tile, info, editing, onRemove }: Props) {
   const ctx = useContext(DashboardContext);
   if (!ctx) throw new Error("ChartTile must be inside a dashboard");
-  const { queue, datasets, refreshKey, dashboardId } = ctx;
+  const { queue, datasets, refreshKey, dashboardId, cacheTtl } = ctx;
+  // The first load may use the chart-data cache; every reload after it (Refresh, Refresh all,
+  // auto-refresh) asks for fresh data.
+  const loadedOnce = useRef(false);
+  const cacheTtlRef = useRef(cacheTtl);
+  cacheTtlRef.current = cacheTtl;
 
   const ref = useRef<HTMLDivElement>(null);
   const inView = useInView(ref);
@@ -41,17 +46,23 @@ export default function ChartTile({ tile, info, editing, onRemove }: Props) {
     const controller = new AbortController();
     let cancelled = false;
     setLoading(true);
-    const queued = queue.schedule(() => loadTileData(tile.chart_id, datasets, controller.signal), inViewRef.current === true);
+    const refresh = loadedOnce.current;
+    const queued = queue.schedule(
+      () => loadTileData(tile.chart_id, datasets, controller.signal, { cacheTtl: cacheTtlRef.current, refresh }),
+      inViewRef.current === true,
+    );
     task.current = queued;
     queued.promise.then(
       (loaded) => {
         if (cancelled) return;
+        loadedOnce.current = true;
         setData(loaded);
         setError(null);
         setLoading(false);
       },
       (err: unknown) => {
         if (cancelled || err instanceof CancelledError) return;
+        loadedOnce.current = true; // Retry / Refresh after an error query fresh too
         setError(errorText(err));
         setLoading(false);
       },
@@ -67,7 +78,8 @@ export default function ChartTile({ tile, info, editing, onRemove }: Props) {
     if (inView) task.current?.setVisible(true);
   }, [inView]);
 
-  const name = data?.chart.name ?? info?.name ?? "Chart";
+  // The chart's own title (Customize) wins over its name.
+  const name = data?.state.display.title?.trim() || data?.chart.name || info?.name || "Chart";
   const sqls = data ? [data.main.sql, ...(data.trend ? [data.trend.sql] : [])] : [];
 
   return (
@@ -78,6 +90,11 @@ export default function ChartTile({ tile, info, editing, onRemove }: Props) {
         </span>
         {loading && data && <span className="live-dot" role="status" aria-label="Refreshing" />}
         <span className="spacer" />
+        {!loading && data?.main.cached_at && data.state.vizType !== "big_number" && (
+          <span className="tile-cached mono" title="From the chart-data cache; Refresh queries again" data-testid="tile-cached">
+            cached {relativeTime(data.main.cached_at)}
+          </span>
+        )}
         {!editing && (
           <TileMenu
             label={`Menu for ${name}`}
@@ -110,12 +127,21 @@ export default function ChartTile({ tile, info, editing, onRemove }: Props) {
           </div>
         ) : data ? (
           <TileErrorBoundary key={data.loadedAt}>
-            <ChartView state={data.state} result={data.main} trend={data.trend} dataset={data.dataset} />
+            <ChartView state={data.state} result={data.main} trend={data.trend} previous={data.previous} total={data.total} dataset={data.dataset} />
             {data.state.vizType === "big_number" && (
               <div className="hero-meta">
-                <span className="scan-line" aria-hidden />
+                {loading ? (
+                  <span className="scan-line" aria-hidden data-testid="hero-loading-line" />
+                ) : (
+                  <span className="hero-rule" aria-hidden>
+                    {/* Keyed by load time: runs once per new value, then it's gone. */}
+                    <span key={data.loadedAt} className="hero-sweep" data-testid="hero-sweep" />
+                  </span>
+                )}
                 <span className="mono">
-                  query {data.main.duration_ms} ms · refreshed {relativeTime(new Date(data.loadedAt).toISOString())}
+                  {data.main.cached_at
+                    ? `cached ${relativeTime(data.main.cached_at)}`
+                    : `query ${data.main.duration_ms} ms · refreshed ${relativeTime(new Date(data.loadedAt).toISOString())}`}
                 </span>
               </div>
             )}

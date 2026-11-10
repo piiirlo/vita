@@ -9,10 +9,10 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
+from app.dashboard_grid import GRID_COLUMNS
 from app.db import get_db
 from app.models import Chart, Dashboard, DashboardChart
 from app.schemas.dashboards import (
-    GRID_COLUMNS,
     MAX_TILES,
     AddChartIn,
     ChartTile,
@@ -27,8 +27,8 @@ router = APIRouter()
 DbSession = Annotated[Session, Depends(get_db)]
 
 # Size of a chart tile added with "Add to dashboard" (half the grid width).
-NEW_CHART_TILE_W = 6
-NEW_CHART_TILE_H = 8
+NEW_CHART_TILE_W = 12  # half the 24-column grid
+NEW_CHART_TILE_H = 16
 
 
 def _get_or_404(db: Session, dashboard_id: int) -> Dashboard:
@@ -59,6 +59,7 @@ def _out(db: Session, dashboard: Dashboard) -> DashboardOut:
         description=dashboard.description,
         layout=dashboard.layout,
         refresh_interval=dashboard.refresh_interval,
+        cache_ttl=dashboard.cache_ttl,
         charts={
             c.id: DashboardChartInfo(id=c.id, name=c.name, viz_type=c.viz_type) for c in charts
         },
@@ -112,6 +113,7 @@ def _apply(db: Session, dashboard: Dashboard, payload: DashboardIn) -> None:
     dashboard.name = name
     dashboard.description = (payload.description or "").strip() or None
     dashboard.refresh_interval = payload.refresh_interval
+    dashboard.cache_ttl = payload.cache_ttl
     _set_layout(db, dashboard, [t.model_dump(mode="json") for t in payload.layout])
 
 
@@ -199,6 +201,7 @@ def duplicate_dashboard(dashboard_id: int, db: DbSession) -> DashboardOut:
         name=_copy_name(db, source.name),
         description=source.description,
         refresh_interval=source.refresh_interval,
+        cache_ttl=source.cache_ttl,
     )
     _set_layout(db, copy, [dict(t) for t in source.layout])
     db.add(copy)

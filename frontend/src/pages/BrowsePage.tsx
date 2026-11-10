@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Link, useParams } from "react-router";
 import {
   getConnection,
@@ -12,6 +12,19 @@ import {
 import { usePageTitle } from "../components/usePageTitle.ts";
 import PageHeader from "../shell/PageHeader.tsx";
 import { Button } from "../components/ui/button.tsx";
+
+// The diagram (and dagre) load only when someone opens it.
+const SchemaDiagram = lazy(() => import("../browse/SchemaDiagram.tsx"));
+
+type BrowseView = "list" | "diagram";
+const VIEW_KEY = "vita.browse.view";
+function savedView(): BrowseView {
+  try {
+    return localStorage.getItem(VIEW_KEY) === "diagram" ? "diagram" : "list";
+  } catch {
+    return "list";
+  }
+}
 
 /** Result of an async load: null while loading, or data, or an error message. */
 type Loaded<T> = { data: T; error: null } | { data: null; error: string } | null;
@@ -48,9 +61,20 @@ export default function BrowsePage() {
   const id = Number(useParams().id);
   const [schema, setSchema] = useState<string | null>(null);
   const [table, setTable] = useState<string | null>(null);
+  const [view, setViewState] = useState<BrowseView>(savedView);
+  function setView(next: BrowseView) {
+    setViewState(next);
+    try {
+      localStorage.setItem(VIEW_KEY, next);
+    } catch {
+      // just not remembered
+    }
+  }
 
   const connection = useLoad<Connection>(() => getConnection(id), [id]);
   const schemas = useLoad<string[]>(() => listSchemas(id), [id]);
+  // The diagram shows one schema: the picked one, else "public", else the first.
+  const diagramSchema = schema ?? (schemas?.data?.includes("public") ? "public" : (schemas?.data?.[0] ?? null));
   const tables = useLoad<TableInfo[]>(schema ? () => listTables(id, schema) : null, [id, schema]);
   const columns = useLoad<ColumnInfo[]>(
     schema && table ? () => listColumns(id, schema, table) : null,
@@ -82,7 +106,49 @@ export default function BrowsePage() {
       />
       {connection?.error && <p className="alert alert-error">{connection.error}</p>}
 
-      <div className="browser">
+      <div className="browse-view-bar">
+        <div className="segmented" role="radiogroup" aria-label="View">
+          {(["list", "diagram"] as const).map((v) => (
+            <button key={v} type="button" role="radio" aria-checked={view === v} className={view === v ? "active" : ""} onClick={() => setView(v)}>
+              {v === "list" ? "List" : "Diagram"}
+            </button>
+          ))}
+        </div>
+        {view === "diagram" && schemas?.data && schemas.data.length > 0 && (
+          <label className="inline-label small">
+            Schema
+            <select aria-label="Schema" value={diagramSchema ?? ""} onChange={(e) => selectSchema(e.target.value)}>
+              {schemas.data.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+      </div>
+
+      {view === "diagram" && (
+        <>
+          <Status state={schemas} />
+          {schemas?.data && schemas.data.length === 0 && <p className="muted small pad">No schemas.</p>}
+          {diagramSchema && connection?.data && (
+            <Suspense
+              fallback={
+                <div className="diagram diagram-loading" role="status" aria-label="Loading diagram">
+                  <span className="skeleton" />
+                  <span className="skeleton" />
+                  <span className="skeleton" />
+                </div>
+              }
+            >
+              <SchemaDiagram connectionId={id} dbType={connection.data.db_type} schema={diagramSchema} />
+            </Suspense>
+          )}
+        </>
+      )}
+
+      <div className="browser" hidden={view !== "list"}>
         <section className="panel">
           <h2>Schemas</h2>
           <Status state={schemas} />

@@ -32,6 +32,9 @@ from app.schemas.charts import AdhocMetric, ChartQuery, Grain, MetricRef, VizTyp
 
 TOP_SERIES_ALIAS = "top_series"
 TOP_SERIES_COLUMN = "__series"
+# Pie: 1 on the row that groups every slice outside the top N ("Other"), else 0.
+OTHER_COLUMN = "__other"
+TOP_FLAG_COLUMN = "__is_top"
 
 # Which column types each ad-hoc aggregate accepts.
 _AGGREGATE_TYPES: dict[str, set[str] | None] = {
@@ -48,6 +51,9 @@ _AGGREGATE_TYPES: dict[str, set[str] | None] = {
 class BuiltChartQuery:
     sql: str
     row_limit: int
+    # The time range the query filtered on: [start, end), None = open on that side.
+    time_start: date | None = None
+    time_end: date | None = None
 
 
 def _invalid(message: str) -> NoReturn:
@@ -76,6 +82,7 @@ class _Builder:
         self.selects: list[exp.Expr] = []
         self.group_by: list[exp.Expr] = []
         self.outputs: dict[str, exp.Expr] = {}  # output name -> expression
+        self.time_bounds: tuple[date | None, date | None] = (None, None)
 
     # ---------- lookups ----------
 
@@ -144,6 +151,8 @@ class _Builder:
     def build(self, viz_type: VizType, query: ChartQuery) -> BuiltChartQuery:
         raw = bool(query.columns)
         _check_shape(viz_type, query, raw)
+        if viz_type == "pie":
+            return self.build_pie(query)
 
         time_col, grain = self.time_column(query, raw)
         conditions = self.conditions(query, time_col)
@@ -190,7 +199,88 @@ class _Builder:
         if order:
             select = select.order_by(*order)
         select = select.limit(query.row_limit + 1)
-        return BuiltChartQuery(select.sql(dialect=self.dialect, pretty=True), query.row_limit)
+        return BuiltChartQuery(
+            select.sql(dialect=self.dialect, pretty=True),
+            query.row_limit,
+            time_start=self.time_bounds[0],
+            time_end=self.time_bounds[1],
+        )
+
+    def build_pie(self, query: ChartQuery) -> BuiltChartQuery:
+        """One dimension + one metric. With series_limit N: the top N slices by the metric,
+        and one more row (__other = 1, dimension NULL) for everything else, computed in SQL
+        so "Other" is right for any aggregate (AVG, COUNT DISTINCT...), not just sums."""
+        time_col, _ = self.time_column(query, raw=False)
+        conditions = self.conditions(query, time_col)
+        dim = self.group_column(query.dimensions[0], "dimension")
+        ref = sql_column(dim.name)
+        name, metric_expr = self.metric(query.metrics[0])
+        self.outputs = {dim.name: ref, OTHER_COLUMN: ref, name: metric_expr}
+        source = from_clause(source_of(self.dataset), self.db_type)
+        limit = query.series_limit
+
+        if limit is None:
+            label: exp.Expr = ref.copy()
+            flag: exp.Expr = exp.Literal.number(0)
+            select = exp.select(
+                label.as_(dim.name, quoted=True),
+                flag.as_(OTHER_COLUMN, quoted=True),
+                metric_expr.as_(name, quoted=True),
+            ).from_(source)
+            group_by: list[exp.Expr] = [ref.copy()]
+        else:
+            top = (
+                exp.select(
+                    ref.as_(TOP_SERIES_COLUMN, quoted=True),
+                    exp.Literal.number(1).as_(TOP_FLAG_COLUMN, quoted=True),
+                )
+                .from_(from_clause(source_of(self.dataset), self.db_type))
+                .group_by(ref.copy())
+                .order_by(_ordered(metric_expr, desc=True), _ordered(ref, desc=False))
+                .limit(limit)
+            )
+            if conditions:
+                top = top.where(exp.and_(*[c.copy() for c in conditions]))
+            in_top = exp.EQ(
+                this=exp.Column(this=quoted(TOP_FLAG_COLUMN), table=quoted(TOP_SERIES_ALIAS)),
+                expression=exp.Literal.number(1),
+            )
+            label = exp.Case(ifs=[exp.If(this=in_top.copy(), true=ref.copy())])
+            flag = exp.Case(
+                ifs=[exp.If(this=in_top.copy(), true=exp.Literal.number(0))],
+                default=exp.Literal.number(1),
+            )
+            on = exp.NullSafeEQ(
+                this=ref.copy(),
+                expression=exp.Column(
+                    this=quoted(TOP_SERIES_COLUMN), table=quoted(TOP_SERIES_ALIAS)
+                ),
+            )
+            joined = exp.Subquery(this=top, alias=exp.TableAlias(this=quoted(TOP_SERIES_ALIAS)))
+            select = (
+                exp.select(
+                    label.as_(dim.name, quoted=True),
+                    flag.as_(OTHER_COLUMN, quoted=True),
+                    metric_expr.as_(name, quoted=True),
+                )
+                .from_(source)
+                .join(joined, on=on, join_type="left")
+            )
+            group_by = [label.copy(), flag.copy()]
+
+        if conditions:
+            select = select.where(exp.and_(*[c.copy() for c in conditions]))
+        select = select.group_by(*group_by).order_by(
+            _ordered(exp.Column(this=quoted(OTHER_COLUMN)), desc=False),
+            _ordered(exp.Column(this=quoted(name)), desc=True),
+        )
+        select = select.limit(query.row_limit + 1)
+        return BuiltChartQuery(
+            select.sql(dialect=self.dialect, pretty=True),
+            query.row_limit,
+            time_start=self.time_bounds[0],
+            time_end=self.time_bounds[1],
+        )
 
     def time_column(
         self, query: ChartQuery, raw: bool
@@ -212,6 +302,7 @@ class _Builder:
         conditions: list[exp.Expr] = []
         if time_col is not None and query.time is not None:
             start, end = aligned_bounds(query.time.range, self.today, query.time.grain)
+            self.time_bounds = (start, end)
             ref = sql_column(time_col.name)
             if start is not None:
                 conditions.append(exp.GTE(this=ref.copy(), expression=date_literal(start)))
@@ -308,6 +399,13 @@ def _check_shape(viz_type: VizType, query: ChartQuery, raw: bool) -> None:
             _invalid("A bar chart's x axis is either one dimension or a time grain, not both.")
         if not (grain or query.dimensions):
             _invalid("Pick the bar chart's x axis: a dimension or a time grain.")
+    elif viz_type == "pie":
+        if len(query.metrics) != 1:
+            _invalid("A pie chart shows exactly one metric.")
+        if len(query.dimensions) != 1:
+            _invalid("A pie chart needs exactly one dimension (the slices).")
+        if grain is not None:
+            _invalid("A pie chart has no time grain; use a time range to filter.")
     elif viz_type == "line":
         if grain is None:
             _invalid("A line chart needs a time column and a time grain for its x axis.")

@@ -8,7 +8,10 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from app.query import MAX_LIMIT
 from app.schemas.query import QueryResultOut
 
-VizType = Literal["table", "big_number", "bar", "line"]
+# Longest allowed cache lifetime (a day).
+MAX_CACHE_TTL = 86_400
+
+VizType = Literal["table", "big_number", "bar", "line", "pie"]
 Aggregate = Literal["SUM", "AVG", "MIN", "MAX", "COUNT", "COUNT_DISTINCT"]
 Grain = Literal["day", "week", "month", "quarter", "year"]
 RangeKind = Literal[
@@ -106,10 +109,20 @@ class ChartQuery(BaseModel):
 class ChartDataRequest(BaseModel):
     viz_type: VizType
     query: ChartQuery
+    # Cache lifetime in seconds (0 = don't cache); None = the default (10 minutes).
+    cache_ttl: int | None = Field(default=None, ge=0, le=MAX_CACHE_TTL)
+    # "Refresh": skip the cache (and store the fresh result).
+    refresh: bool = False
 
 
 class ChartDataOut(QueryResultOut):
     sql: str  # the exact SQL that ran ("View SQL")
+    # The time range the query filtered on, both days inclusive (None = open on that side or
+    # no time range), so "No data between X and Y" can name it.
+    range_start: date | None = None
+    range_end: date | None = None
+    # Set when the result came from the cache: when it was computed.
+    cached_at: datetime | None = None
 
 
 # ---------- saved charts ----------

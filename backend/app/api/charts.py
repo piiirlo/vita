@@ -1,7 +1,7 @@
 """Chart data (POST /api/chart-data) and saved charts CRUD (/api/charts)."""
 
 from dataclasses import asdict
-from datetime import date
+from datetime import date, timedelta
 from typing import Annotated, NoReturn
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.api.connections import saved_connection_details
 from app.api.datasets import get_dataset_or_404
-from app.charts import build_chart_query
+from app.charts import build_chart_query, cache
 from app.db import get_db
 from app.models import Chart, Dashboard, DashboardChart, Dataset
 from app.query import DEFAULT_TIMEOUT_SECONDS, QueryError, run_query
@@ -51,6 +51,19 @@ def chart_data(payload: ChartDataRequest, db: DbSession) -> ChartDataOut:
         )
     except QueryError as error:
         _query_error(error)
+    range_fields = {
+        "sql": built.sql,
+        "range_start": built.time_start,
+        "range_end": built.time_end - timedelta(days=1) if built.time_end else None,
+    }
+    connection = dataset.connection
+    key = cache.cache_key(connection.id, connection.updated_at, built.sql, built.row_limit)
+    ttl = cache.effective_ttl(payload.cache_ttl)
+    if ttl > 0 and not payload.refresh:
+        hit = cache.get(db, key)
+        if hit is not None:
+            return ChartDataOut(**hit.result, **range_fields, cached_at=hit.created_at)
+    connection_id = connection.id
     db.close()  # don't hold a metadata-DB connection while the user DB is queried
 
     try:
@@ -59,7 +72,10 @@ def chart_data(payload: ChartDataRequest, db: DbSession) -> ChartDataOut:
         )
     except QueryError as error:
         _query_error(error)
-    return ChartDataOut(**asdict(result), sql=built.sql)
+    if ttl > 0:
+        cache.put(db, key, connection_id, asdict(result), ttl)
+        db.close()
+    return ChartDataOut(**asdict(result), **range_fields)
 
 
 # ---------- saved charts ----------

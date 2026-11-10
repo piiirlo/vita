@@ -42,6 +42,44 @@
   padding-left: 28px;
 }
 
+/* "Connected": a green check in a circle that pops in and draws its tick. */
+.test-ok {
+  animation: v-fade-in var(--dur-slow) var(--ease-out) both;
+}
+.test-ok-circle {
+  fill: var(--success);
+  transform-origin: 12px 12px;
+  animation: v-pop 260ms var(--ease-out) both;
+}
+.test-ok-check {
+  fill: none;
+  stroke: var(--surface);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+  animation: v-draw 240ms var(--ease-out) 160ms both;
+}
+@keyframes v-pop {
+  from {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+@keyframes v-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
 /* Skeleton shimmer (instead of spinners). */
 .skeleton {
   position: relative;

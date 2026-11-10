@@ -25,6 +25,7 @@ from app.datasets import (
     select_sql,
     source_of,
     sqllab_sql,
+    time_extent,
     validate_metric,
 )
 from app.datasets.checks import query_warnings
@@ -47,6 +48,7 @@ from app.schemas.datasets import (
     PreviewOut,
     SyncOut,
     SyncSummary,
+    TimeExtentOut,
 )
 from app.schemas.query import QueryErrorOut
 
@@ -336,6 +338,9 @@ def update_dataset(dataset_id: int, payload: DatasetUpdate, db: DbSession) -> Da
         col.is_dimension = settings.is_dimension
         col.is_hidden = settings.is_hidden
         col.description = _clean(settings.description)
+        if settings.value_labels is not None:
+            labels = {k: v.strip() for k, v in settings.value_labels.items() if v.strip()}
+            col.value_labels = labels or None
 
     for column_id in payload.delete_column_ids:
         col = by_id.get(column_id)
@@ -421,6 +426,39 @@ def preview_dataset(dataset_id: int, db: DbSession) -> PreviewOut:
     except QueryError as error:
         _query_error(error)
     return PreviewOut(**asdict(result), sql=sql)
+
+
+@router.get(
+    "/{dataset_id}/time-extent", response_model=TimeExtentOut, responses=QUERY_ERROR_RESPONSES
+)
+def dataset_time_extent(dataset_id: int, db: DbSession, column: str | None = None) -> TimeExtentOut:
+    """MIN and MAX of a time column (default: the main time column), for "this dataset has
+    data from A to B" when a chart's time range is empty. One aggregate row, via run_query."""
+    dataset = get_dataset_or_404(db, dataset_id)
+    name = column or dataset.main_time_column
+    if not name:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "Pick a time column: this dataset has no main time column"
+        )
+    col = next((c for c in dataset.columns if c.name == name), None)
+    if col is None or col.is_missing:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, f'"{name}" is not a column of this dataset'
+        )
+    if not col.is_temporal:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f'"{name}" is not a time column')
+    details = _details(dataset)
+    source = source_of(dataset)
+    db.close()
+    try:
+        low, high = time_extent(details, source, name)
+    except QueryError as error:
+        _query_error(error)
+    return TimeExtentOut(
+        column=name,
+        min=None if low is None else str(low),
+        max=None if high is None else str(high),
+    )
 
 
 # ---------- metrics ----------

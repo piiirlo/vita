@@ -497,3 +497,47 @@ def test_empty_table_gets_types_from_metadata(
     assert cols(dataset)["name"]["raw_type"] == "VARCHAR(20)"
     preview = client.get(f"/api/datasets/{dataset['id']}/preview").json()
     assert preview["rows"] == [] and len(preview["columns"]) == 7
+
+
+# ---------- Part 10: value labels ----------
+
+
+def test_value_labels_on_a_column(client: TestClient, connection_id: int) -> None:
+    dataset = orders(client, connection_id)
+    customer = cols(dataset)["customer_id"]
+    assert customer["value_labels"] is None
+
+    labels = {"1": "Lethbridge", "2": "Woodridge", "3": "  "}  # blank labels are dropped
+    response = update(client, dataset, columns=[settings(customer, value_labels=labels)])
+    assert response.status_code == 200, response.text
+    assert cols(response.json())["customer_id"]["value_labels"] == {
+        "1": "Lethbridge",
+        "2": "Woodridge",
+    }
+
+    # Settings without value_labels leave them alone (older clients), {} clears them.
+    kept = update(client, dataset, columns=[settings(customer, label="Store")])
+    assert cols(kept.json())["customer_id"]["value_labels"] == {"1": "Lethbridge", "2": "Woodridge"}
+    cleared = update(client, dataset, columns=[settings(customer, value_labels={})])
+    assert cols(cleared.json())["customer_id"]["value_labels"] is None
+
+
+def test_value_labels_survive_a_sync(client: TestClient, connection_id: int) -> None:
+    dataset = orders(client, connection_id)
+    status = cols(dataset)["status"]
+    update(client, dataset, columns=[settings(status, value_labels={"completed": "Done"})])
+    synced = client.post(f"/api/datasets/{dataset['id']}/sync")
+    assert synced.status_code == 200, synced.text
+    assert cols(synced.json()["dataset"])["status"]["value_labels"] == {"completed": "Done"}
+
+
+def test_value_labels_are_limited(client: TestClient, connection_id: int) -> None:
+    dataset = orders(client, connection_id)
+    status = cols(dataset)["status"]
+    too_long = update(client, dataset, columns=[settings(status, value_labels={"a": "x" * 256})])
+    assert too_long.status_code == 422
+    too_many = {str(i): "x" for i in range(1001)}
+    assert (
+        update(client, dataset, columns=[settings(status, value_labels=too_many)]).status_code
+        == 422
+    )

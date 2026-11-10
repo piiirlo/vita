@@ -1,5 +1,7 @@
+import { useState } from "react";
 import type { ColumnSettings, DatasetColumn, GenericType } from "../api.ts";
 import { GENERIC_TYPES } from "./format.ts";
+import ValueLabelsDialog from "./ValueLabelsDialog.tsx";
 
 type Props = {
   columns: DatasetColumn[];
@@ -23,6 +25,7 @@ export default function ColumnsTab({
 }: Props) {
   const visible = columns.filter((c) => !removed.has(c.id));
   const missing = visible.filter((c) => c.is_missing).length;
+  const [labelling, setLabelling] = useState<DatasetColumn | null>(null);
 
   return (
     <div>
@@ -45,6 +48,7 @@ export default function ColumnsTab({
               <th title="Hidden from the chart builder">Hidden</th>
               <th title="The default time column for charts">Main time</th>
               <th>Description</th>
+              <th title="Names shown instead of values (legends, axes, tables)">Value labels</th>
               <th />
             </tr>
           </thead>
@@ -63,7 +67,7 @@ export default function ColumnsTab({
                   none
                 </label>
               </td>
-              <td colSpan={2} />
+              <td colSpan={3} />
             </tr>
             {visible.map((col) => {
               const s = settings[col.id];
@@ -160,6 +164,18 @@ export default function ColumnsTab({
                     />
                   </td>
                   <td>
+                    <button
+                      type="button"
+                      className="small"
+                      aria-label={`Value labels of ${col.name}`}
+                      onClick={() => setLabelling(col)}
+                    >
+                      {Object.keys(s.value_labels ?? {}).length
+                        ? `${Object.keys(s.value_labels ?? {}).length} labels`
+                        : "Add"}
+                    </button>
+                  </td>
+                  <td>
                     {col.is_missing && (
                       <button className="small danger" onClick={() => onRemove(col.id)}>
                         Remove
@@ -172,6 +188,14 @@ export default function ColumnsTab({
           </tbody>
         </table>
       </div>
+      {labelling && (
+        <ValueLabelsDialog
+          column={labelling.name}
+          labels={settings[labelling.id]?.value_labels ?? {}}
+          onSave={(value_labels) => onChange(labelling.id, { value_labels })}
+          onClose={() => setLabelling(null)}
+        />
+      )}
     </div>
   );
 }

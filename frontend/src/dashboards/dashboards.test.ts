@@ -4,20 +4,21 @@ import { addChartTile, applyGridItems, layoutKey, nextPosition, stackOrder, toGr
 import { renderMarkdown } from "./markdown.ts";
 import { CancelledError, RequestQueue } from "./queue.ts";
 
-const chart = (id: string, x: number, y: number, w = 6, h = 8): DashboardTile => ({ id, type: "chart", chart_id: 1, x, y, w, h });
+const chart = (id: string, x: number, y: number, w = 12, h = 16): DashboardTile => ({ id, type: "chart", chart_id: 1, x, y, w, h });
 
 describe("layout", () => {
   it("puts a new tile next to the last row when it fits, else below", () => {
-    expect(nextPosition([], 6)).toEqual({ x: 0, y: 0 });
-    expect(nextPosition([chart("a", 0, 0)], 6)).toEqual({ x: 6, y: 0 });
-    expect(nextPosition([chart("a", 0, 0), chart("b", 6, 0)], 6)).toEqual({ x: 0, y: 8 });
-    expect(nextPosition([chart("a", 0, 0, 8)], 6)).toEqual({ x: 0, y: 8 });
+    // 24-column grid: a chart tile is half the width.
+    expect(nextPosition([], 12)).toEqual({ x: 0, y: 0 });
+    expect(nextPosition([chart("a", 0, 0)], 12)).toEqual({ x: 12, y: 0 });
+    expect(nextPosition([chart("a", 0, 0), chart("b", 12, 0)], 12)).toEqual({ x: 0, y: 16 });
+    expect(nextPosition([chart("a", 0, 0, 16)], 12)).toEqual({ x: 0, y: 16 });
     const added = addChartTile([chart("a", 0, 0)], 7).at(-1)!;
-    expect(added).toMatchObject({ type: "chart", chart_id: 7, x: 6, y: 0, w: 6, h: 8 });
+    expect(added).toMatchObject({ type: "chart", chart_id: 7, x: 12, y: 0, w: 12, h: 16 });
   });
 
   it("copies grid positions onto tiles and keeps the same array when nothing moved", () => {
-    const tiles = [chart("a", 0, 0), chart("b", 6, 0)];
+    const tiles = [chart("a", 0, 0), chart("b", 12, 0)];
     expect(applyGridItems(tiles, toGridItems(tiles))).toBe(tiles);
     const moved = applyGridItems(tiles, [{ i: "b", x: 0, y: 8, w: 12, h: 4 }]);
     expect(moved[1]).toMatchObject({ id: "b", x: 0, y: 8, w: 12, h: 4 });

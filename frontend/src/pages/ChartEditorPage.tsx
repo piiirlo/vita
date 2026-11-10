@@ -3,7 +3,6 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import {
   ApiError,
   createChart,
-  fetchChartData,
   getChart,
   getDashboard,
   getDataset,
@@ -20,9 +19,13 @@ import {
 } from "../api.ts";
 import ChartControls from "../charts/ChartControls.tsx";
 import ChartView from "../charts/ChartView.tsx";
+import CustomizePanel from "../charts/CustomizePanel.tsx";
+import { drawState } from "../charts/display.ts";
+import { dataKey, loadChartData } from "../charts/load.ts";
+import { seriesNamesOf } from "../charts/options.ts";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs.tsx";
 import {
   adaptToViz,
-  chartRequests,
   defaultQuery,
   fromParams,
   toParams,
@@ -37,12 +40,21 @@ import SaveDialog from "../sqllab/SaveDialog.tsx";
 import { usePageTitle } from "../components/usePageTitle.ts";
 import { toast } from "../components/toast.ts";
 import EmptyState from "../components/EmptyState.tsx";
+import UnsavedChangesDialog from "../components/UnsavedChangesDialog.tsx";
+import { useUnsavedChanges } from "../components/useUnsavedChanges.ts";
+import { relativeTime } from "../datasets/format.ts";
 
 const AUTO_UPDATE_MS = 600;
 
 /** Results remember the chart state they were made for, so a stale result is never drawn
  * as a different chart type while the new one loads. */
-type Shown = { main: ChartDataResult; trend: ChartDataResult | null; state: ChartState };
+type Shown = {
+  main: ChartDataResult;
+  trend: ChartDataResult | null;
+  compare: ChartDataResult | null;
+  total: ChartDataResult | null;
+  state: ChartState;
+};
 type Results =
   | { status: "idle" }
   | { status: "loading"; previous: Shown | null; startedAt: number }
@@ -50,6 +62,7 @@ type Results =
   | { status: "error"; error: QueryErrorDetail };
 
 type Tab = "chart" | "data" | "sql";
+type SideTab = "data" | "customize";
 
 function asError(err: unknown): QueryErrorDetail {
   if (err instanceof ApiError && isQueryErrorDetail(err.detail)) return err.detail;
@@ -75,7 +88,10 @@ export default function ChartEditorPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [results, setResults] = useState<Results>({ status: "idle" });
   const [tab, setTab] = useState<Tab>("chart");
+  const [sideTab, setSideTab] = useState<SideTab>("data");
   const [saveDialog, setSaveDialog] = useState(false);
+  // "Save" in the unsaved-changes dialog of a new chart: name it first, then leave.
+  const [leaveAfterSaveAs, setLeaveAfterSaveAs] = useState(false);
   const [addToDashboard, setAddToDashboard] = useState(false);
   // Opened from a dashboard tile ("Edit chart"): link back to it.
   const fromDashboardId = Number(search.get("dashboard")) || null;
@@ -92,39 +108,49 @@ export default function ChartEditorPage() {
   }, []);
 
   const startNew = useCallback((ds: Dataset) => {
+    const initial = adaptToViz({ vizType: "table", query: defaultQuery(ds), display: {} }, "table", ds);
     setDataset(ds);
-    setState(adaptToViz({ vizType: "table", query: defaultQuery(ds), display: {} }, "table", ds));
+    setState(initial);
+    // An untouched new chart has nothing to lose.
+    setSavedSnapshot(snapshot("", initial));
   }, []);
 
+  // Each load depends only on what it needs, so a late answer (e.g. the datasets list arriving
+  // after the chart) never reloads the chart and throws away edits.
   useEffect(() => {
+    if (chartId === null) return;
     let cancelled = false;
     setLoadError(null);
-    if (chartId !== null) {
-      getChart(chartId)
-        .then(async (saved) => {
-          const ds = await getDataset(saved.dataset_id);
-          if (cancelled) return;
-          const loaded = fromParams(saved.viz_type, saved.params, ds);
-          setChart(saved);
-          setDataset(ds);
-          setState(loaded);
-          setName(saved.name);
-          setSavedSnapshot(snapshot(saved.name, loaded));
-        })
-        .catch((err: unknown) => !cancelled && setLoadError(asError(err).message));
-    } else {
-      const wanted = Number(search.get("dataset"));
-      if (!wanted && datasets === null) return; // wait for the list to pick the first dataset
-      const id = wanted || datasets?.[0]?.id;
-      if (!id) return;
-      getDataset(id)
-        .then((ds) => !cancelled && startNew(ds))
-        .catch((err: unknown) => !cancelled && setLoadError(asError(err).message));
-    }
+    getChart(chartId)
+      .then(async (saved) => {
+        const ds = await getDataset(saved.dataset_id);
+        if (cancelled) return;
+        const loaded = fromParams(saved.viz_type, saved.params, ds);
+        setChart(saved);
+        setDataset(ds);
+        setState(loaded);
+        setName(saved.name);
+        setSavedSnapshot(snapshot(saved.name, loaded));
+      })
+      .catch((err: unknown) => !cancelled && setLoadError(asError(err).message));
     return () => {
       cancelled = true;
     };
-  }, [chartId, search, datasets, startNew]);
+  }, [chartId]);
+
+  // A new chart starts on ?dataset=… or, without it, on the first dataset of the list.
+  const newChartDatasetId = chartId !== null ? null : Number(search.get("dataset")) || (datasets?.[0]?.id ?? null);
+  useEffect(() => {
+    if (newChartDatasetId === null) return;
+    let cancelled = false;
+    setLoadError(null);
+    getDataset(newChartDatasetId)
+      .then((ds) => !cancelled && startNew(ds))
+      .catch((err: unknown) => !cancelled && setLoadError(asError(err).message));
+    return () => {
+      cancelled = true;
+    };
+  }, [newChartDatasetId, startNew]);
 
   useEffect(() => {
     if (fromDashboardId === null) return;
@@ -139,29 +165,32 @@ export default function ChartEditorPage() {
 
   // ---------- running ----------
 
-  const requests = useMemo(() => (state ? chartRequests(state) : null), [state]);
-  const requestKey = useMemo(() => (state ? JSON.stringify({ v: state.vizType, ...requests }) : ""), [state, requests]);
+  // Only what changes the data is in the key: display options redraw the loaded result.
+  const requestKey = useMemo(() => (state ? dataKey(state) : ""), [state]);
 
-  const run = useCallback(async () => {
-    if (!state || !requests) return;
+  // refresh: skip the chart-data cache ("Update chart"); auto-updates may use it.
+  const run = useCallback(async (refresh = false) => {
+    if (!state) return;
     controller.current?.abort();
     const current = new AbortController();
     controller.current = current;
     setResults((prev) => ({
       status: "loading",
       startedAt: Date.now(),
-      previous: prev.status === "done" ? { main: prev.main, trend: prev.trend, state: prev.state } : prev.status === "loading" ? prev.previous : null,
+      previous:
+        prev.status === "done"
+          ? { main: prev.main, trend: prev.trend, compare: prev.compare, total: prev.total, state: prev.state }
+          : prev.status === "loading"
+            ? prev.previous
+            : null,
     }));
     try {
-      const [main, trend] = await Promise.all([
-        fetchChartData(state.vizType, requests.main, current.signal),
-        requests.trend ? fetchChartData("line", requests.trend, current.signal) : Promise.resolve(null),
-      ]);
-      if (controller.current === current) setResults({ status: "done", main, trend, state });
+      const { main, trend, previous, total } = await loadChartData(state, current.signal, { refresh });
+      if (controller.current === current) setResults({ status: "done", main, trend, compare: previous, total: total ?? null, state });
     } catch (err) {
       if (controller.current === current && !current.signal.aborted) setResults({ status: "error", error: asError(err) });
     }
-  }, [state, requests]);
+  }, [state]);
 
   // Auto-update (debounced) whenever the query changes.
   const runRef = useRef(run);
@@ -176,6 +205,7 @@ export default function ChartEditorPage() {
   // ---------- editing ----------
 
   const dirty = state !== null && snapshot(name, state) !== savedSnapshot;
+  const { blocker, dirtyRef } = useUnsavedChanges(dirty);
 
   function setViz(viz: VizType) {
     if (state && dataset) setState(adaptToViz(state, viz, dataset));
@@ -212,14 +242,21 @@ export default function ChartEditorPage() {
     setName(created.name);
     setSavedSnapshot(snapshot(created.name, state));
     toast.success(`Saved "${created.name}".`);
+    dirtyRef.current = false; // saved: navigating on is fine (before the re-render says so)
+    if (leaveAfterSaveAs) {
+      setLeaveAfterSaveAs(false);
+      blocker.proceed?.();
+      return;
+    }
     void navigate(`/charts/${created.id}`, { replace: chartId === null });
   }
 
-  async function save() {
-    if (!state) return;
+  /** Resolves true when saved. A new chart asks for a name first (and resolves false). */
+  async function save(): Promise<boolean> {
+    if (!state) return false;
     if (!chart) {
       setSaveDialog(true);
-      return;
+      return false;
     }
     try {
       const updated = await updateChart(chart.id, {
@@ -232,9 +269,24 @@ export default function ChartEditorPage() {
       setName(updated.name);
       setSavedSnapshot(snapshot(updated.name, state));
       toast.success(`Saved "${updated.name}".`);
+      dirtyRef.current = false;
+      return true;
     } catch (err) {
       toast.error(`Couldn't save: ${asError(err).message}`);
+      return false;
     }
+  }
+
+  async function saveAndLeave(): Promise<boolean> {
+    if (!chart) {
+      // Name it first; saveAs() then lets the navigation through (Cancel stays here).
+      setLeaveAfterSaveAs(true);
+      setSaveDialog(true);
+      return false;
+    }
+    const saved = await save();
+    if (saved) blocker.proceed?.();
+    return saved;
   }
 
   // ---------- render ----------
@@ -272,21 +324,41 @@ export default function ChartEditorPage() {
         : results.status === "error"
           ? { status: "error", error: results.error }
           : undefined;
+  const shownSeriesNames = shown ? seriesNamesOf(shown.state, shown.main, dataset) : [];
   const sqls = shown ? [shown.main.sql, ...(shown.trend ? [shown.trend.sql] : [])] : [];
   const vizLabel = VIZ_TYPES.find((v) => v.value === state.vizType)?.label ?? state.vizType;
 
   return (
     <div className="chart-editor">
       <aside className="chart-editor-side">
-        <ChartControls
-          state={state}
-          dataset={dataset}
-          datasets={datasets}
-          onDataset={(id) => void switchDataset(id)}
-          onVizType={setViz}
-          onQuery={patchQuery}
-          onDisplay={patchDisplay}
-        />
+        {/* Data: what to query (debounced auto-update). Customize: the look, redrawn from the
+            loaded data without a new query. */}
+        <Tabs value={sideTab} onValueChange={(v) => setSideTab(v as SideTab)} className="chart-side-tabs">
+          <TabsList aria-label="Chart settings" className="mx-1.5 mb-2.5 grid grid-cols-2 [&>button]:w-full">
+            <TabsTrigger value="data">Data</TabsTrigger>
+            <TabsTrigger value="customize">Customize</TabsTrigger>
+          </TabsList>
+          <TabsContent value="data">
+            <ChartControls
+              state={state}
+              dataset={dataset}
+              datasets={datasets}
+              onDataset={(id) => void switchDataset(id)}
+              onVizType={setViz}
+              onQuery={patchQuery}
+              onDisplay={patchDisplay}
+            />
+          </TabsContent>
+          <TabsContent value="customize">
+            <CustomizePanel
+              state={state}
+              dataset={dataset}
+              seriesNames={shownSeriesNames}
+              onDisplay={patchDisplay}
+              onQuery={patchQuery}
+            />
+          </TabsContent>
+        </Tabs>
       </aside>
 
       <section className="chart-editor-main">
@@ -307,7 +379,7 @@ export default function ChartEditorPage() {
               ← Back to {fromDashboard.name}
             </Link>
           )}
-          <button onClick={() => void run()} disabled={results.status === "loading"} title="Run the chart query now">
+          <button onClick={() => void run(true)} disabled={results.status === "loading"} title="Run the chart query now (skips the cache)">
             Update chart
           </button>
           <button className="primary" onClick={() => void save()}>
@@ -324,7 +396,7 @@ export default function ChartEditorPage() {
         <div className="dataset-tabs chart-tabs" role="tablist">
           {(["chart", "data", "sql"] as const).map((t) => (
             <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>
-              {t === "chart" ? "Chart" : t === "data" ? "Data" : "SQL"}
+              {t === "chart" ? "Chart" : t === "data" ? "Results" : "SQL"}
             </button>
           ))}
           <span className="spacer" />
@@ -332,6 +404,12 @@ export default function ChartEditorPage() {
             <span className="muted small">
               {shown.main.row_count.toLocaleString()} row{shown.main.row_count === 1 ? "" : "s"}
               {shown.main.truncated ? " (row limit reached)" : ""} · {shown.main.duration_ms} ms
+              {shown.main.cached_at && (
+                <span title="From the chart-data cache; Update chart runs the query again">
+                  {" "}
+                  · cached {relativeTime(shown.main.cached_at)}
+                </span>
+              )}
             </span>
           )}
         </div>
@@ -348,8 +426,24 @@ export default function ChartEditorPage() {
                 <span className="live-dot" aria-hidden /> Updating…
               </div>
             )}
+            {shown && results.status !== "error" && state.display.title?.trim() && (
+              <h2 className="chart-preview-title">{state.display.title.trim()}</h2>
+            )}
             {shown && results.status !== "error" && (
-              <ChartView state={shown.state} result={shown.main} trend={shown.trend} dataset={dataset} />
+              <ChartView
+                state={drawState(shown.state, state)}
+                result={shown.main}
+                trend={shown.trend}
+                previous={shown.compare}
+                total={shown.total}
+                showHints
+                dataset={dataset}
+                onMakeHorizontal={() => patchDisplay({ horizontal: true })}
+                onShowAllTime={() => {
+                  const time = state.query.time;
+                  if (time) patchQuery({ time: { ...time, range: { kind: "none" } } });
+                }}
+              />
             )}
             {results.status === "idle" && <p className="chart-empty muted">Pick what to show on the left.</p>}
           </div>
@@ -394,8 +488,20 @@ export default function ChartEditorPage() {
           initialName={chart ? `${chart.name} (copy)` : ""}
           initialDescription={chart?.description ?? ""}
           onSave={saveAs}
-          onCancel={() => setSaveDialog(false)}
+          onCancel={() => {
+            setSaveDialog(false);
+            if (leaveAfterSaveAs) {
+              setLeaveAfterSaveAs(false);
+              blocker.reset?.();
+            }
+          }}
         />
+      )}
+
+      {blocker.state === "blocked" && !saveDialog && (
+        <UnsavedChangesDialog onSave={saveAndLeave} onDiscard={() => blocker.proceed()} onStay={() => blocker.reset()}>
+          <p>{chart ? `Your changes to "${chart.name}" haven't been saved.` : "This new chart hasn't been saved yet."}</p>
+        </UnsavedChangesDialog>
       )}
     </div>
   );

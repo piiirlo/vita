@@ -25,9 +25,11 @@ One part at a time, in order:
 7. **Dashboards** — grid layout, save positions, refresh *(done)*
 8. **Polish** — simple login, loading/error states, CSV export *(done)*
 9. **Visual redesign ("Observatory")** — tokens, shell, every page; no feature changes *(done)*
+10. **Fixes from real usage** — Customize tab, pie/donut, chart-data cache, value labels,
+    schema diagram, 24-column grid with 8 resize handles, unsaved-chart warning *(done)*
 
-**Out of scope for v1:** dashboard filters, caching, multi-user permissions, alerts,
-scheduled reports, extra chart types.
+**Out of scope for v1:** dashboard filters, multi-user permissions, alerts, scheduled
+reports, more chart types than table / big number / bar / line / pie.
 
 ## Working rules
 - Work on one part at a time. Don't start the next part unless asked.
@@ -57,6 +59,10 @@ This folder may contain the Apache Superset source code. It is **read-only refer
     Every run via the API is logged in `query_history`.
   - `app/browsing.py` — column metadata for a table. Falls back to `information_schema` on
     Postgres servers that deny access to system catalogs (e.g. public RNAcentral). Reuse it.
+  - `app/diagram.py` — one schema's tables, columns, PK/FK markers and foreign keys for the
+    Browse diagram (`GET /api/connections/{id}/schemas/{schema}/diagram`). One inspector pass
+    (`get_multi_*`), same `information_schema` fallback (which only shows constraints on tables
+    the user has more than SELECT on); at most 1000 tables (`truncated`).
   - `app/crypto.py` — Fernet encryption of saved passwords (`VITA_SECRET_KEY`). Passwords are
     never returned by the API (only `has_password`); response schemas must not include them.
     `password_encrypted` NULL = no password. Save/test password rules: `clear_password` → none,
@@ -70,8 +76,11 @@ This folder may contain the Apache Superset source code. It is **read-only refer
     and `parse_metric_expression` (exactly one expression; no clauses, alias or writes).
     `sync.py`: generic types come from cursor metadata of `SELECT * ... LIMIT 0`, never from
     row values; the merge keeps user settings and marks vanished columns `is_missing`.
-    `run.py`: preview and metric validation, both via `run_query`.
+    `run.py`: preview, metric validation and `time_extent` (MIN/MAX of a time column; API
+    `GET /api/datasets/{id}/time-extent?column=`), all via `run_query`.
     The user's type override is `generic_type_override` (sync refreshes `generic_type`).
+    Columns can have `value_labels` ({"1": "Lethbridge"}): in column settings, omitted =
+    unchanged, `{}` = clear; the frontend shows them in legends, axes, tables and pie slices.
     The built-in `count` metric (`is_builtin`) can't be deleted. Datasets → connections FK is
     RESTRICT; deleting a used connection returns 409 listing the datasets.
   - `app/charts/` — chart query builder (no FastAPI imports). `build_chart_query(dataset,
@@ -84,13 +93,26 @@ This folder may contain the Apache Superset source code. It is **read-only refer
     can't LIMIT inside IN). GROUP BY repeats expressions (Postgres would read an alias as the
     raw column); ORDER BY uses output names with explicit NULLS-lowest ordering (otherwise
     sqlglot emulates with CASE on MySQL). SQL gets `LIMIT row_limit + 1` so `truncated` is exact.
+    Pie (`build_pie`): one dimension + one metric, no grain; `series_limit` = top N slices, the
+    rest is one row with `__other` = 1 computed in SQL (LEFT JOIN on the top N), so "Other" is
+    right for AVG / COUNT DISTINCT too. Chart-data responses carry `range_start`/`range_end`
+    (the range filtered on, days inclusive).
+    `cache.py`: chart-data cache in the metadata DB (`chart_cache`), key = sha256(connection id
+    + its `updated_at`, final SQL, row limit), so a changed chart/dataset/connection never gets
+    a stale result. Request `cache_ttl` (seconds, 0 = off, null = 10 min) and `refresh` (skip
+    it); response `cached_at`. Writes drop expired entries and enforce the size cap
+    (`VITA_CACHE_MAX_MB`, oldest first); results over 5 MB aren't cached. **Never** use it for
+    SQL Lab.
     Query model: `app/schemas/charts.py`. API: `app/api/charts.py` (`POST /api/chart-data`,
     not logged; `/api/charts` CRUD, params = {query, display}). Charts → datasets FK RESTRICT.
     `tests/test_charts_mysql.py` runs only with `VITA_TEST_MYSQL_HOST` (throwaway mysql:8.4
     container on the compose network; see the file's docstring).
   - Dashboards: `app/api/dashboards.py` (`/api/dashboards`: list/get/create/update/delete,
     `/{id}/duplicate`, `/{id}/charts` appends a chart tile). `layout` JSON (schema in
-    `app/schemas/dashboards.py`: 12-column grid, chart / text tiles) is the source of truth;
+    `app/schemas/dashboards.py`: 24-column grid, 14px rows, chart / text tiles; geometry and
+    the 12→24 rescale in `app/dashboard_grid.py`, migration 0010 doubled x/y/w/h so old
+    dashboards keep their exact pixels) is the source of truth; `cache_ttl` (null = each
+    chart's own) applies to every tile;
     `dashboard_charts` is rebuilt from it on every save (chart_id FK RESTRICT), so deleting a
     used chart returns 409 "used by N dashboards" and the DB blocks it too. Dashboard endpoints
     never query user DBs: the frontend loads each tile via `/api/charts/{id}` + `/api/chart-data`.
@@ -102,7 +124,9 @@ This folder may contain the Apache Superset source code. It is **read-only refer
     random token; the DB stores only its SHA-256. Throttling state is in the DB
     (`login_failures`) so it works across workers. The admin user is created on startup from
     `VITA_ADMIN_*` and never overwritten (`python -m app.reset_password` for that).
-    Tests: `client` is logged in, `anon_client` is not; argon2 uses cheap params in tests.
+    Tests: `client` is logged in, `anon_client` is not (they are the **same** TestClient: once
+    `client` logs in, `anon_client` is logged in too; log out to test 401s). argon2 uses cheap
+    params in tests. New tables must be added to the TRUNCATE in `tests/conftest.py`.
   - Lint/types: `ruff check .`, `ruff format .`, `mypy .` (strict, pydantic plugin; config in
     `pyproject.toml`). sqlglot 30 type hints use `exp.Expr` (the base class), not
     `exp.Expression`.
@@ -118,24 +142,49 @@ This folder may contain the Apache Superset source code. It is **read-only refer
     `completion.ts` / `results.ts` (unit-tested). SQL Lab opens a new tab from router state
     `{ openTab }` (`src/datasets/sqlLabLink.ts`); "Open in SQL Lab" uses it.
   - Datasets: `src/pages/Dataset*Page.tsx` + `src/datasets/` (Columns/Metrics/Preview tabs,
-    SQL Lab's "Save as dataset" dialog). Preview reuses `ResultsPane`.
+    SQL Lab's "Save as dataset" dialog, `ValueLabelsDialog`). Preview reuses `ResultsPane`.
   - Charts: `src/pages/ChartsPage.tsx`, `ChartEditorPage.tsx` (lazy-loaded with ECharts) +
     `src/charts/`. Pure, unit-tested logic: `model.ts` (editor state, `adaptToViz` when the
     chart type changes, `chartRequests`: a big number with trend sends two queries — the
     total without grain and the trend line), `options.ts` (pivot rows into series, ECharts
     options), `format.ts` (numeral.js formats like "0,0.00" / "0.0%", bucket labels by grain,
     NULL → "(empty)"; numbers may arrive as strings). `EChart.tsx` imports only the ECharts
-    parts it uses (bundled, no CDN) and resizes with its container; page tests mock it.
+    parts it uses (bundled, no CDN; bar, line, pie + title for the donut center) and resizes
+    with its container at most once per animation frame; page tests mock it.
+    Side panel tabs: **Data** (`ChartControls.tsx`: what to query, debounced auto-update, cache
+    setting) and **Customize** (`CustomizePanel.tsx`: the look, stored in `display`).
+    `display.ts`: per-metric `FormatSpec` (chart format beats the metric's own; works for
+    ad-hoc metrics), `unavailableOptions` (options that don't apply → disabled + hint),
+    `drawState` (draw a loaded result with the **current** look: look options never query;
+    only `mode`, `show_trend`, `compare_previous`, `donut` change data), previous-period
+    ranges, incomplete first/last buckets (dotted line / lighter dashed bar; needs the time
+    extent, cached in `extentCache.ts`), `planLabels` (never hide category labels silently:
+    rotate ≤45°, cut with "…", say so and suggest horizontal bars). `load.ts`: `dataKey` (what
+    needs a new query) and `loadChartData` (main + trend + previous period + donut total,
+    cache options) for the editor and tiles alike. Value labels via `dimensionLabel` (model.ts).
     Results are drawn with the chart state they were made for (no stale result drawn as a
     different chart type). Saved charts store their time column explicitly.
+    Unsaved changes: `components/useUnsavedChanges.ts` (`useBlocker` + `beforeunload`;
+    `dirtyRef.current = false` right before navigating after a save) + `UnsavedChangesDialog`
+    (Save / Discard / Stay) — used by the chart editor and the dashboard editor.
   - Dashboards: `src/pages/Dashboard(s)Page.tsx` (DashboardPage lazy-loaded) + `src/dashboards/`.
     Each `ChartTile` loads on its own through a per-page `RequestQueue` (4 at a time, tiles on
     screen first) and a shared `DatasetCache`; errors stay inside the tile (plus an error
-    boundary). `DashboardGrid.tsx` wraps react-grid-layout v2 (page tests mock it). Text tiles
+    boundary). The first load of a tile may use the chart-data cache; every reload (Refresh,
+    Refresh all, auto-refresh, Retry) passes `refresh`. `DashboardGrid.tsx` wraps
+    react-grid-layout v2 (page tests mock it; `DashboardGrid.test.tsx` drives the real one):
+    24 columns, resize from all 8 handles (`RESIZE_HANDLES`), minimum size per chart type
+    (`minTileSize`); handles are hidden outside edit mode. Text tiles
     are markdown rendered by `markdown.ts` (marked + DOMPurify — always sanitize). Pure helpers
     in `layout.ts`. Narrow screens stack tiles (view mode). The router is a data router
     (`createBrowserRouter` in `main.tsx`) so pages can use `useBlocker`; tests of pages that
     use it need `createMemoryRouter`. "Edit chart" links to `/charts/:id?dashboard=<id>`.
+  - Browse (`src/pages/BrowsePage.tsx`): List or Diagram view (`vita.browse.view`). The
+    diagram (`src/browse/SchemaDiagram.tsx`, lazy, with dagre — keep both out of the main
+    bundle) lays one schema out with `diagramLayout.ts` (pure: dagre layout, search,
+    neighbors, identifier quoting); pan/zoom/glide are CSS transforms (reduced motion: none).
+    Preview runs `SELECT * … LIMIT 20` through `/api/query`; "Open in SQL Lab" uses router state.
+  - Connection tests show `TestResultMessage` (a "Connected" check, or `ErrorAlert`).
   - App shell (`App.tsx`): login gate (`auth/`: `AuthProvider` in `AuthContext.tsx`,
     `useAuth`/`safeNext` in `auth.ts`). Any API 401 fires `UNAUTHORIZED_EVENT` (api.ts) and
     sends the user to `/login?next=…`. Routes are wrapped in an `ErrorBoundary` keyed by path.
@@ -155,12 +204,17 @@ This folder may contain the Apache Superset source code. It is **read-only refer
     `EChart` rebuilds on theme change); Monaco themes too (`sqllab/monacoTheme.ts`, needs the
     `*.sql` token rules because vs-dark has its own).
   - Contrast: `npm run check:contrast` (`scripts/contrast.mjs`) checks every text/background
-    token pair in both themes; add new pairs there when you add tokens.
+    token pair in both themes; add new pairs there when you add tokens. It also checks the
+    10 chart series colors (`--series-1..10`): 3:1 on cards and CIEDE2000 ≥ 15 between any
+    two (≥ 18 for neighbors). The first three stay orange / olive / dark olive.
   - Lint: `npm run lint` (ESLint flat config `eslint.config.js`, type-aware, max 0 warnings).
   - Tests: Vitest + Testing Library (`*.test.ts(x)` next to the code, setup in
     `src/test/setup.ts`). Monaco is mocked with a textarea in page tests.
     Radix menus open from the keyboard in tests (`keyDown Enter` on the trigger), not `click`;
     jsdom stubs (ResizeObserver, scrollIntoView, layout sizes) live in `setup.ts`.
+    Radix Tabs switch on `mouseDown`, not `click`. CSS imports are empty under Vitest: read a
+    stylesheet with `test/readSource.ts`. Don't import fixtures from a `*.test.ts` file (its
+    tests would run twice); put them in a `testData.ts`.
 - `sampledb/init/` — seed SQL for the demo database (`sales` schema: customers, products,
   orders, order_items, view order_totals; ~2 years of orders, deterministic).
 - `docker-compose.yml` — `db` (Vita metadata), `sampledb` (demo data), `backend`, `frontend`.
@@ -202,12 +256,14 @@ Calm, earthy, instrument-like; **one** loud signal color. Mockups: `design/*.dc.
   (`motion/react`) out of the main bundle: CSS first.
 - **Focus**: every interactive element shows the `--focus-ring` (`:focus-visible`); Escape
   closes dialogs, menus and the palette (Radix does this; keep it).
-- **CSS layers**: `styles/index.css` = theme < base (fonts, `base.css`, `App.css`) <
-  components < utilities. No Tailwind preflight (base.css has the resets). Page-level styles
+- **CSS layers**: `styles/index.css` = vendor < theme < base (fonts, `base.css`, `App.css`) <
+  components < utilities. Third-party CSS (react-grid-layout, react-resizable) is imported
+  there into `vendor`, never from a component: unlayered CSS beats every layer, so App.css
+  couldn't override it. No Tailwind preflight (base.css has the resets). Page-level styles
   live in `App.css` (organized by page); new components prefer Tailwind utilities.
-- **Lazy chunks**: SQL Lab, chart editor, dashboard page, dataset editor and the command
-  palette are lazy-loaded; keep heavy libraries (Monaco, ECharts, TanStack, cmdk, Motion) out
-  of the main bundle.
+- **Lazy chunks**: SQL Lab, chart editor, dashboard page, dataset editor, the schema diagram
+  and the command palette are lazy-loaded; keep heavy libraries (Monaco, ECharts, TanStack,
+  cmdk, Motion, dagre) out of the main bundle.
 
 ## Testing notes
 - Backend tests run against a separate `vita_test` database (created and migrated

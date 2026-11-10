@@ -1,7 +1,7 @@
 from datetime import datetime
-from typing import Any, Literal, Self
+from typing import Annotated, Any, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from app.schemas.query import QueryErrorOut, QueryResultOut
 
@@ -10,6 +10,11 @@ DatasetKind = Literal["table", "sql"]
 
 
 # ---------- columns ----------
+
+
+MAX_VALUE_LABELS = 1000
+ValueText = Annotated[str, StringConstraints(max_length=255)]
+LabelText = Annotated[str, StringConstraints(min_length=1, max_length=255)]
 
 
 class DatasetColumnOut(BaseModel):
@@ -28,6 +33,7 @@ class DatasetColumnOut(BaseModel):
     is_hidden: bool
     is_missing: bool
     description: str | None
+    value_labels: dict[str, str] | None = None
 
 
 class ColumnSettings(BaseModel):
@@ -40,6 +46,10 @@ class ColumnSettings(BaseModel):
     is_dimension: bool
     is_hidden: bool
     description: str | None = None
+    # Display labels for values ("1" -> "Lethbridge"). None = leave as they are; {} = clear.
+    value_labels: dict[ValueText, LabelText] | None = Field(
+        default=None, max_length=MAX_VALUE_LABELS
+    )
 
 
 # ---------- metrics ----------
@@ -158,3 +168,12 @@ class SyncOut(BaseModel):
 
 class PreviewOut(QueryResultOut):
     sql: str
+
+
+class TimeExtentOut(BaseModel):
+    """Where a dataset's data is in time: MIN and MAX of a time column (ISO strings, None
+    when the column has no values)."""
+
+    column: str
+    min: str | None
+    max: str | None

@@ -395,3 +395,81 @@ def test_browse_with_wrong_password_returns_clear_400(
     response = client.get(f"/api/connections/{conn_id}/schemas")
     assert response.status_code == 400
     assert "Wrong username or password" in response.json()["detail"]
+
+
+# ---------- Part 10: schema diagram ----------
+
+
+def test_schema_diagram_of_the_demo_schema(client: TestClient, sampledb_payload: Payload) -> None:
+    conn_id = _create_sampledb(client, sampledb_payload)
+    response = client.get(f"/api/connections/{conn_id}/schemas/sales/diagram")
+    assert response.status_code == 200, response.text
+    diagram = response.json()
+    assert diagram["schema_name"] == "sales" and diagram["truncated"] is False
+    tables = {t["name"]: t for t in diagram["tables"]}
+    assert list(tables) == ["customers", "order_items", "order_totals", "orders", "products"]
+    assert tables["order_totals"]["type"] == "view"
+    orders = {c["name"]: c for c in tables["orders"]["columns"]}
+    assert orders["id"]["primary_key"] is True and orders["id"]["foreign_key"] is False
+    assert orders["customer_id"]["foreign_key"] is True
+    links = sorted(
+        (fk["table"], tuple(fk["columns"]), fk["referred_table"], tuple(fk["referred_columns"]))
+        for fk in diagram["foreign_keys"]
+    )
+    assert links == [
+        ("order_items", ("order_id",), "orders", ("id",)),
+        ("order_items", ("product_id",), "products", ("id",)),
+        ("orders", ("customer_id",), "customers", ("id",)),
+    ]
+    missing = client.get(f"/api/connections/{conn_id}/schemas/nope/diagram")
+    assert missing.status_code == 404
+
+
+def test_schema_diagram_information_schema_fallback_matches(sampledb_payload: Payload) -> None:
+    """The fallback queries give the same diagram as the inspector (for a user that can see
+    the constraints)."""
+    from app.diagram import _pg_via_information_schema, _via_inspector, build_diagram
+
+    engine = create_engine_for(
+        ConnectionDetails(**{k: v for k, v in sampledb_payload().items() if k != "name"})
+    )
+    try:
+        with engine.connect() as conn:
+            via_inspector = build_diagram("sales", *_via_inspector(conn, "sales"))
+            via_fallback = build_diagram("sales", *_pg_via_information_schema(conn, "sales"))
+    finally:
+        engine.dispose()
+
+    def shape(d: Any) -> Any:
+        return (
+            [(t.name, t.type, [(c.name, c.primary_key, c.foreign_key, c.nullable) for c in t.columns])
+             for t in d.tables],
+            sorted((f.table, f.columns, f.referred_table, f.referred_columns) for f in d.foreign_keys),
+        )  # fmt: skip
+
+    assert shape(via_fallback) == shape(via_inspector)
+
+
+def test_schema_diagram_without_access_to_system_catalogs(
+    client: TestClient, restricted_sampledb: dict[str, Any]
+) -> None:
+    conn_id = client.post("/api/connections", json=restricted_sampledb).json()["id"]
+    response = client.get(f"/api/connections/{conn_id}/schemas/sales/diagram")
+    assert response.status_code == 200, response.text
+    tables = {t["name"]: t for t in response.json()["tables"]}
+    assert {"customers", "orders", "order_items", "products"} <= set(tables)
+    assert [c["name"] for c in tables["orders"]["columns"]][:2] == ["id", "customer_id"]
+
+
+def test_schema_diagram_keeps_at_most_the_limit() -> None:
+    from app.diagram import build_diagram
+    from app.schemas.connections import DiagramForeignKey
+
+    tables = {f"t{i:03}": ("table", [("id", "INTEGER", False)]) for i in range(5)}
+    fks = [DiagramForeignKey(name="fk", table="t004", columns=["id"], referred_schema="s",
+                             referred_table="t000", referred_columns=["id"])]  # fmt: skip
+    diagram = build_diagram("s", tables, {"t000": {"id"}}, fks, limit=3)  # type: ignore[arg-type]
+    assert [t.name for t in diagram.tables] == ["t000", "t001", "t002"]
+    assert diagram.truncated is True
+    assert diagram.foreign_keys == []  # its table was left out
+    assert diagram.tables[0].columns[0].primary_key is True

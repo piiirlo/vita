@@ -56,7 +56,7 @@ def session_factory(test_engine: Engine) -> sessionmaker[Session]:
     with test_engine.begin() as conn:
         conn.execute(
             text(
-                "TRUNCATE login_failures, sessions, users, dashboard_charts, dashboards, charts, dataset_metrics, dataset_columns, datasets, saved_queries, query_history, connections RESTART IDENTITY"
+                "TRUNCATE chart_cache, login_failures, sessions, users, dashboard_charts, dashboards, charts, dataset_metrics, dataset_columns, datasets, saved_queries, query_history, connections RESTART IDENTITY"
             )
         )
     return sessionmaker(bind=test_engine, autoflush=False, expire_on_commit=False)

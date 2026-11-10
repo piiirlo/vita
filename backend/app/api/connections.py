@@ -13,6 +13,7 @@ from app.browsing import read_columns
 from app.crypto import encrypt_password
 from app.db import get_db
 from app.db_errors import friendly_db_error
+from app.diagram import read_schema_diagram
 from app.engines import (
     ConnectionDetails,
     check_connection,
@@ -26,6 +27,7 @@ from app.schemas.connections import (
     ConnectionOut,
     ConnectionTestRequest,
     ConnectionUpdate,
+    SchemaDiagram,
     TableInfo,
     TestResult,
 )
@@ -225,3 +227,16 @@ def list_columns(connection_id: int, schema: str, table: str, db: DbSession) -> 
         raise HTTPException(
             status.HTTP_404_NOT_FOUND, f'Table "{schema}.{table}" not found'
         ) from None
+
+
+@router.get("/{connection_id}/schemas/{schema}/diagram", response_model=SchemaDiagram)
+def schema_diagram(connection_id: int, schema: str, db: DbSession) -> SchemaDiagram:
+    """Tables, columns and foreign keys of one schema (the Browse page's diagram view)."""
+    details = saved_connection_details(get_connection_or_404(db, connection_id))
+    db.close()
+    with _inspector(details) as insp:
+        if not insp.has_schema(schema):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, f'Schema "{schema}" not found')
+        db_conn = insp.bind
+        assert isinstance(db_conn, SAConnection)  # _inspector inspects a connection
+        return read_schema_diagram(db_conn, details.db_type, schema)

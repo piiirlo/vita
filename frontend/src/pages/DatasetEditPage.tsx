@@ -43,6 +43,7 @@ function draftOf(dataset: Dataset): Draft {
       is_dimension: c.is_dimension,
       is_hidden: c.is_hidden,
       description: c.description,
+      value_labels: c.value_labels ?? {},
     };
   }
   return {
@@ -55,6 +56,8 @@ function draftOf(dataset: Dataset): Draft {
 }
 
 const norm = (text: string | null) => (text ?? "").trim();
+const labelsKey = (labels: Record<string, string> | undefined) =>
+  JSON.stringify(Object.entries(labels ?? {}).sort(([a], [b]) => a.localeCompare(b)));
 
 function sameSettings(a: ColumnSettings, b: ColumnSettings): boolean {
   return (
@@ -63,15 +66,23 @@ function sameSettings(a: ColumnSettings, b: ColumnSettings): boolean {
     a.generic_type_override === b.generic_type_override &&
     a.is_temporal === b.is_temporal &&
     a.is_dimension === b.is_dimension &&
-    a.is_hidden === b.is_hidden
+    a.is_hidden === b.is_hidden &&
+    labelsKey(a.value_labels) === labelsKey(b.value_labels)
   );
 }
 
 function changedColumns(draft: Draft, saved: Draft): ColumnSettings[] {
-  return Object.values(draft.columns).filter((c) => {
-    const before = saved.columns[c.id];
-    return !draft.removed.has(c.id) && before !== undefined && !sameSettings(c, before);
-  });
+  return Object.values(draft.columns)
+    .filter((c) => {
+      const before = saved.columns[c.id];
+      return !draft.removed.has(c.id) && before !== undefined && !sameSettings(c, before);
+    })
+    .map((c) => {
+      // Value labels only when they changed (left out = unchanged on the server).
+      if (labelsKey(c.value_labels) !== labelsKey(saved.columns[c.id]?.value_labels)) return c;
+      const { value_labels: _unchanged, ...rest } = c;
+      return rest;
+    });
 }
 
 function syncMessage({ summary }: SyncResponse): string {

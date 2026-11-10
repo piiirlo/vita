@@ -1,14 +1,14 @@
-"""Dashboard schemas: a layout is a list of chart and text tiles on a 12-column grid."""
+"""Dashboard schemas: a layout is a list of chart and text tiles on a 24-column grid."""
 
 from datetime import datetime
 from typing import Annotated, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.schemas.charts import VizType
+from app.dashboard_grid import GRID_COLUMNS
+from app.schemas.charts import MAX_CACHE_TTL, VizType
 
-GRID_COLUMNS = 12
-MAX_TILE_HEIGHT = 100
+MAX_TILE_HEIGHT = 200
 MAX_TILES = 100
 MAX_TEXT_LENGTH = 10_000
 
@@ -57,6 +57,8 @@ class DashboardIn(BaseModel):
     description: str | None = None
     layout: list[Tile] = Field(default_factory=list, max_length=MAX_TILES)
     refresh_interval: RefreshInterval = "off"
+    # Cache lifetime for every tile, in seconds (0 = off); None = each chart's own.
+    cache_ttl: int | None = Field(default=None, ge=0, le=MAX_CACHE_TTL)
 
     @model_validator(mode="after")
     def _check_layout(self) -> Self:
@@ -89,6 +91,7 @@ class DashboardOut(BaseModel):
     description: str | None
     layout: list[Tile]
     refresh_interval: RefreshInterval
+    cache_ttl: int | None
     # Basic info of every chart in the layout, keyed by chart id (JSON keys are strings).
     charts: dict[int, DashboardChartInfo]
     created_at: datetime

@@ -15,7 +15,7 @@ from sqlalchemy.exc import DBAPIError, NoSuchTableError
 from app.schemas.connections import ColumnInfo
 
 # information_schema.columns.data_type -> the names the SQLAlchemy inspector shows.
-_PG_TYPE_NAMES = {
+PG_TYPE_NAMES = {
     "character varying": "VARCHAR",
     "character": "CHAR",
     "timestamp without time zone": "TIMESTAMP",
@@ -65,7 +65,7 @@ def _pg_type_name(
         return f"{udt_name.lstrip('_').upper()}[]"
     if data_type == "USER-DEFINED":
         return udt_name
-    name = _PG_TYPE_NAMES.get(data_type, data_type.upper())
+    name = PG_TYPE_NAMES.get(data_type, data_type.upper())
     if char_len is not None:
         return f"{name}({char_len})"
     if data_type == "numeric" and precision is not None:

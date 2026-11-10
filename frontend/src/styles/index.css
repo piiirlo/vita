@@ -1,10 +1,15 @@
 /*
- * Stylesheet entry. Layer order: legacy App.css (base) < components < Tailwind utilities,
+ * Stylesheet entry. Layer order: vendor (third-party CSS) < theme < legacy App.css (base) <
+ * components < Tailwind utilities. Third-party CSS must be imported here into `vendor`:
+ * unlayered CSS would beat every layer, so the app couldn't override it. Utilities come last,
  * so utility classes on the new primitives always win over old global rules.
  * Tailwind's preflight reset is not loaded (it would break App.css); styles/base.css has
  * the few resets we need.
  */
-@layer theme, base, components, utilities;
+@layer vendor, theme, base, components, utilities;
+
+@import "react-grid-layout/css/styles.css" layer(vendor);
+@import "react-resizable/css/styles.css" layer(vendor);
 
 @import "@fontsource-variable/space-grotesk/wght.css" layer(base);
 @import "@fontsource-variable/jetbrains-mono/wght.css" layer(base);

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Plus, RefreshCw, Type } from "lucide-react";
-import { Link, useBlocker, useParams, useSearchParams } from "react-router";
+import { Link, useParams, useSearchParams } from "react-router";
 import {
   getDashboard,
   updateDashboard,
@@ -10,7 +10,9 @@ import {
   type RefreshInterval,
   type SavedChart,
 } from "../api.ts";
-import ConfirmDialog from "../components/ConfirmDialog.tsx";
+import UnsavedChangesDialog from "../components/UnsavedChangesDialog.tsx";
+import { useUnsavedChanges } from "../components/useUnsavedChanges.ts";
+import { CACHE_TTLS } from "../charts/load.ts";
 import { Button } from "../components/ui/button.tsx";
 import { SearchCapsule } from "../shell/PageHeader.tsx";
 import AddChartDialog from "../dashboards/AddChartDialog.tsx";
@@ -62,8 +64,8 @@ export default function DashboardPage() {
   const queue = useRef(new RequestQueue(MAX_PARALLEL_TILES)).current;
   const datasets = useRef(new DatasetCache()).current;
   const context = useMemo<DashboardContextValue>(
-    () => ({ queue, datasets, dashboardId, refreshKey }),
-    [queue, datasets, dashboardId, refreshKey],
+    () => ({ queue, datasets, dashboardId, refreshKey, cacheTtl: dashboard?.cache_ttl ?? null }),
+    [queue, datasets, dashboardId, refreshKey, dashboard?.cache_ttl],
   );
 
   // ---------- loading ----------
@@ -111,18 +113,21 @@ export default function DashboardPage() {
     return () => clearTimeout(timer);
   }, [intervalMs, pageVisible, editing, lastUpdated, refreshAll]);
 
-  async function setRefreshInterval(value: RefreshInterval) {
+  /** Saves the auto-refresh interval or the cache setting (outside edit mode). */
+  async function saveSettings(patch: { refresh_interval?: RefreshInterval; cache_ttl?: number | null }, what: string) {
     if (!dashboard) return;
     try {
       const saved = await updateDashboard(dashboard.id, {
         name: dashboard.name,
         description: dashboard.description,
         layout: dashboard.layout,
-        refresh_interval: value,
+        refresh_interval: dashboard.refresh_interval,
+        cache_ttl: dashboard.cache_ttl,
+        ...patch,
       });
       setDashboard(saved);
     } catch (err) {
-      toast.error(`Couldn't save the refresh interval: ${errorText(err)}`);
+      toast.error(`Couldn't save the ${what}: ${errorText(err)}`);
     }
   }
 
@@ -133,13 +138,7 @@ export default function DashboardPage() {
     draft !== null &&
     (draft.name.trim() !== dashboard.name || layoutKey(draft.layout) !== layoutKey(dashboard.layout));
 
-  const blocker = useBlocker(dirty);
-  useEffect(() => {
-    if (!dirty) return;
-    const onBeforeUnload = (e: BeforeUnloadEvent) => e.preventDefault();
-    window.addEventListener("beforeunload", onBeforeUnload);
-    return () => window.removeEventListener("beforeunload", onBeforeUnload);
-  }, [dirty]);
+  const { blocker, dirtyRef } = useUnsavedChanges(dirty);
 
   function edit() {
     if (!dashboard) return;
@@ -164,11 +163,12 @@ export default function DashboardPage() {
     setAddingChart(false);
   }
 
-  async function save() {
-    if (!dashboard || !draft) return;
+  /** Resolves true when saved. */
+  async function save(): Promise<boolean> {
+    if (!dashboard || !draft) return false;
     if (!draft.name.trim()) {
       toast.error("Please enter a name for the dashboard.");
-      return;
+      return false;
     }
     setSaving(true);
     try {
@@ -177,13 +177,17 @@ export default function DashboardPage() {
         description: dashboard.description,
         layout: draft.layout,
         refresh_interval: dashboard.refresh_interval,
+        cache_ttl: dashboard.cache_ttl,
       });
       setDashboard(saved);
       setDraft(null);
       setAddedCharts({});
       toast.success(`Saved "${saved.name}".`);
+      dirtyRef.current = false;
+      return true;
     } catch (err) {
       toast.error(`Couldn't save: ${errorText(err)}`);
+      return false;
     } finally {
       setSaving(false);
     }
@@ -302,12 +306,30 @@ export default function DashboardPage() {
                 Auto-refresh
                 <select
                   value={dashboard.refresh_interval}
-                  onChange={(e) => void setRefreshInterval(e.target.value as RefreshInterval)}
+                  onChange={(e) => void saveSettings({ refresh_interval: e.target.value as RefreshInterval }, "refresh interval")}
                   aria-label="Auto-refresh"
                 >
                   {REFRESH_INTERVALS.map((r) => (
                     <option key={r.value} value={r.value}>
                       {r.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="inline-label small">
+                Cache
+                <select
+                  value={dashboard.cache_ttl ?? ""}
+                  onChange={(e) =>
+                    void saveSettings({ cache_ttl: e.target.value === "" ? null : Number(e.target.value) }, "cache setting")
+                  }
+                  aria-label="Cache"
+                  title="How long tiles reuse a chart result (Refresh always queries again)"
+                >
+                  <option value="">Each chart's own</option>
+                  {CACHE_TTLS.map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
                     </option>
                   ))}
                 </select>
@@ -341,7 +363,7 @@ export default function DashboardPage() {
           </div>
         ) : (
           <DashboardGrid
-            items={toGridItems(tiles)}
+            items={toGridItems(tiles, (id) => charts[id]?.viz_type)}
             editing={editing}
             onLayoutChange={(items: readonly GridItem[]) => setLayout((ts) => applyGridItems(ts, items))}
           >
@@ -357,14 +379,17 @@ export default function DashboardPage() {
       {addingChart && <AddChartDialog onPick={addChart} onClose={() => setAddingChart(false)} />}
 
       {blocker.state === "blocked" && (
-        <ConfirmDialog
-          title="Leave without saving?"
-          confirmLabel="Leave"
-          onConfirm={() => blocker.proceed?.()}
-          onCancel={() => blocker.reset()}
+        <UnsavedChangesDialog
+          onSave={async () => {
+            const saved = await save();
+            if (saved) blocker.proceed();
+            return saved;
+          }}
+          onDiscard={() => blocker.proceed()}
+          onStay={() => blocker.reset()}
         >
-          <p>Your changes to this dashboard's layout haven't been saved.</p>
-        </ConfirmDialog>
+          <p>Your changes to this dashboard haven't been saved.</p>
+        </UnsavedChangesDialog>
       )}
     </div>
   );

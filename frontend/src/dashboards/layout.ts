@@ -1,12 +1,12 @@
-/** Dashboard layout helpers (pure). Tiles live on a 12-column grid; y and h are in rows. */
-import type { DashboardTile, RefreshInterval } from "../api.ts";
+/** Dashboard layout helpers (pure). Tiles live on a 24-column grid; y and h are in rows. */
+import type { DashboardTile, RefreshInterval, VizType } from "../api.ts";
 
-export const GRID_COLUMNS = 12;
-export const ROW_HEIGHT = 40; // px
+export const GRID_COLUMNS = 24;
+export const ROW_HEIGHT = 14; // px (24 columns, half-height rows: see backend app/dashboard_grid.py)
 export const GRID_MARGIN = 12; // px between tiles
 
-export const CHART_TILE_SIZE = { w: 6, h: 8 };
-export const TEXT_TILE_SIZE = { w: 12, h: 2 };
+export const CHART_TILE_SIZE = { w: 12, h: 16 };
+export const TEXT_TILE_SIZE = { w: 24, h: 4 };
 
 /** Below this width the view mode stacks tiles in one column. */
 export const NARROW_QUERY = "(max-width: 767px)";
@@ -54,10 +54,28 @@ export function addTextTile(tiles: DashboardTile[], text = "## Title"): Dashboar
   return [...tiles, { id: newTileId(), type: "text", text, ...nextPosition(tiles, w), w, h }];
 }
 
-export type GridItem = { i: string; x: number; y: number; w: number; h: number };
+export type GridItem = { i: string; x: number; y: number; w: number; h: number; minW?: number; minH?: number };
 
-export function toGridItems(tiles: DashboardTile[]): GridItem[] {
-  return tiles.map((t) => ({ i: t.id, x: t.x, y: t.y, w: t.w, h: t.h }));
+/** The smallest a tile can be resized to (24 columns, 14px rows), so charts stay readable. */
+export function minTileSize(tile: DashboardTile, viz: VizType | undefined): { w: number; h: number } {
+  if (tile.type === "text") return { w: 3, h: 3 };
+  switch (viz) {
+    case "big_number":
+      return { w: 4, h: 8 };
+    case "table":
+      return { w: 6, h: 8 };
+    case "pie":
+      return { w: 6, h: 12 };
+    default: // bar, line, or not loaded yet
+      return { w: 6, h: 10 };
+  }
+}
+
+export function toGridItems(tiles: DashboardTile[], vizOf: (chartId: number) => VizType | undefined = () => undefined): GridItem[] {
+  return tiles.map((t) => {
+    const min = minTileSize(t, t.type === "chart" ? vizOf(t.chart_id) : undefined);
+    return { i: t.id, x: t.x, y: t.y, w: t.w, h: t.h, minW: min.w, minH: min.h };
+  });
 }
 
 /** Copy positions from the grid onto the tiles (unknown items are ignored). */
@@ -85,3 +103,6 @@ export const tileHeight = (h: number): number => h * ROW_HEIGHT + (h - 1) * GRID
 export function layoutKey(tiles: DashboardTile[]): string {
   return JSON.stringify([...tiles].sort((a, b) => a.id.localeCompare(b.id)));
 }
+
+/** Tiles resize from any edge or corner. */
+export const RESIZE_HANDLES = ["n", "s", "e", "w", "ne", "nw", "se", "sw"] as const;

@@ -108,7 +108,15 @@ def test_dashboard_crud(client: TestClient, make_chart: Callable[..., int]) -> N
     "tile",
     [
         {"id": "a", "type": "chart", "x": 0, "y": 0, "w": 6, "h": 4},  # no chart_id
-        {"id": "a", "type": "text", "text": "x", "x": 8, "y": 0, "w": 6, "h": 4},  # too wide
+        {
+            "id": "a",
+            "type": "text",
+            "text": "x",
+            "x": 20,
+            "y": 0,
+            "w": 6,
+            "h": 4,
+        },  # too wide (24 columns)
         {"id": "a", "type": "text", "text": "x", "x": -1, "y": 0, "w": 6, "h": 4},
         {"id": "a", "type": "text", "text": "x", "x": 0, "y": 0, "w": 0, "h": 4},
         {"id": "a", "type": "text", "text": "x", "x": 0, "y": 0, "w": 6, "h": 0},
@@ -222,3 +230,59 @@ def test_database_also_blocks_deleting_a_used_chart(
     with pytest.raises(IntegrityError), test_engine.begin() as conn:
         conn.execute(text("DELETE FROM charts WHERE id = :id"), {"id": chart})
     assert client.get(f"/api/charts/{chart}").status_code == 200
+
+
+# ---------- Part 10: the 24-column grid ----------
+
+
+def _pixels(tile: dict[str, Any], cols: int, row: int, width: int) -> tuple[float, ...]:
+    """Where react-grid-layout draws a tile (left, top, width, height) with a 12px margin."""
+    x, y, w, h = (int(tile[k]) for k in "xywh")
+    margin = 12
+    col = (width - (cols - 1) * margin) / cols
+    return (
+        x * (col + margin),
+        y * (row + margin),
+        w * col + (w - 1) * margin,
+        h * row + (h - 1) * margin,
+    )
+
+
+def test_layouts_are_rescaled_to_the_same_pixels() -> None:
+    from app.dashboard_grid import GRID_COLUMNS, ROW_HEIGHT, scale_layout
+
+    old = [
+        {"id": "a", "type": "chart", "chart_id": 1, "x": 0, "y": 0, "w": 6, "h": 8},
+        {"id": "b", "type": "text", "text": "hi", "x": 6, "y": 0, "w": 6, "h": 3},
+        {"id": "c", "type": "chart", "chart_id": 2, "x": 3, "y": 8, "w": 9, "h": 5},
+    ]
+    new = scale_layout(old, 2)
+    for before, after in zip(old, new, strict=True):
+        assert after["id"] == before["id"] and after.get("text") == before.get("text")
+        for width in (800, 1234, 1920):
+            old_px = _pixels(before, cols=12, row=40, width=width)
+            new_px = _pixels(after, cols=GRID_COLUMNS, row=ROW_HEIGHT, width=width)
+            assert new_px == pytest.approx(old_px)
+    # And back (the migration's downgrade).
+    assert scale_layout(new, 0.5) == old
+
+
+def test_tiles_use_the_24_column_grid(client: TestClient) -> None:
+    ok = client.post("/api/dashboards", json={"name": "Wide", "layout": [
+        {"id": "t", "type": "text", "text": "x", "x": 12, "y": 0, "w": 12, "h": 4}]})  # fmt: skip
+    assert ok.status_code == 201, ok.text
+    too_wide = client.post("/api/dashboards", json={"name": "Too wide", "layout": [
+        {"id": "t", "type": "text", "text": "x", "x": 13, "y": 0, "w": 12, "h": 4}]})  # fmt: skip
+    assert too_wide.status_code == 422
+
+
+def test_dashboard_cache_setting(client: TestClient) -> None:
+    created = client.post("/api/dashboards", json={"name": "Cached", "cache_ttl": 300})
+    assert created.status_code == 201, created.text
+    assert created.json()["cache_ttl"] == 300
+    dashboard_id = created.json()["id"]
+    default = client.put(f"/api/dashboards/{dashboard_id}", json={"name": "Cached"})
+    assert default.json()["cache_ttl"] is None
+    assert client.post("/api/dashboards", json={"name": "Bad", "cache_ttl": -1}).status_code == 422
+    copy = client.post(f"/api/dashboards/{dashboard_id}/duplicate")
+    assert copy.status_code in (200, 201), copy.text

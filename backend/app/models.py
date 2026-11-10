@@ -162,6 +162,9 @@ class DatasetColumn(Base):
     # The last sync didn't find this column. Kept so its settings return if it does.
     is_missing: Mapped[bool] = mapped_column(default=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Display labels for values ("1" -> "Lethbridge"), used in legends, axes and tables.
+    # Keys are the values as text. NULL = none.
+    value_labels: Mapped[dict[str, str] | None] = mapped_column(JSON, nullable=True)
 
     dataset: Mapped[Dataset] = relationship(back_populates="columns")
 
@@ -201,7 +204,7 @@ class Chart(Base):
     dataset_id: Mapped[int] = mapped_column(
         ForeignKey("datasets.id", ondelete="RESTRICT"), index=True
     )
-    viz_type: Mapped[str] = mapped_column(String(20))  # table | big_number | bar | line
+    viz_type: Mapped[str] = mapped_column(String(20))  # table | big_number | bar | line | pie
     params: Mapped[dict[str, Any]] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -226,6 +229,8 @@ class Dashboard(Base):
     # List of tiles; the source of truth for what the dashboard shows.
     layout: Mapped[list[dict[str, Any]]] = mapped_column(JSON)
     refresh_interval: Mapped[str] = mapped_column(String(10), default="off")
+    # Chart-data cache lifetime for every tile (seconds; 0 = off). NULL = each chart's own.
+    cache_ttl: Mapped[int | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -288,3 +293,21 @@ class LoginFailure(Base):
     count: Mapped[int] = mapped_column(default=0)
     first_failed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ChartCacheEntry(Base):
+    """A cached chart-data result (see app/charts/cache.py). Keyed by a hash of the connection
+    (id + last change), the final SQL and the row limit, so any change to the chart, its
+    dataset or the connection is a different key. Never used for SQL Lab."""
+
+    __tablename__ = "chart_cache"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    key: Mapped[str] = mapped_column(String(64), unique=True)
+    connection_id: Mapped[int] = mapped_column(
+        ForeignKey("connections.id", ondelete="CASCADE"), index=True
+    )
+    result: Mapped[dict[str, Any]] = mapped_column(JSON)
+    size_bytes: Mapped[int]
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)

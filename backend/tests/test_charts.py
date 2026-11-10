@@ -689,3 +689,350 @@ def test_missing_column_used_by_a_chart_cannot_be_removed(client: TestClient, li
     removed = save_columns(client, lines, delete_column_ids=[quantity["id"]])
     assert removed.status_code == 409
     assert "Quantities" in removed.json()["detail"]["message"]
+
+
+# ---------- Part 10: empty time ranges say where the data is ----------
+
+
+def test_chart_data_returns_the_time_range_it_filtered_on(
+    client: TestClient, lines: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(charts_api, "today", lambda: date(2026, 3, 15))
+    # No time range: nothing to name.
+    data = chart_data(client, "big_number", lines, metrics=["count"])
+    assert (data["range_start"], data["range_end"]) == (None, None)
+    # A relative range snapped to the grain; the end is the last day included.
+    data = chart_data(client, "line", lines, metrics=["count"],
+                      time={"grain": "month", "range": {"kind": "last_90_days"}})  # fmt: skip
+    assert (data["range_start"], data["range_end"]) == ("2025-12-01", "2026-03-15")
+    # Custom ranges keep their inclusive end; open sides stay None.
+    rng = {"kind": "custom", "start": "2025-06-01", "end": "2025-06-30"}
+    data = chart_data(client, "big_number", lines, metrics=["count"], time={"range": rng})
+    assert (data["range_start"], data["range_end"]) == ("2025-06-01", "2025-06-30")
+    data = chart_data(client, "big_number", lines, metrics=["count"],
+                      time={"range": {"kind": "custom", "start": "2025-06-01"}})  # fmt: skip
+    assert (data["range_start"], data["range_end"]) == ("2025-06-01", None)
+
+
+def test_time_extent_of_a_dataset(
+    client: TestClient, lines: int, expect: Callable[..., Any]
+) -> None:
+    [[low, high]] = expect("SELECT MIN(order_date), MAX(order_date) FROM lines")
+    response = client.get(f"/api/datasets/{lines}/time-extent")
+    assert response.status_code == 200, response.text
+    # Default: the main time column.
+    assert response.json() == {"column": "order_date", "min": low, "max": high}
+    explicit = client.get(f"/api/datasets/{lines}/time-extent", params={"column": "order_date"})
+    assert explicit.json() == response.json()
+
+
+def test_time_extent_when_a_range_is_empty(
+    client: TestClient, lines: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The case the frontend handles: no rows in the range, the extent says where data is."""
+    monkeypatch.setattr(charts_api, "today", lambda: date(2040, 1, 1))
+    data = chart_data(client, "line", lines, metrics=["count"],
+                      time={"grain": "month", "range": {"kind": "last_30_days"}})  # fmt: skip
+    assert data["rows"] == []
+    assert (data["range_start"], data["range_end"]) == ("2039-12-01", "2040-01-01")
+    extent = client.get(f"/api/datasets/{lines}/time-extent").json()
+    assert extent["max"] < data["range_start"]
+
+
+def test_time_extent_rejects_bad_columns(client: TestClient, lines: int) -> None:
+    unknown = client.get(f"/api/datasets/{lines}/time-extent", params={"column": "nope"})
+    assert unknown.status_code == 400
+    assert "not a column" in unknown.json()["detail"]
+    not_time = client.get(f"/api/datasets/{lines}/time-extent", params={"column": "status"})
+    assert not_time.status_code == 400
+    assert "not a time column" in not_time.json()["detail"]
+    assert client.get("/api/datasets/999999/time-extent").status_code == 404
+
+
+def test_time_extent_without_a_time_column(client: TestClient, connection_id: int) -> None:
+    created = client.post(
+        "/api/datasets",
+        json={"name": "No time", "connection_id": connection_id, "kind": "sql",
+              "sql": "SELECT 1 AS n"},
+    )  # fmt: skip
+    assert created.status_code == 201, created.text
+    response = client.get(f"/api/datasets/{created.json()['id']}/time-extent")
+    assert response.status_code == 400
+    assert "no main time column" in response.json()["detail"]
+
+
+def test_time_extent_is_null_for_an_empty_dataset(client: TestClient, connection_id: int) -> None:
+    created = client.post(
+        "/api/datasets",
+        json={"name": "Empty", "connection_id": connection_id, "kind": "sql",
+              "sql": "SELECT order_date FROM sales.orders WHERE false"},
+    )  # fmt: skip
+    assert created.status_code == 201, created.text
+    response = client.get(
+        f"/api/datasets/{created.json()['id']}/time-extent", params={"column": "order_date"}
+    )
+    assert response.status_code == 200, response.text
+    assert response.json() == {"column": "order_date", "min": None, "max": None}
+
+
+def test_time_extent_needs_login(client: TestClient, lines: int) -> None:
+    assert client.get(f"/api/datasets/{lines}/time-extent").status_code == 200
+    assert client.post("/api/auth/logout").status_code in (200, 204)
+    assert client.get(f"/api/datasets/{lines}/time-extent").status_code == 401
+
+
+# ---------- Part 10: pie charts (top N slices + "Other", computed in SQL) ----------
+
+
+def test_pie_without_a_limit_has_every_slice(
+    client: TestClient, lines: int, expect: Callable[..., Any]
+) -> None:
+    data = chart_data(client, "pie", lines, metrics=["count"], dimensions=["status"],
+                      series_limit=None, time=None)  # fmt: skip
+    assert [c["name"] for c in data["columns"]] == ["status", "__other", "count"]
+    assert data["rows"] == expect(
+        "SELECT status, 0, COUNT(*) FROM lines GROUP BY status ORDER BY 3 DESC"
+    )
+
+
+def test_pie_groups_the_rest_into_other(
+    client: TestClient, lines: int, expect: Callable[..., Any]
+) -> None:
+    data = chart_data(client, "pie", lines, metrics=["revenue"], dimensions=["status"],
+                      series_limit=2, time=None)  # fmt: skip
+    top = expect(
+        "SELECT status, SUM(line_total) FROM lines GROUP BY status ORDER BY 2 DESC, 1 LIMIT 2"
+    )
+    [[rest]] = expect(
+        "SELECT SUM(line_total) FROM lines WHERE status NOT IN "
+        "(SELECT status FROM lines GROUP BY status ORDER BY SUM(line_total) DESC, 1 LIMIT 2)"
+    )
+    assert [r[:2] for r in data["rows"][:2]] == [[s, 0] for s, _ in top]
+    assert [float(r[2]) for r in data["rows"][:2]] == pytest.approx([float(v) for _, v in top])
+    assert data["rows"][2][:2] == [None, 1]
+    assert float(data["rows"][2][2]) == pytest.approx(float(rest))
+    assert len(data["rows"]) == 3
+
+
+def test_pie_other_is_right_for_averages(
+    client: TestClient, lines: int, expect: Callable[..., Any]
+) -> None:
+    """Other is the metric over the other rows (not a sum of the other slices)."""
+    avg = {"column": "line_total", "aggregate": "AVG", "label": None}
+    data = chart_data(client, "pie", lines, metrics=[avg], dimensions=["status"],
+                      series_limit=1, time=None)  # fmt: skip
+    [[top_status, top_avg]] = expect(
+        "SELECT status, AVG(line_total) FROM lines GROUP BY status ORDER BY 2 DESC, 1 LIMIT 1"
+    )
+    [[rest_avg]] = expect(
+        f"SELECT AVG(line_total) FROM lines WHERE status IS DISTINCT FROM '{top_status}'"
+    )
+    assert data["rows"][0][:2] == [top_status, 0]
+    assert float(data["rows"][0][2]) == pytest.approx(float(top_avg))
+    assert data["rows"][1][:2] == [None, 1]
+    assert float(data["rows"][1][2]) == pytest.approx(float(rest_avg))
+
+
+def test_pie_keeps_a_null_slice_apart_from_other(
+    client: TestClient, lines: int, expect: Callable[..., Any]
+) -> None:
+    # web_or_mobile is web, mobile or NULL (store orders): three slices, nothing left over.
+    data = chart_data(client, "pie", lines, metrics=["count"], dimensions=["web_or_mobile"],
+                      series_limit=3, time=None)  # fmt: skip
+    assert [r[1] for r in data["rows"]] == [0, 0, 0]
+    assert sorted(r[2] for r in data["rows"]) == sorted(
+        r[0] for r in expect("SELECT COUNT(*) FROM lines GROUP BY web_or_mobile")
+    )
+    assert None in [r[0] for r in data["rows"]]
+
+
+def test_pie_respects_filters_and_time_ranges(
+    client: TestClient, lines: int, expect: Callable[..., Any]
+) -> None:
+    rng = {"kind": "custom", "start": "2025-06-01", "end": "2025-06-30"}
+    data = chart_data(client, "pie", lines, metrics=["count"], dimensions=["status"],
+                      series_limit=1, time={"column": "order_date", "grain": None, "range": rng},
+                      filters=[{"column": "channel", "operator": "=", "value": "web"}])  # fmt: skip
+    where = "order_date >= '2025-06-01' AND order_date < '2025-07-01' AND channel = 'web'"
+    [[total]] = expect(f"SELECT COUNT(*) FROM lines WHERE {where}")
+    assert sum(r[2] for r in data["rows"]) == total
+    assert (data["range_start"], data["range_end"]) == ("2025-06-01", "2025-06-30")
+
+
+def test_pie_shape_errors(client: TestClient, lines: int) -> None:
+    def error(**query: Any) -> str:
+        return str(chart_error(client, "pie", lines, **query)["message"])
+
+    assert "exactly one dimension" in error(metrics=["count"], dimensions=[], time=None)
+    assert "exactly one dimension" in error(
+        metrics=["count"], dimensions=["status", "channel"], time=None
+    )
+    assert "exactly one metric" in error(
+        metrics=["count", "revenue"], dimensions=["status"], time=None
+    )
+    assert "no time grain" in error(
+        metrics=["count"], dimensions=["status"],
+        time={"column": "order_date", "grain": "month", "range": {"kind": "none"}},
+    )  # fmt: skip
+    assert "series" in error(metrics=["count"], dimensions=["status"], series="channel", time=None)
+
+
+# ---------- Part 10: chart-data cache ----------
+
+
+@pytest.fixture
+def user_db_runs(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """SQL actually sent to the user database by /api/chart-data."""
+    runs: list[str] = []
+    real = charts_api.run_query  # type: ignore[attr-defined]
+
+    def counting(details: Any, sql: str, **kwargs: Any) -> Any:
+        runs.append(sql)
+        return real(details, sql, **kwargs)
+
+    monkeypatch.setattr(charts_api, "run_query", counting)
+    return runs
+
+
+def cached(client: TestClient, dataset_id: int, refresh: bool = False, cache_ttl: int | None = None,
+           **query: Any) -> dict[str, Any]:  # fmt: skip
+    body: dict[str, Any] = {
+        "viz_type": "bar",
+        "query": {"dataset_id": dataset_id, "metrics": ["count"], "dimensions": ["status"],
+                  "time": None, **query},
+        "refresh": refresh,
+    }  # fmt: skip
+    if cache_ttl is not None:
+        body["cache_ttl"] = cache_ttl
+    response = client.post("/api/chart-data", json=body)
+    assert response.status_code == 200, response.text
+    data: dict[str, Any] = response.json()
+    return data
+
+
+def cache_rows(session_factory: Any) -> int:
+    with session_factory() as db:
+        return int(db.execute(text("SELECT COUNT(*) FROM chart_cache")).scalar_one())
+
+
+def test_cache_miss_then_hit(client: TestClient, lines: int, user_db_runs: list[str]) -> None:
+    first = cached(client, lines)
+    assert first["cached_at"] is None
+    second = cached(client, lines)
+    assert second["cached_at"] is not None
+    assert second["rows"] == first["rows"] and second["sql"] == first["sql"]
+    assert len(user_db_runs) == 1  # the second answer came from the cache
+
+
+def test_refresh_bypasses_the_cache_and_stores_the_new_result(
+    client: TestClient, lines: int, user_db_runs: list[str]
+) -> None:
+    cached(client, lines)
+    fresh = cached(client, lines, refresh=True)
+    assert fresh["cached_at"] is None
+    assert len(user_db_runs) == 2
+    again = cached(client, lines)
+    assert again["cached_at"] is not None
+    assert len(user_db_runs) == 2
+
+
+def test_cache_entries_expire(
+    client: TestClient, lines: int, user_db_runs: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from app.charts import cache
+
+    start = datetime.now(UTC)
+    monkeypatch.setattr(cache, "now", lambda: start)
+    cached(client, lines, cache_ttl=60)
+    monkeypatch.setattr(cache, "now", lambda: start + timedelta(seconds=59))
+    assert cached(client, lines, cache_ttl=60)["cached_at"] is not None
+    monkeypatch.setattr(cache, "now", lambda: start + timedelta(seconds=61))
+    assert cached(client, lines, cache_ttl=60)["cached_at"] is None
+    assert len(user_db_runs) == 2
+
+
+def test_ttl_zero_never_caches(
+    client: TestClient, lines: int, user_db_runs: list[str], session_factory: Any
+) -> None:
+    cached(client, lines, cache_ttl=0)
+    assert cached(client, lines, cache_ttl=0)["cached_at"] is None
+    assert len(user_db_runs) == 2
+    assert cache_rows(session_factory) == 0
+
+
+def test_a_changed_chart_never_gets_a_stale_result(
+    client: TestClient, lines: int, user_db_runs: list[str], sampledb_payload: Any,
+    connection_id: int,
+) -> None:  # fmt: skip
+    base = cached(client, lines)
+    # Another filter, another limit, another metric: other SQL, other key.
+    web = cached(client, lines, filters=[{"column": "channel", "operator": "=", "value": "web"}])
+    assert web["cached_at"] is None and web["rows"] != base["rows"]
+    assert cached(client, lines, row_limit=1)["cached_at"] is None
+    assert cached(client, lines, metrics=["revenue"])["cached_at"] is None
+    assert len(user_db_runs) == 4
+    # A changed dataset SQL is other SQL too.
+    dataset = client.get(f"/api/datasets/{lines}").json()
+    updated = client.put(f"/api/datasets/{lines}", json={
+        "name": dataset["name"], "sql": LINES_SQL + " WHERE o.channel = 'web'"})  # fmt: skip
+    assert updated.status_code == 200, updated.text
+    after = cached(client, lines)
+    assert after["cached_at"] is None and after["rows"] == web["rows"]
+    # Editing the connection invalidates everything cached for it.
+    cached(client, lines)
+    assert cached(client, lines)["cached_at"] is not None
+    put = client.put(f"/api/connections/{connection_id}", json=sampledb_payload())
+    assert put.status_code == 200, put.text
+    assert cached(client, lines)["cached_at"] is None
+
+
+def test_cache_size_caps(
+    client: TestClient, lines: int, monkeypatch: pytest.MonkeyPatch, session_factory: Any
+) -> None:
+    from app.charts import cache
+
+    # A result bigger than one entry may be is not cached.
+    monkeypatch.setattr(cache, "MAX_ENTRY_BYTES", 10)
+    cached(client, lines)
+    assert cache_rows(session_factory) == 0
+    monkeypatch.undo()
+    # Over the total cap the oldest entries go.
+    first = cached(client, lines, row_limit=1)
+    with session_factory() as db:
+        one = int(db.execute(text("SELECT size_bytes FROM chart_cache")).scalar_one())
+    monkeypatch.setattr(cache, "MAX_TOTAL_BYTES", one * 2 + 1)
+    cached(client, lines, row_limit=2)
+    cached(client, lines, row_limit=3)
+    assert cache_rows(session_factory) <= 2
+    again = cached(client, lines, row_limit=1)
+    assert again["cached_at"] is None and again["rows"] == first["rows"]
+
+
+def test_expired_entries_are_cleaned_up(
+    client: TestClient, lines: int, monkeypatch: pytest.MonkeyPatch, session_factory: Any
+) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from app.charts import cache
+
+    start = datetime.now(UTC)
+    monkeypatch.setattr(cache, "now", lambda: start)
+    cached(client, lines, cache_ttl=60, row_limit=1)
+    cached(client, lines, cache_ttl=60, row_limit=2)
+    assert cache_rows(session_factory) == 2
+    monkeypatch.setattr(cache, "now", lambda: start + timedelta(minutes=5))
+    cached(client, lines, cache_ttl=60, row_limit=3)  # a write cleans up
+    assert cache_rows(session_factory) == 1
+
+
+def test_sql_lab_is_never_cached(
+    client: TestClient, connection_id: int, session_factory: Any
+) -> None:
+    for _ in range(2):
+        response = client.post(
+            "/api/query", json={"connection_id": connection_id, "sql": "SELECT 1 AS one"}
+        )
+        assert response.status_code == 200, response.text
+    assert cache_rows(session_factory) == 0

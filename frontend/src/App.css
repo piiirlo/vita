@@ -1728,6 +1728,124 @@ button.small.icon {
   font-weight: 500;
 }
 
+.segmented.segmented-4 {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+/* ---- chart editor side panel (Customize) ---- */
+
+.chart-controls .control-heading {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+.chart-controls .control-heading-small {
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* why an option is disabled (or a short tip) */
+.chart-controls .control-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.check-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.check-field .control-hint {
+  padding-left: 24px;
+}
+
+.check-field.is-disabled .checkbox,
+.control.is-disabled > span {
+  color: var(--text-faint);
+}
+
+.chart-controls select:disabled,
+.chart-controls input:disabled,
+.segmented button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.format-editor,
+.series-names {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  min-width: 0;
+}
+
+.format-editor + .format-editor {
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.format-editor-name {
+  padding: 0;
+  font-weight: 500;
+  font-size: 14px;
+}
+
+.inline-controls > .control {
+  flex: 1;
+  min-width: 0;
+}
+
+.series-name-row {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.series-name-row > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+
+.swatches {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 6px;
+}
+
+.swatch {
+  aspect-ratio: 1;
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+}
+
+.swatch[aria-checked="true"] {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+
 .chips {
   list-style: none;
   margin: 0;
@@ -1869,10 +1987,80 @@ button.small.icon {
   width: 100%;
 }
 
+/* ChartView's box (measured for label layout) */
+.chart-view {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* "labels don't fit" etc. under a chart: never hide things silently */
+.chart-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.chart-notice svg {
+  color: var(--warning-text);
+  flex-shrink: 0;
+}
+
+.dash-tile-hero .chart-notice {
+  color: var(--ink-muted);
+}
+
+/* the chart's own title (Customize > Title), above the preview */
+.chart-preview-title {
+  margin: 0 0 12px;
+  font-size: 17px;
+  font-weight: 500;
+}
+
 .chart-empty {
   margin: auto;
   color: var(--text-muted);
   font-size: 15px;
+}
+
+/* empty result with a time range: which range, and where the data actually is */
+.empty-range {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: 420px;
+  padding: 12px;
+  text-align: center;
+  animation: v-fade-in var(--dur-slow) var(--ease-out) both;
+}
+
+.empty-range-icon {
+  color: var(--text-faint);
+}
+
+.empty-range-text {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.empty-range-skeleton {
+  display: block;
+  width: 220px;
+  max-width: 100%;
+  height: 14px;
+  margin: 6px auto 0;
+}
+
+.dash-tile-hero .empty-range-icon {
+  color: var(--ink-muted);
 }
 
 .chart-error {
@@ -1961,6 +2149,70 @@ button.small.icon {
   height: 90px;
   width: 100%;
   margin-top: 18px;
+}
+
+/* Customize > Font size (auto = the sizes above) */
+.big-number-size-s .big-number-value {
+  font-size: clamp(28px, 4vw, 44px);
+}
+
+.big-number-size-m .big-number-value {
+  font-size: clamp(36px, 6vw, 60px);
+}
+
+.big-number-size-l .big-number-value {
+  font-size: clamp(48px, 9vw, 96px);
+}
+
+/* conditional color: color + arrow + words (never color alone) */
+.big-number-value.is-below,
+.big-number-value.is-below .big-number-frac {
+  color: var(--danger);
+}
+
+.big-number-value.is-above,
+.big-number-value.is-above .big-number-frac {
+  color: var(--success);
+}
+
+.big-number-status,
+.big-number-change {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 8px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.big-number-status.is-below,
+.big-number-change.is-down {
+  color: var(--danger);
+}
+
+.big-number-status.is-above,
+.big-number-change.is-up {
+  color: var(--success);
+}
+
+.big-number-change {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.big-number-change-label {
+  color: var(--text-muted);
+}
+
+.big-number-trend-dates {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
 }
 
 /* ======================= Dashboards ======================= */
@@ -2178,6 +2430,38 @@ button.small.icon {
   margin-top: 4cqh;
 }
 
+.dash-tile-body .big-number-size-s .big-number-value {
+  font-size: clamp(18px, 12cqmin, 64px);
+}
+
+.dash-tile-body .big-number-size-m .big-number-value {
+  font-size: clamp(20px, 16cqmin, 88px);
+}
+
+.dash-tile-body .big-number-size-l .big-number-value {
+  font-size: clamp(24px, 26cqmin, 140px);
+}
+
+.dash-tile-hero .big-number-value.is-below,
+.dash-tile-hero .big-number-value.is-below .big-number-frac,
+.dash-tile-hero .big-number-status.is-below,
+.dash-tile-hero .big-number-change.is-down {
+  color: var(--ink-danger);
+}
+
+.dash-tile-hero .big-number-value.is-above,
+.dash-tile-hero .big-number-value.is-above .big-number-frac,
+.dash-tile-hero .big-number-status.is-above,
+.dash-tile-hero .big-number-change.is-up {
+  color: var(--ink-success);
+}
+
+.dash-tile-hero .big-number-change,
+.dash-tile-hero .big-number-change-label,
+.dash-tile-hero .big-number-trend-dates {
+  color: var(--ink-muted);
+}
+
 .dash-tile-body .chart-empty {
   font-size: 14px;
 }
@@ -2199,13 +2483,9 @@ button.small.icon {
   border-color: var(--border);
 }
 
+/* Same title style as every other tile; only the color follows the ink card. */
 .dash-tile-hero .dash-tile-title {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--ink-muted);
+  color: var(--ink-text);
 }
 
 .dash-tile-hero .dash-tile-header button.icon {
@@ -2251,6 +2531,58 @@ button.small.icon {
   top: 0;
   bottom: auto;
   background: var(--ink-border);
+}
+
+/* Hero rule: a plain hairline. When a value arrives, a short accent sweep runs across it once
+ * and fades out (decorative, clearly finished). While refreshing, the scan line runs instead. */
+.hero-rule {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  overflow: hidden;
+}
+
+.hero-rule::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--ink-border);
+}
+
+.hero-sweep {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 2px;
+  width: 30%;
+  background: linear-gradient(90deg, transparent, var(--accent));
+  opacity: 0;
+  animation: v-hero-sweep 900ms var(--ease-out) both;
+}
+
+@keyframes v-hero-sweep {
+  0% {
+    transform: translateX(-100%);
+    opacity: 1;
+  }
+  75% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(340%);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-sweep {
+    display: none;
+  }
 }
 
 .dash-tile-hero .dash-drag-handle {
@@ -2446,15 +2778,137 @@ button.tile-menu-item {
   cursor: default;
 }
 
-/* react-grid-layout: placeholder and resize handles in the app's colors */
-.dash-grid .react-grid-placeholder {
-  background: var(--accent);
-  opacity: 0.12;
-  border-radius: var(--radius-card);
+/* react-grid-layout. While dragging / resizing, the tile follows the pointer (no transition)
+   and a dashed outline shows where it will snap; on release it eases into place. */
+.dash-grid .react-grid-item {
+  transition-duration: 180ms;
+  transition-timing-function: var(--ease-out);
 }
 
-.dash-grid .react-resizable-handle {
-  opacity: 0.5;
+.dash-grid .react-grid-item.react-grid-placeholder {
+  background: var(--accent-soft);
+  opacity: 1;
+  border: 2px dashed var(--accent-text);
+  border-radius: var(--radius-card);
+  transition-duration: 150ms;
+}
+
+/* Resize handles on every edge and corner: invisible until the tile is hovered, then small
+   accent grips; each has its own resize cursor (from react-resizable's classes). */
+/* View mode: no handles at all (no resize cursors either). */
+.dash-grid:not(.editing) .react-resizable-handle {
+  display: none;
+}
+
+.dash-grid .react-grid-item > .react-resizable-handle {
+  background: none;
+  padding: 0;
+  margin: 0;
+  transform: none;
+  opacity: 0;
+  z-index: 3;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+
+.dash-grid.editing .react-grid-item:hover > .react-resizable-handle,
+.dash-grid .react-grid-item.resizing > .react-resizable-handle {
+  opacity: 1;
+}
+
+.dash-grid .react-grid-item > .react-resizable-handle-n,
+.dash-grid .react-grid-item > .react-resizable-handle-s {
+  left: 18px;
+  right: 18px;
+  width: auto;
+  height: 12px;
+}
+
+.dash-grid .react-grid-item > .react-resizable-handle-n {
+  top: -6px;
+}
+
+.dash-grid .react-grid-item > .react-resizable-handle-s {
+  bottom: -6px;
+}
+
+.dash-grid .react-grid-item > .react-resizable-handle-e,
+.dash-grid .react-grid-item > .react-resizable-handle-w {
+  top: 18px;
+  bottom: 18px;
+  width: 12px;
+  height: auto;
+}
+
+.dash-grid .react-grid-item > .react-resizable-handle-e {
+  right: -6px;
+}
+
+.dash-grid .react-grid-item > .react-resizable-handle-w {
+  left: -6px;
+}
+
+.dash-grid .react-grid-item > .react-resizable-handle-ne,
+.dash-grid .react-grid-item > .react-resizable-handle-nw,
+.dash-grid .react-grid-item > .react-resizable-handle-se,
+.dash-grid .react-grid-item > .react-resizable-handle-sw {
+  width: 18px;
+  height: 18px;
+}
+
+.dash-grid .react-grid-item > .react-resizable-handle-ne {
+  top: -6px;
+  right: -6px;
+}
+
+.dash-grid .react-grid-item > .react-resizable-handle-nw {
+  top: -6px;
+  left: -6px;
+}
+
+.dash-grid .react-grid-item > .react-resizable-handle-se {
+  bottom: -6px;
+  right: -6px;
+}
+
+.dash-grid .react-grid-item > .react-resizable-handle-sw {
+  bottom: -6px;
+  left: -6px;
+}
+
+/* the grips: a short bar on edges, a dot on corners */
+.dash-grid .react-resizable-handle::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  translate: -50% -50%;
+  background: var(--accent);
+  border-radius: 999px;
+  box-shadow: 0 0 0 2px var(--surface);
+}
+
+.dash-grid .react-resizable-handle-n::after,
+.dash-grid .react-resizable-handle-s::after {
+  width: 28px;
+  height: 4px;
+}
+
+.dash-grid .react-resizable-handle-e::after,
+.dash-grid .react-resizable-handle-w::after {
+  width: 4px;
+  height: 28px;
+}
+
+.dash-grid .react-resizable-handle-ne::after,
+.dash-grid .react-resizable-handle-nw::after,
+.dash-grid .react-resizable-handle-se::after,
+.dash-grid .react-resizable-handle-sw::after {
+  width: 8px;
+  height: 8px;
+}
+
+.dash-grid .react-grid-item.resizing {
+  box-shadow: var(--glow);
 }
 
 .dash-grid .react-grid-item.react-draggable-dragging {
@@ -2751,4 +3205,400 @@ button.tile-menu-item {
 .back-link {
   font-size: 14px;
   font-weight: 500;
+}
+
+/* ---------- dataset: value labels dialog ---------- */
+
+.value-labels {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.value-labels-head,
+.value-labels-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr) 32px;
+  gap: 8px;
+  align-items: center;
+}
+
+.value-labels-row .cell-input[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+
+/* "cached 3 minutes ago" in a tile header */
+.tile-cached {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* ---------- Browse: schema diagram ---------- */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.link-button {
+  padding: 0;
+  height: auto;
+  border: none;
+  background: none;
+  color: var(--link);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.browse-view-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.browse-view-bar .segmented {
+  width: 220px;
+}
+
+.diagram-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.diagram-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.diagram-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-muted);
+  min-width: min(340px, 100%);
+}
+
+.diagram-search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  outline: none;
+}
+
+.diagram-search:focus-within {
+  border-color: var(--focus-ring);
+}
+
+.diagram-search-count,
+.diagram-zoom {
+  font-size: 11px;
+  color: var(--text-muted);
+  min-width: 40px;
+  text-align: center;
+}
+
+.diagram-body {
+  display: flex;
+  gap: 12px;
+  min-height: 0;
+}
+
+/* the viewport: drag to pan, wheel to zoom */
+.diagram {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: max(440px, calc(100vh - 250px));
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background-color: var(--surface-sunken);
+  background-image: radial-gradient(var(--border) 1px, transparent 1px);
+  background-size: 22px 22px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.diagram:active {
+  cursor: grabbing;
+}
+
+.diagram-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+}
+
+/* focus / fit: a smooth glide (off with reduced motion, like every transition) */
+.diagram-canvas.gliding {
+  transition: transform 450ms var(--ease-out);
+}
+
+.diagram-edges {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.diagram-edge path {
+  fill: none;
+  stroke: var(--border-strong);
+  stroke-width: 1.6;
+  transition:
+    stroke var(--dur-fast) var(--ease-out),
+    opacity var(--dur-fast) var(--ease-out);
+}
+
+.diagram-edge circle {
+  fill: var(--border-strong);
+}
+
+.diagram-edge.is-lit path {
+  stroke: var(--accent);
+  stroke-width: 2.2;
+}
+
+.diagram-edge.is-lit circle {
+  fill: var(--accent);
+}
+
+.diagram-edge.is-dim {
+  opacity: 0.25;
+}
+
+/* tables: glide to their new place when the layout changes */
+.diagram-card {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: 0 10px 30px -22px var(--shadow);
+  cursor: default;
+  transition:
+    transform 320ms var(--ease-out),
+    height 320ms var(--ease-out),
+    opacity var(--dur-slow) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out);
+}
+
+.diagram-card.is-active {
+  border-color: var(--accent);
+  box-shadow: var(--glow);
+}
+
+.diagram-card.is-near {
+  border-color: var(--glow-border);
+}
+
+.diagram-card.is-dim {
+  opacity: 0.35;
+}
+
+.diagram-card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 6px 0 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.diagram-card-name {
+  flex: 1;
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.diagram-card-name:hover {
+  color: var(--accent-text);
+}
+
+.diagram-card-toggle {
+  flex-shrink: 0;
+}
+
+.diagram-summary {
+  margin: 0;
+  padding: 6px 12px;
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.diagram-columns {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0 6px;
+  font-size: 12px;
+}
+
+.diagram-columns li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  height: 22px;
+  align-items: center;
+  padding: 0 12px;
+}
+
+.diagram-col-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diagram-col-type {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: 10px;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pk-icon {
+  color: var(--accent-text);
+}
+
+.fk-icon {
+  color: var(--link);
+}
+
+/* the selected table */
+.diagram-panel {
+  width: 340px;
+  flex-shrink: 0;
+  max-height: max(440px, calc(100vh - 250px));
+  overflow-y: auto;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  animation: v-fade-in var(--dur-slow) var(--ease-out) both;
+}
+
+.diagram-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.diagram-panel-head h3 {
+  margin: 0;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+.diagram-panel-actions {
+  display: flex;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.diagram-links ul {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  font-size: 13px;
+}
+
+.diagram-links li {
+  padding: 3px 0;
+}
+
+.diagram-links h4 {
+  margin: 14px 0 0;
+}
+
+.diagram-preview {
+  margin-top: 12px;
+}
+
+.diagram-preview-skeleton {
+  display: block;
+  height: 120px;
+  margin-top: 12px;
+}
+
+.diagram-loading {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  padding: 40px;
+}
+
+.diagram-loading .skeleton {
+  height: 90px;
+  border-radius: 14px;
+}
+
+@media (max-width: 900px) {
+  .diagram-body {
+    flex-direction: column;
+  }
+
+  .diagram-panel {
+    width: auto;
+  }
+}
+
+/* Browse: the list view while the diagram is shown (display: grid would beat [hidden]) */
+.browser[hidden] {
+  display: none;
 }

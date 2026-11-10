@@ -279,6 +279,22 @@ export const listColumns = (id: number, schema: string, table: string) =>
     `/api/connections/${id}/schemas/${seg(schema)}/tables/${seg(table)}/columns`,
   );
 
+export type DiagramColumn = { name: string; type: string; nullable: boolean; primary_key: boolean; foreign_key: boolean };
+export type DiagramTable = { name: string; type: "table" | "view"; columns: DiagramColumn[] };
+export type DiagramForeignKey = {
+  name: string | null;
+  table: string;
+  columns: string[];
+  referred_schema: string;
+  referred_table: string;
+  referred_columns: string[];
+};
+export type SchemaDiagram = { schema_name: string; tables: DiagramTable[]; foreign_keys: DiagramForeignKey[]; truncated: boolean };
+
+/** Tables, columns and foreign keys of one schema (the Browse page's diagram). */
+export const getSchemaDiagram = (id: number, schema: string, signal?: AbortSignal) =>
+  request<SchemaDiagram>(`/api/connections/${id}/schemas/${seg(schema)}/diagram`, { signal });
+
 // ---------- datasets ----------
 
 export type DatasetKind = "table" | "sql";
@@ -299,12 +315,17 @@ export type DatasetColumn = {
   /** The last sync didn't find this column. */
   is_missing: boolean;
   description: string | null;
+  /** Display labels for values ("1" -> "Lethbridge"); keys are the values as text. */
+  value_labels?: Record<string, string> | null;
 };
 
 export type ColumnSettings = Pick<
   DatasetColumn,
   "id" | "label" | "generic_type_override" | "is_temporal" | "is_dimension" | "is_hidden" | "description"
->;
+> & {
+  /** Left out: unchanged. {} clears them. */
+  value_labels?: Record<string, string>;
+};
 
 export type DatasetMetric = {
   id: number;
@@ -402,6 +423,12 @@ export const syncDataset = (id: number) =>
 export const previewDataset = (id: number, signal?: AbortSignal) =>
   request<PreviewResponse>(`/api/datasets/${id}/preview`, { signal });
 
+/** MIN / MAX of a time column (default: the main time column). One cheap aggregate query. */
+export function getTimeExtent(id: number, column?: string | null, signal?: AbortSignal) {
+  const qs = column ? `?${new URLSearchParams({ column })}` : "";
+  return request<TimeExtent>(`/api/datasets/${id}/time-extent${qs}`, { signal });
+}
+
 export const createMetric = (datasetId: number, input: MetricInput) =>
   request<DatasetMetric>(`/api/datasets/${datasetId}/metrics`, { method: "POST", body: json(input) });
 
@@ -422,7 +449,7 @@ export const validateMetric = (datasetId: number, expression: string) =>
 
 // ---------- charts ----------
 
-export type VizType = "table" | "big_number" | "bar" | "line";
+export type VizType = "table" | "big_number" | "bar" | "line" | "pie";
 export type Aggregate = "SUM" | "AVG" | "MIN" | "MAX" | "COUNT" | "COUNT_DISTINCT";
 export type Grain = "day" | "week" | "month" | "quarter" | "year";
 export type RangeKind =
@@ -477,7 +504,21 @@ export type ChartQuery = {
   series_limit: number | null;
 };
 
-export type ChartDataResult = QueryResult & { sql: string };
+/** range_start / range_end: the time range the query filtered on (days, both inclusive; null = open
+ * on that side or no range). */
+export type ChartDataResult = QueryResult & {
+  sql: string;
+  range_start?: string | null;
+  range_end?: string | null;
+  /** Set when the result came from the chart-data cache: when it was computed. */
+  cached_at?: string | null;
+};
+
+/** Chart-data cache options: lifetime in seconds (0 = off, null = default 10 min), refresh = skip it. */
+export type CacheOptions = { cacheTtl?: number | null; refresh?: boolean };
+
+/** Where a dataset has data: MIN / MAX of a time column (ISO strings; null when it has none). */
+export type TimeExtent = { column: string; min: string | null; max: string | null };
 
 export type ChartParams = { query: ChartQuery; display: Record<string, unknown> };
 
@@ -501,10 +542,15 @@ export type ChartInput = {
 };
 
 /** Throws ApiError; invalid queries and failed queries have a QueryErrorDetail `detail`. */
-export const fetchChartData = (vizType: VizType, query: ChartQuery, signal?: AbortSignal) =>
+export const fetchChartData = (vizType: VizType, query: ChartQuery, signal?: AbortSignal, cache: CacheOptions = {}) =>
   request<ChartDataResult>("/api/chart-data", {
     method: "POST",
-    body: json({ viz_type: vizType, query }),
+    body: json({
+      viz_type: vizType,
+      query,
+      ...(cache.cacheTtl === undefined || cache.cacheTtl === null ? {} : { cache_ttl: cache.cacheTtl }),
+      ...(cache.refresh ? { refresh: true } : {}),
+    }),
     signal,
   });
 
@@ -548,6 +594,8 @@ export type DashboardListItem = {
 export type Dashboard = Omit<DashboardListItem, "chart_count"> & {
   layout: DashboardTile[];
   refresh_interval: RefreshInterval;
+  /** Cache lifetime for every tile (seconds, 0 = off); null = each chart's own. */
+  cache_ttl: number | null;
   /** Basic info of the charts in the layout, keyed by chart id. */
   charts: Record<string, DashboardChartInfo>;
 };
@@ -557,6 +605,7 @@ export type DashboardInput = {
   description: string | null;
   layout: DashboardTile[];
   refresh_interval: RefreshInterval;
+  cache_ttl?: number | null;
 };
 
 export function listDashboards(q?: string) {
