@@ -62,7 +62,14 @@ export default function LoginPage() {
   return (
     <div className="login-page">
       <form className="card form login-card" onSubmit={(e) => void submit(e)} aria-label="Log in">
-        <div className="login-brand">Vita</div>
+        {busy && <span className="scan-line" aria-hidden />}
+        <div className="login-brand">
+          <span className="login-logo" aria-hidden>
+            V
+          </span>
+          Vita
+        </div>
+        <span className="eyebrow">Welcome back</span>
         <h1 className="login-title">Log in</h1>
         {state.status === "anonymous" && state.expired && !error && (
           <p className="alert alert-warning">Your session has ended. Please log in again.</p>

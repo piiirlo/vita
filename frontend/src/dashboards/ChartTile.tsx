@@ -7,6 +7,7 @@ import { useInView } from "./hooks.ts";
 import { CancelledError, type QueuedTask } from "./queue.ts";
 import { DashboardContext, loadTileData, type TileData } from "./tileData.ts";
 import TileMenu from "./TileMenu.tsx";
+import { Modal, ModalActions } from "../components/ui/dialog.tsx";
 
 type Props = {
   tile: ChartTileSpec;
@@ -75,7 +76,7 @@ export default function ChartTile({ tile, info, editing, onRemove }: Props) {
         <span className="dash-tile-title" title={name}>
           {name}
         </span>
-        {loading && data && <span className="spinner small" role="status" aria-label="Refreshing" />}
+        {loading && data && <span className="live-dot" role="status" aria-label="Refreshing" />}
         <span className="spacer" />
         {!editing && (
           <TileMenu
@@ -110,38 +111,52 @@ export default function ChartTile({ tile, info, editing, onRemove }: Props) {
         ) : data ? (
           <TileErrorBoundary key={data.loadedAt}>
             <ChartView state={data.state} result={data.main} trend={data.trend} dataset={data.dataset} />
+            {data.state.vizType === "big_number" && (
+              <div className="hero-meta">
+                <span className="scan-line" aria-hidden />
+                <span className="mono">
+                  query {data.main.duration_ms} ms · refreshed {relativeTime(new Date(data.loadedAt).toISOString())}
+                </span>
+              </div>
+            )}
           </TileErrorBoundary>
         ) : (
-          <div className="dash-tile-loading" role="status">
-            <span className="spinner" aria-hidden /> Loading…
-          </div>
+          <TileSkeleton viz={info?.viz_type} />
         )}
       </div>
 
       {showSql && (
-        <div className="modal-backdrop" onMouseDown={() => setShowSql(false)}>
-          <div
-            className="modal modal-wide card form"
-            role="dialog"
-            aria-label={`SQL of ${name}`}
-            onMouseDown={(e) => e.stopPropagation()}
-            onKeyDown={(e) => e.key === "Escape" && setShowSql(false)}
-          >
-            <h2 className="modal-title">SQL of “{name}”</h2>
-            {sqls.map((sql, i) => (
-              <div key={i}>
-                {sqls.length > 1 && <h3 className="small muted">{i === 0 ? "Value" : "Trend line"}</h3>}
-                <pre className="mono small sql-block">{sql}</pre>
-              </div>
-            ))}
-            <div className="form-actions">
-              <span className="spacer" />
-              <button type="button" onClick={() => setShowSql(false)} autoFocus>
-                Close
-              </button>
+        <Modal title={<>SQL of “{name}”</>} onClose={() => setShowSql(false)} wide label={`SQL of ${name}`}>
+          {sqls.map((sql, i) => (
+            <div key={i}>
+              {sqls.length > 1 && <h3 className="small muted">{i === 0 ? "Value" : "Trend line"}</h3>}
+              <pre className="mono small sql-block">{sql}</pre>
             </div>
-          </div>
-        </div>
+          ))}
+          <ModalActions>
+            <button type="button" onClick={() => setShowSql(false)} autoFocus>
+              Close
+            </button>
+          </ModalActions>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+/** Shimmering placeholder shaped like the chart that is loading (no spinner, no layout jump). */
+function TileSkeleton({ viz }: { viz: string | undefined }) {
+  return (
+    <div className={`tile-skeleton tile-skeleton-${viz ?? "chart"}`} role="status" aria-label="Loading chart">
+      {viz === "big_number" ? (
+        <>
+          <span className="skeleton tile-skeleton-value" />
+          <span className="skeleton tile-skeleton-line" />
+        </>
+      ) : viz === "table" ? (
+        Array.from({ length: 5 }, (_, i) => <span key={i} className="skeleton tile-skeleton-line" />)
+      ) : (
+        <span className="skeleton tile-skeleton-plot" />
       )}
     </div>
   );

@@ -5,7 +5,9 @@ import { clearToasts } from "../components/toast.ts";
 
 // findBy* / waitFor: pages debounce work (e.g. the chart editor waits 600 ms before
 // running), so the default 1 s is too tight when the whole suite runs in parallel.
-configure({ asyncUtilTimeout: 4000 });
+// 8 s: the chart editor test (600 ms debounce + a few renders) took 2 s on its own but
+// occasionally passed 4 s while other workers load the real Monaco in parallel.
+configure({ asyncUtilTimeout: 8000 });
 
 afterEach(() => {
   cleanup();
@@ -21,6 +23,9 @@ class ResizeObserverStub {
   disconnect() {}
 }
 globalThis.ResizeObserver ??= ResizeObserverStub as unknown as typeof ResizeObserver;
+
+// cmdk (command palette) scrolls the selected item into view; jsdom has no layout.
+Element.prototype.scrollIntoView ??= function () {};
 
 // Browser APIs the real Monaco touches when it loads (used by monacoSetup.test.ts).
 document.queryCommandSupported ??= () => false;

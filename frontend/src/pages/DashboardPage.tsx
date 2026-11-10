@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Plus, RefreshCw, Type } from "lucide-react";
 import { Link, useBlocker, useParams, useSearchParams } from "react-router";
 import {
   getDashboard,
@@ -10,6 +11,8 @@ import {
   type SavedChart,
 } from "../api.ts";
 import ConfirmDialog from "../components/ConfirmDialog.tsx";
+import { Button } from "../components/ui/button.tsx";
+import { SearchCapsule } from "../shell/PageHeader.tsx";
 import AddChartDialog from "../dashboards/AddChartDialog.tsx";
 import ChartTile from "../dashboards/ChartTile.tsx";
 import DashboardGrid from "../dashboards/DashboardGrid.tsx";
@@ -196,10 +199,32 @@ export default function DashboardPage() {
       </div>
     );
   }
-  if (!dashboard) return <p className="muted page-pad">Loading…</p>;
+  // Same shape as the loaded page (header + tile grid), so nothing jumps when it arrives.
+  if (!dashboard)
+    return (
+      <div className="dashboard-page" role="status" aria-label="Loading dashboard">
+        <header className="dash-header">
+          <div className="dash-heading">
+            <span className="skeleton" style={{ width: 140, height: 12 }} />
+            <span className="skeleton" style={{ width: 280, height: 34, marginTop: 6 }} />
+          </div>
+        </header>
+        <div className="dash-loading-grid">
+          {[0, 1, 2, 3].map((i) => (
+            <span key={i} className="skeleton" />
+          ))}
+        </div>
+      </div>
+    );
 
   const tiles = draft?.layout ?? dashboard.layout;
   const charts = { ...dashboard.charts, ...addedCharts };
+
+  // Big numbers are the ink "hero" cards; every tile enters with a short stagger.
+  const tileClass = (tile: DashboardTile) =>
+    `dash-tile dash-tile-${tile.type} tile-enter${
+      tile.type === "chart" && charts[tile.chart_id]?.viz_type === "big_number" ? " dash-tile-hero" : ""
+    }`;
 
   const renderTile = (tile: DashboardTile) =>
     tile.type === "chart" ? (
@@ -220,61 +245,80 @@ export default function DashboardPage() {
 
   return (
     <div className="dashboard-page">
-      <div className="dash-header">
-        <Link to="/dashboards" className="crumb">
-          Dashboards
-        </Link>
-        <span className="crumb">/</span>
-        {editing ? (
-          <input
-            className="chart-name-input"
-            aria-label="Dashboard name"
-            value={draft.name}
-            maxLength={200}
-            onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-          />
-        ) : (
-          <h1 className="dash-title">{dashboard.name}</h1>
-        )}
-        {dirty && <span className="dirty-dot" title="Unsaved changes" aria-label="Unsaved changes" />}
-        <span className="spacer" />
-        {editing ? (
-          <>
-            <button onClick={() => setAddingChart(true)}>Add chart</button>
-            <button onClick={() => setLayout((ts) => addTextTile(ts))}>Add text</button>
-            <button onClick={cancel} disabled={saving}>
-              Cancel
-            </button>
-            <button className="primary" onClick={() => void save()} disabled={saving}>
-              {saving ? "Saving…" : "Save"}
-            </button>
-          </>
-        ) : (
-          <>
-            <span className="muted small" title={new Date(lastUpdated).toLocaleString()}>
-              Last updated {relativeTime(new Date(lastUpdated).toISOString(), now)}
-            </span>
-            <button onClick={refreshAll}>Refresh all</button>
-            <label className="inline-label small">
-              Auto-refresh
-              <select
-                value={dashboard.refresh_interval}
-                onChange={(e) => void setRefreshInterval(e.target.value as RefreshInterval)}
-                aria-label="Auto-refresh"
+      <header className="dash-header">
+        <div className="dash-heading">
+          <span className="eyebrow">
+            <Link to="/dashboards" className="crumb">
+              Dashboards
+            </Link>{" "}
+            / {editing ? "Editing" : "Space"}
+          </span>
+          <div className="dash-title-row">
+            {editing ? (
+              <input
+                className="chart-name-input dash-name-input"
+                aria-label="Dashboard name"
+                value={draft.name}
+                maxLength={200}
+                onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+              />
+            ) : (
+              <h1 className="dash-title">{dashboard.name}</h1>
+            )}
+            {dirty && <span className="dirty-dot" title="Unsaved changes" aria-label="Unsaved changes" />}
+          </div>
+        </div>
+        {!editing && <SearchCapsule className="dash-capsule" />}
+        <div className="dash-actions">
+          {editing ? (
+            <>
+              <Button onClick={() => setAddingChart(true)}>
+                <Plus size={16} aria-hidden /> Add chart
+              </Button>
+              <Button onClick={() => setLayout((ts) => addTextTile(ts))}>
+                <Type size={16} aria-hidden /> Add text
+              </Button>
+              <Button variant="ghost" onClick={cancel} disabled={saving}>
+                Cancel
+              </Button>
+              <Button variant="primary" onClick={() => void save()} disabled={saving}>
+                {saving ? "Saving…" : "Save"}
+              </Button>
+            </>
+          ) : (
+            <>
+              <span
+                className={`live-chip${intervalMs !== null ? " on" : ""}`}
+                title={new Date(lastUpdated).toLocaleString()}
               >
-                {REFRESH_INTERVALS.map((r) => (
-                  <option key={r.value} value={r.value}>
-                    {r.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button className="primary" onClick={edit}>
-              Edit
-            </button>
-          </>
-        )}
-      </div>
+                <span className={intervalMs !== null ? "live-dot" : "dot dot-ok"} aria-hidden />
+                {intervalMs !== null && <span>Live ·</span>}
+                <span>Last updated {relativeTime(new Date(lastUpdated).toISOString(), now)}</span>
+              </span>
+              <Button onClick={refreshAll}>
+                <RefreshCw size={15} aria-hidden /> Refresh all
+              </Button>
+              <label className="inline-label small">
+                Auto-refresh
+                <select
+                  value={dashboard.refresh_interval}
+                  onChange={(e) => void setRefreshInterval(e.target.value as RefreshInterval)}
+                  aria-label="Auto-refresh"
+                >
+                  {REFRESH_INTERVALS.map((r) => (
+                    <option key={r.value} value={r.value}>
+                      {r.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <Button variant="primary" onClick={edit}>
+                Edit
+              </Button>
+            </>
+          )}
+        </div>
+      </header>
       {dashboard.description && !editing && <p className="muted dash-description">{dashboard.description}</p>}
 
       <DashboardContext.Provider value={context}>
@@ -284,10 +328,11 @@ export default function DashboardPage() {
           </EmptyState>
         ) : narrow && !editing ? (
           <div className="dash-stack">
-            {stackOrder(tiles).map((tile) => (
+            {stackOrder(tiles).map((tile, index) => (
               <div
                 key={tile.id}
-                className={`dash-tile dash-tile-${tile.type}`}
+                className={tileClass(tile)}
+                data-enter={Math.min(index, 12)}
                 style={tile.type === "chart" ? { height: Math.max(260, tileHeight(tile.h)) } : undefined}
               >
                 {renderTile(tile)}
@@ -300,8 +345,8 @@ export default function DashboardPage() {
             editing={editing}
             onLayoutChange={(items: readonly GridItem[]) => setLayout((ts) => applyGridItems(ts, items))}
           >
-            {tiles.map((tile) => (
-              <div key={tile.id} className={`dash-tile dash-tile-${tile.type}`}>
+            {tiles.map((tile, index) => (
+              <div key={tile.id} className={tileClass(tile)} data-enter={Math.min(index, 12)}>
                 {renderTile(tile)}
               </div>
             ))}

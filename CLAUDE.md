@@ -8,8 +8,9 @@ Single user for now.
 ## Tech stack
 - **Backend:** Python 3.12, FastAPI, SQLAlchemy 2.x, Alembic (migrations), Pydantic (schemas)
 - **App metadata DB:** PostgreSQL 16 — stores connections, queries, charts, dashboards
-- **Frontend:** React + TypeScript + Vite
-- **Later:** Apache ECharts (charts), Monaco (SQL editor), react-grid-layout (dashboard grid)
+- **Frontend:** React + TypeScript + Vite, Tailwind CSS v4, Radix primitives (shadcn-style, in
+  `src/components/ui/`), lucide-react icons, cmdk (command palette), Motion (count-up only)
+- **Charts / editor / grid:** Apache ECharts, Monaco, react-grid-layout
 - **Runtime:** everything runs with Docker Compose
 
 ## Build plan
@@ -23,6 +24,7 @@ One part at a time, in order:
 6. **Chart builder** — table, big number, bar, line; backend generates SQL from chart config
 7. **Dashboards** — grid layout, save positions, refresh *(done)*
 8. **Polish** — simple login, loading/error states, CSV export *(done)*
+9. **Visual redesign ("Observatory")** — tokens, shell, every page; no feature changes *(done)*
 
 **Out of scope for v1:** dashboard filters, caching, multi-user permissions, alerts,
 scheduled reports, extra chart types.
@@ -137,13 +139,28 @@ This folder may contain the Apache Superset source code. It is **read-only refer
   - App shell (`App.tsx`): login gate (`auth/`: `AuthProvider` in `AuthContext.tsx`,
     `useAuth`/`safeNext` in `auth.ts`). Any API 401 fires `UNAUTHORIZED_EVENT` (api.ts) and
     sends the user to `/login?next=…`. Routes are wrapped in an `ErrorBoundary` keyed by path.
+    `src/shell/`: `Rail` (72px icon rail, bottom bar on phones; theme toggle + account menu),
+    `PageHeader` (eyebrow, title, search capsule, actions — use it on every page),
+    `CommandPaletteHost` (Ctrl/Cmd+K; lazy-loads `CommandPalette`, cmdk).
   - Shared UI: `components/toast.ts` (`toast.success/error/info` from anywhere; one
-    `<Toaster />` in the shell; use it for saves, deletes and errors), `ConfirmDialog` (never
-    `window.confirm`/`alert`), `EmptyState` for empty lists, `usePageTitle("…")` in every
-    page (tab title "X · Vita").
+    `<Toaster />` (Radix Toast) in the shell; use it for saves, deletes and errors),
+    `ConfirmDialog` (Radix AlertDialog; never `window.confirm`/`alert`), `Modal` from
+    `components/ui/dialog.tsx` for every other dialog, `EmptyState` (icon, one friendly line,
+    one action), `usePageTitle("…")` in every page (tab title "X · Vita"). Primitives in
+    `components/ui/` (Button, Input, Select, Dialog, AlertDialog, DropdownMenu, Tabs, Tooltip,
+    Skeleton, ErrorAlert); class recipes in `ui/variants.ts`; `cn()` in `lib/cn.ts`.
+  - Theme: `src/theme/theme.ts` (light / dark / system, localStorage `vita.theme` in try/catch,
+    `data-theme` on <html>). `index.html` repeats the logic inline so there is no flash; keep
+    them in sync. ECharts themes come from the tokens at runtime (`charts/echartsTheme.ts`,
+    `EChart` rebuilds on theme change); Monaco themes too (`sqllab/monacoTheme.ts`, needs the
+    `*.sql` token rules because vs-dark has its own).
+  - Contrast: `npm run check:contrast` (`scripts/contrast.mjs`) checks every text/background
+    token pair in both themes; add new pairs there when you add tokens.
   - Lint: `npm run lint` (ESLint flat config `eslint.config.js`, type-aware, max 0 warnings).
   - Tests: Vitest + Testing Library (`*.test.ts(x)` next to the code, setup in
     `src/test/setup.ts`). Monaco is mocked with a textarea in page tests.
+    Radix menus open from the keyboard in tests (`keyDown Enter` on the trigger), not `click`;
+    jsdom stubs (ResizeObserver, scrollIntoView, layout sizes) live in `setup.ts`.
 - `sampledb/init/` — seed SQL for the demo database (`sales` schema: customers, products,
   orders, order_items, view order_totals; ~2 years of orders, deterministic).
 - `docker-compose.yml` — `db` (Vita metadata), `sampledb` (demo data), `backend`, `frontend`.
@@ -158,6 +175,39 @@ This folder may contain the Apache Superset source code. It is **read-only refer
 - API endpoints are plain `def` (FastAPI runs them in a threadpool) so slow user queries don't
   block other requests. Don't make an endpoint `async def` if it does blocking DB calls
   (`tests/test_concurrency.py` guards this).
+
+## Design ("Observatory")
+Calm, earthy, instrument-like; **one** loud signal color. Mockups: `design/*.dc.html`.
+- **Colors only from tokens** (`frontend/src/styles/tokens.css`): CSS variables on `:root`
+  (light) and `[data-theme="dark"]`. No literal colors in components or CSS; Tailwind's own
+  palette is disabled, utilities map to tokens (`bg-surface`, `text-muted`, `border-border`,
+  `text-accent-text`…). Need a new color? Add a token in both themes + a contrast pair.
+- **Orange** `--accent` (#FF5A22) is for the one primary action per screen, the live dot,
+  focus and highlights. Text **on** orange is always dark (`--accent-fg`), never white.
+  Orange text on light backgrounds uses `--accent-text`; links use `--link` (olive in light,
+  soft orange in dark). Hero big numbers sit on the ink card (`--surface-ink`).
+- **Errors never rely on color**: danger color + icon + the word "Error" (`ErrorAlert`, the
+  `.alert-error` class, toasts).
+- **Contrast**: text >= 4.5:1, large text (24px+) and UI parts >= 3:1. The light focus ring is
+  `--accent-text` because #FF5A22 is only 2.86:1 on the light page.
+- **Fonts** (bundled with @fontsource, no CDN): Space Grotesk for UI; JetBrains Mono for every
+  number, SQL, type labels and small uppercase labels (`.eyebrow`: 11-12px, .14em tracking).
+- **Shape**: cards 22px (`rounded-card`), controls 12px (`rounded-control`), pills 999px.
+- **Motion**: UI feedback 150-250 ms, ease `cubic-bezier(.2,.7,.2,1)` (`--ease-out`); page
+  enter = fade + 12px rise (`.page-enter`); lists / tiles stagger 70 ms on first mount only
+  (`.stagger-item` / `.tile-enter` + `data-enter={index}`, CSS so it composes with the
+  grid's transforms); skeleton shimmer, never spinners; card hover = lift 2px + accent glow
+  (`.card-hover`); big numbers count up once (`CountUp`). `prefers-reduced-motion` turns all
+  of it off (CSS rule in `styles/components.css`, `useReducedMotion` in JS). Keep Motion
+  (`motion/react`) out of the main bundle: CSS first.
+- **Focus**: every interactive element shows the `--focus-ring` (`:focus-visible`); Escape
+  closes dialogs, menus and the palette (Radix does this; keep it).
+- **CSS layers**: `styles/index.css` = theme < base (fonts, `base.css`, `App.css`) <
+  components < utilities. No Tailwind preflight (base.css has the resets). Page-level styles
+  live in `App.css` (organized by page); new components prefer Tailwind utilities.
+- **Lazy chunks**: SQL Lab, chart editor, dashboard page, dataset editor and the command
+  palette are lazy-loaded; keep heavy libraries (Monaco, ECharts, TanStack, cmdk, Motion) out
+  of the main bundle.
 
 ## Testing notes
 - Backend tests run against a separate `vita_test` database (created and migrated
@@ -176,6 +226,7 @@ docker compose exec backend alembic upgrade head                       # apply m
 docker compose exec frontend npm run typecheck   # frontend type check (strict)
 docker compose exec frontend npm test            # frontend tests (Vitest)
 docker compose exec frontend npm run lint        # ESLint
+docker compose exec frontend npm run check:contrast   # token contrast (WCAG)
 docker compose -f docker-compose.prod.yml up -d --build   # production stack
 ```
 After adding frontend dependencies: `docker compose up -d --build -V frontend`.

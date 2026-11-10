@@ -19,6 +19,8 @@ import PreviewTab from "../datasets/PreviewTab.tsx";
 import { openDatasetInSqlLab } from "../datasets/sqlLabLink.ts";
 import { usePageTitle } from "../components/usePageTitle.ts";
 import { toast } from "../components/toast.ts";
+import PageHeader from "../shell/PageHeader.tsx";
+import { Button } from "../components/ui/button.tsx";
 
 type TabName = "columns" | "metrics" | "preview";
 
@@ -210,25 +212,30 @@ export default function DatasetEditPage() {
 
   return (
     <div className="dataset-page">
-      <div className="page-header">
-        <h1>
-          <Link to="/datasets" className="crumb">
-            Datasets
-          </Link>{" "}
-          / {dataset.name}
-        </h1>
-        <div className="actions">
-          <Link to={`/charts/new?dataset=${dataset.id}`} className="button primary">
-            Create chart
-          </Link>
-          <button onClick={() => void navigate("/sql-lab", { state: openDatasetInSqlLab(dataset) })}>
-            Open in SQL Lab
-          </button>
-          <button className="danger" onClick={() => setConfirmDelete(true)}>
-            Delete
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        eyebrow={
+          <>
+            <Link to="/datasets" className="crumb">
+              Datasets
+            </Link>{" "}
+            / {dataset.kind === "table" ? "Table" : "SQL"}
+          </>
+        }
+        title={dataset.name}
+        actions={
+          <>
+            <Button variant="danger" onClick={() => setConfirmDelete(true)}>
+              Delete
+            </Button>
+            <Button onClick={() => void navigate("/sql-lab", { state: openDatasetInSqlLab(dataset) })}>
+              Open in SQL Lab
+            </Button>
+            <Button asChild variant="primary">
+              <Link to={`/charts/new?dataset=${dataset.id}`}>Create chart</Link>
+            </Button>
+          </>
+        }
+      />
 
       <div className="card form dataset-details">
         <div className="row">

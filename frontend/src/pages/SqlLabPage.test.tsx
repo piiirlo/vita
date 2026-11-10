@@ -101,7 +101,8 @@ describe("SQL Lab page", () => {
     renderPage();
 
     const connection = await screen.findByLabelText("Connection");
-    expect(within(connection).getByRole("option", { name: "Sample DB" })).toBeInTheDocument();
+    // The option shows the database type too ("Sample DB · postgres").
+    expect(within(connection).getByRole("option", { name: /^Sample DB/ })).toBeInTheDocument();
     expect(screen.getByLabelText("SQL editor")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Run/ })).toBeInTheDocument();
     // "public" has no tables, so the schema with tables is picked.

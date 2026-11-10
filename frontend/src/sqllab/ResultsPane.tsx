@@ -6,6 +6,7 @@ import {
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import type { QueryErrorDetail, QueryResult } from "../api.ts";
+import { toNumber } from "../charts/format.ts";
 import {
   cellText,
   csvFilename,
@@ -34,11 +35,13 @@ const ROW_NUMBER_WIDTH = 56;
 
 /** Column width from the header and the first rows' content. */
 function columnWidth(name: string, type: string, rows: unknown[][], index: number): number {
-  let chars = Math.max(name.length, type.length + 3);
+  // Header: "NAME type" side by side in spaced-out mono (about 9px per character).
+  const header = (name.length + type.length + 1) * 9 + 36;
+  let chars = 0;
   for (let i = 0; i < Math.min(rows.length, 200); i += 1) {
     chars = Math.max(chars, cellText(rows[i]?.[index]).length);
   }
-  return Math.min(Math.max(chars * 8 + 24, 80), 420);
+  return Math.min(Math.max(header, chars * 8 + 32, 90), 440);
 }
 
 async function copyText(text: string): Promise<void> {
@@ -77,10 +80,16 @@ export default function ResultsPane({ run, title, onStop }: Props) {
         {run === undefined && <span className="muted">Run a query with Ctrl+Enter.</span>}
         {run?.status === "running" && (
           <>
-            <span className="spinner" aria-hidden /> Running… {formatDuration(elapsed)}
+            <span className="run-state running">
+              <span className="live-dot" aria-hidden />
+              Running…
+            </span>
+            <span>{formatDuration(elapsed)}</span>
+            <span className="spacer" />
             <button className="small danger" onClick={onStop}>
               Stop
             </button>
+            <span className="scan-line" aria-hidden />
           </>
         )}
         {run?.status === "stopped" && (
@@ -89,8 +98,9 @@ export default function ResultsPane({ run, title, onStop }: Props) {
           </span>
         )}
         {run?.status === "error" && (
-          <span className="text-error" role="alert">
-            {run.error.message}
+          <span className="run-error" role="alert">
+            <span className="run-state error">Error</span>
+            <span className="run-error-message">{run.error.message}</span>
           </span>
         )}
         {run?.status === "done" && <ResultSummary result={run.result} />}
@@ -117,10 +127,15 @@ function ResultSummary({ result }: { result: QueryResult }) {
   const rows = result.row_count.toLocaleString();
   return (
     <>
+      <span className="run-state done">
+        <span className="dot dot-ok" aria-hidden />
+        Done
+      </span>
       <span>
         <strong>{rows}</strong> {result.row_count === 1 ? "row" : "rows"}
       </span>
       <span className="muted">{formatDuration(result.duration_ms)}</span>
+      <span className="muted">read-only</span>
       {result.truncated && (
         <span className="truncated" role="status">
           Showing the first {rows} rows. More exist: raise the row limit or add filters.
@@ -139,10 +154,22 @@ function ResultsGrid({ result, title }: { result: QueryResult; title: string }) 
   const types = useMemo(() => result.columns.map((c) => c.type), [result]);
   const rows = useMemo(() => sortRows(result.rows, sort, types), [result, sort, types]);
   const widths = useMemo(
-    () => result.columns.map((c, i) => columnWidth(c.name, c.type, result.rows, i)),
+    () => result.columns.map((c, i) => columnWidth(c.name, c.db_type || c.type, result.rows, i)),
     [result],
   );
-  const gridTemplate = `${ROW_NUMBER_WIDTH}px ${widths.map((w) => `${w}px`).join(" ")}`;
+  // Numeric cells get a thin "share" bar (value / column max), like the mockup.
+  const maxima = useMemo(
+    () =>
+      result.columns.map((c, i) => {
+        if (c.type !== "number") return 0;
+        let max = 0;
+        for (const r of result.rows) max = Math.max(max, Math.abs(toNumber(r[i]) ?? 0));
+        return max;
+      }),
+    [result],
+  );
+  // Columns grow to fill the pane (minmax with 1fr) but never get narrower than their content.
+  const gridTemplate = `${ROW_NUMBER_WIDTH}px ${widths.map((w) => `minmax(${w}px, 1fr)`).join(" ")}`;
   const totalWidth = ROW_NUMBER_WIDTH + widths.reduce((a, b) => a + b, 0);
 
   const columns = useMemo<ColumnDef<unknown[]>[]>(
@@ -243,7 +270,7 @@ function ResultsGrid({ result, title }: { result: QueryResult; title: string }) 
                     {col.name}
                     {arrow}
                   </span>
-                  <span className="grid-head-type">{col.type}</span>
+                  <span className="grid-head-type">{col.db_type || col.type}</span>
                 </div>
               );
             })}
@@ -279,6 +306,8 @@ function ResultsGrid({ result, title }: { result: QueryResult; title: string }) 
                       isSelected ? "selected" : "",
                     ].join(" ");
                     const text = cellText(value);
+                    const max = maxima[colIndex] ?? 0;
+                    const share = max > 0 && !isNull ? Math.abs(toNumber(value) ?? 0) / max : 0;
                     return (
                       <div
                         key={cell.id}
@@ -288,6 +317,7 @@ function ResultsGrid({ result, title }: { result: QueryResult; title: string }) 
                         onClick={() => setSelected({ row: item.index, col: colIndex })}
                       >
                         {text}
+                        {share > 0 && <span className="share-bar" style={{ width: `calc((100% - 12px) * ${share})` }} aria-hidden />}
                       </div>
                     );
                   })}

@@ -1,9 +1,12 @@
-import Editor, { type OnMount } from "@monaco-editor/react";
+import Editor, { type BeforeMount, type OnMount } from "@monaco-editor/react";
 import { useEffect, useImperativeHandle, useRef, type Ref } from "react";
 import { format as formatSql } from "sql-formatter";
 import type { DbType } from "../api.ts";
 import { SQL_EDITOR_OPTIONS, SQL_LANGUAGE, registerSqlCompletion } from "./monacoSetup.ts";
 import { editorErrorPosition, type RunOffset } from "./results.ts";
+import { cssVar } from "../lib/cssVar.ts";
+import { getTheme, useTheme } from "../theme/theme.ts";
+import { defineVitaMonacoTheme, monacoThemeName } from "./monacoTheme.ts";
 
 type MonacoEditor = Parameters<OnMount>[0];
 type MonacoApi = Parameters<OnMount>[1];
@@ -44,6 +47,17 @@ export default function SqlEditor({ ref, path, defaultValue, onChange, onRun, er
   const monacoRef = useRef<MonacoApi | null>(null);
   const onRunRef = useRef(onRun);
   onRunRef.current = onRun;
+
+  // Theme: defined from the CSS variables before mount, and again when the theme switches.
+  const { resolved } = useTheme();
+  const beforeMount: BeforeMount = (monaco) => {
+    defineVitaMonacoTheme(monaco, getTheme().resolved);
+  };
+  useEffect(() => {
+    const monaco = monacoRef.current;
+    if (!monaco) return;
+    monaco.editor.setTheme(defineVitaMonacoTheme(monaco, resolved));
+  }, [resolved]);
 
   // Autocomplete for this editor; removed again when the editor unmounts.
   useEffect(() => {
@@ -156,8 +170,10 @@ export default function SqlEditor({ ref, path, defaultValue, onChange, onRun, er
       defaultValue={defaultValue}
       language={SQL_LANGUAGE}
       onChange={(value) => onChange(value ?? "")}
+      beforeMount={beforeMount}
       onMount={handleMount}
-      options={SQL_EDITOR_OPTIONS}
+      theme={monacoThemeName(resolved)}
+      options={{ ...SQL_EDITOR_OPTIONS, fontFamily: cssVar("--font-mono") || undefined }}
     />
   );
 }

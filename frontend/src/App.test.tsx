@@ -119,8 +119,9 @@ describe("login", () => {
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "secret password" } });
     fireEvent.click(screen.getByRole("button", { name: "Log in" }));
     await screen.findByRole("heading", { name: "Dashboards" });
-    fireEvent.click(screen.getByRole("button", { name: /admin/ }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Log out" }));
+    // The account menu (a Radix dropdown) opens from the keyboard like for real users.
+    fireEvent.keyDown(screen.getByRole("button", { name: /admin/ }), { key: "Enter" });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Log out" }));
     expect(await screen.findByRole("form", { name: "Log in" })).toBeInTheDocument();
     await waitFor(() => expect(router.state.location.pathname).toBe("/login"));
   });

@@ -11,6 +11,7 @@ import {
 import { errorText } from "../datasets/format.ts";
 import { usePageTitle } from "../components/usePageTitle.ts";
 import EmptyState from "../components/EmptyState.tsx";
+import PageHeader from "../shell/PageHeader.tsx";
 
 /** Create a dataset from a table: pick connection, schema, table. */
 export default function DatasetNewPage() {
@@ -122,14 +123,15 @@ export default function DatasetNewPage() {
 
   return (
     <div className="narrow">
-      <div className="page-header">
-        <h1>
+      <PageHeader
+        eyebrow={
           <Link to="/datasets" className="crumb">
             Datasets
-          </Link>{" "}
-          / New
-        </h1>
-      </div>
+          </Link>
+        }
+        title="New dataset"
+        search={false}
+      />
       <p className="muted">
         Create a dataset from a table or view. To use a SQL query instead, write it in{" "}
         <Link to="/sql-lab">SQL Lab</Link> and click “Save as dataset”.

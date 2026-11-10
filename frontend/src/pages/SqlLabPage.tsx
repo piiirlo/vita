@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { Play, Square } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router";
 import {
   ApiError,
@@ -154,11 +155,12 @@ export default function SqlLabPage() {
     handledLocation.current = location.key;
     if (!isSqlLabLocationState(location.state)) return;
     const { openTab } = location.state;
+    const current = stateRef.current.tabs.find((t) => t.id === stateRef.current.activeId);
     const tab = createTab(stateRef.current.tabs, {
       title: openTab.title,
       sql: openTab.sql,
-      connectionId: openTab.connectionId,
-      schema: openTab.schema,
+      connectionId: openTab.connectionId ?? current?.connectionId ?? null,
+      schema: openTab.connectionId === null ? (current?.schema ?? null) : openTab.schema,
     });
     dispatch({ type: "add", tab });
     void navigate(location.pathname, { replace: true, state: null });
@@ -418,6 +420,23 @@ export default function SqlLabPage() {
   return (
     <div className="sqllab">
       <aside className="sqllab-sidebar">
+        <label className="side-source">
+          <span className="eyebrow">Source</span>
+          <select
+            aria-label="Connection"
+            value={activeTab.connectionId ?? ""}
+            onChange={(e) => {
+              updateTab(activeTab.id, { connectionId: Number(e.target.value), schema: null });
+              setRuns(({ [activeTab.id]: _old, ...rest }) => rest);
+            }}
+          >
+            {connections.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name} · {c.db_type === "postgresql" ? "postgres" : "mysql"}
+              </option>
+            ))}
+          </select>
+        </label>
         <div className="side-tabs" role="tablist">
           {(["schema", "saved", "history"] as const).map((p) => (
             <button
@@ -462,7 +481,7 @@ export default function SqlLabPage() {
               onAuxClick={(e) => e.button === 1 && closeTab(tab)}
               title={tab.description ?? tab.title}
             >
-              {runs[tab.id]?.status === "running" && <span className="spinner small" aria-hidden />}
+              {runs[tab.id]?.status === "running" && <span className="live-dot" aria-hidden />}
               <span className="query-tab-title">{tab.title}</span>
               {isDirty(tab) && <span className="dirty-dot" title="Unsaved changes" />}
               <button
@@ -484,20 +503,6 @@ export default function SqlLabPage() {
 
         <div className="sqllab-toolbar">
           <select
-            aria-label="Connection"
-            value={activeTab.connectionId ?? ""}
-            onChange={(e) => {
-              updateTab(activeTab.id, { connectionId: Number(e.target.value), schema: null });
-              setRuns(({ [activeTab.id]: _old, ...rest }) => rest);
-            }}
-          >
-            {connections.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-          <select
             aria-label="Schema"
             value={activeTab.schema ?? ""}
             onChange={(e) => updateTab(activeTab.id, { schema: e.target.value || null })}
@@ -510,19 +515,6 @@ export default function SqlLabPage() {
             ))}
           </select>
 
-          {running ? (
-            <button className="danger" onClick={() => stop(activeTab.id)}>
-              ■ Stop
-            </button>
-          ) : (
-            <button
-              className="primary"
-              onClick={() => void run(activeTab.id)}
-              title="Run (Ctrl+Enter). Runs only the selection if text is selected."
-            >
-              ▶ Run
-            </button>
-          )}
           <label className="inline-label">
             Limit
             <select
@@ -566,7 +558,19 @@ export default function SqlLabPage() {
             Save as dataset
           </button>
           <span className="spacer" />
-          <span className="muted small kbd-hint">Ctrl+Enter to run</span>
+          {running ? (
+            <button className="danger" onClick={() => stop(activeTab.id)}>
+              <Square size={14} aria-hidden /> Stop
+            </button>
+          ) : (
+            <button
+              className="primary run-button"
+              onClick={() => void run(activeTab.id)}
+              title="Run (Ctrl+Enter). Runs only the selection if text is selected."
+            >
+              <Play size={15} aria-hidden /> Run <kbd className="kbd-chip">Ctrl ⏎</kbd>
+            </button>
+          )}
         </div>
 
         <div className="editor-wrap" style={{ height: editorHeight }}>

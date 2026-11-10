@@ -3,7 +3,10 @@ import { createRoot } from "react-dom/client";
 import { createBrowserRouter, RouterProvider } from "react-router";
 import App from "./App.tsx";
 import { AuthProvider } from "./auth/AuthContext.tsx";
-import "./App.css";
+import "./styles/index.css";
+import { initTheme } from "./theme/theme.ts";
+
+initTheme();
 
 const root = document.getElementById("root");
 if (!root) throw new Error("Root element #root not found");

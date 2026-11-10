@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { Modal, ModalActions } from "../components/ui/dialog.tsx";
 
 type Props = {
   /** Dialog title; defaults to "Save query". */
@@ -31,35 +32,24 @@ export default function SaveDialog({ title = "Save query", initialName, initialD
   }
 
   return (
-    <div className="modal-backdrop" onMouseDown={onCancel}>
-      <form
-        className="modal card form"
-        onSubmit={(e) => void submit(e)}
-        onMouseDown={(e) => e.stopPropagation()}
-        onKeyDown={(e) => e.key === "Escape" && onCancel()}
-        role="dialog"
-        aria-label={title}
-      >
-        <h2 className="modal-title">{title}</h2>
-        <label>
-          Name
-          <input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
-        </label>
-        <label>
-          Description <span className="muted">(optional)</span>
-          <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
-        </label>
-        {error && <p className="alert alert-error">{error}</p>}
-        <div className="form-actions">
-          <span className="spacer" />
-          <button type="button" onClick={onCancel}>
-            Cancel
-          </button>
-          <button type="submit" className="primary" disabled={saving}>
-            {saving ? "Saving…" : "Save"}
-          </button>
-        </div>
-      </form>
-    </div>
+    <Modal title={title} onClose={onCancel} onSubmit={(e) => void submit(e)}>
+      <label>
+        Name
+        <input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+      </label>
+      <label>
+        Description <span className="muted">(optional)</span>
+        <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
+      </label>
+      {error && <p className="alert alert-error">{error}</p>}
+      <ModalActions>
+        <button type="button" onClick={onCancel}>
+          Cancel
+        </button>
+        <button type="submit" className="primary" disabled={saving}>
+          {saving ? "Saving…" : "Save"}
+        </button>
+      </ModalActions>
+    </Modal>
   );
 }

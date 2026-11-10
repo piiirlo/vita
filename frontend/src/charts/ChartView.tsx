@@ -5,6 +5,8 @@ import { formatNumber } from "./format.ts";
 import { metricFormat, metricLabel, type ChartState } from "./model.ts";
 import { cartesianOption, sparklineOption } from "./options.ts";
 import TableChart from "./TableChart.tsx";
+import { CountUp } from "../components/motion.tsx";
+import { toNumber } from "./format.ts";
 
 type Props = {
   state: ChartState;
@@ -30,7 +32,7 @@ export default function ChartView({ state, result, trend, dataset }: Props) {
     return (
       <div className="big-number">
         <div className="big-number-value" data-testid="big-number-value">
-          {formatNumber(value, metric ? metricFormat(metric, dataset) : null)}
+          <BigValue value={value} format={metric ? metricFormat(metric, dataset) : null} />
         </div>
         <div className="big-number-subtitle">
           {state.display.subtitle || (metric ? metricLabel(metric, dataset) : "")}
@@ -50,4 +52,24 @@ export default function ChartView({ state, result, trend, dataset }: Props) {
         .join(", ")}`}
     />
   );
+}
+
+/** "$319,470.51" with the decimals in the accent color (like the mockup). */
+function splitDecimals(text: string) {
+  const m = /^(.*\d)(\.\d+)(\D*)$/.exec(text);
+  if (!m) return text;
+  return (
+    <>
+      {m[1]}
+      <span className="big-number-frac">{m[2]}</span>
+      {m[3]}
+    </>
+  );
+}
+
+/** The big number counts up from 0 the first time it is shown. */
+function BigValue({ value, format }: { value: unknown; format: string | null }) {
+  const n = toNumber(value);
+  if (n === null) return <>{formatNumber(value, format)}</>;
+  return <CountUp value={n} format={(x) => formatNumber(x, format)} render={splitDecimals} />;
 }

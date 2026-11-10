@@ -10,6 +10,8 @@ import {
   type TableInfo,
 } from "../api.ts";
 import { usePageTitle } from "../components/usePageTitle.ts";
+import PageHeader from "../shell/PageHeader.tsx";
+import { Button } from "../components/ui/button.tsx";
 
 /** Result of an async load: null while loading, or data, or an error message. */
 type Loaded<T> = { data: T; error: null } | { data: null; error: string } | null;
@@ -62,17 +64,22 @@ export default function BrowsePage() {
 
   return (
     <div>
-      <div className="page-header">
-        <h1>
-          <Link to="/connections" className="crumb">
-            Connections
-          </Link>{" "}
-          / {connection?.data?.name ?? "…"}
-        </h1>
-        <Link to={`/connections/${id}/edit`} className="button">
-          Edit connection
-        </Link>
-      </div>
+      <PageHeader
+        eyebrow={
+          <>
+            <Link to="/connections" className="crumb">
+              Connections
+            </Link>{" "}
+            / Browse
+          </>
+        }
+        title={connection?.data?.name ?? "…"}
+        actions={
+          <Button asChild>
+            <Link to={`/connections/${id}/edit`}>Edit connection</Link>
+          </Button>
+        }
+      />
       {connection?.error && <p className="alert alert-error">{connection.error}</p>}
 
       <div className="browser">

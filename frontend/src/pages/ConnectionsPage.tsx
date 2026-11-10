@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Network } from "lucide-react";
 import { Link } from "react-router";
 import {
   ApiError,
@@ -13,6 +14,8 @@ import { usePageTitle } from "../components/usePageTitle.ts";
 import EmptyState from "../components/EmptyState.tsx";
 import ConfirmDialog from "../components/ConfirmDialog.tsx";
 import { toast } from "../components/toast.ts";
+import { Button } from "../components/ui/button.tsx";
+import PageHeader from "../shell/PageHeader.tsx";
 
 export default function ConnectionsPage() {
   usePageTitle("Connections");
@@ -67,12 +70,15 @@ export default function ConnectionsPage() {
 
   return (
     <div>
-      <div className="page-header">
-        <h1>Connections</h1>
-        <Link to="/connections/new" className="button primary">
-          Add connection
-        </Link>
-      </div>
+      <PageHeader
+        eyebrow="Data sources"
+        title="Connections"
+        actions={
+          <Button asChild variant="primary">
+            <Link to="/connections/new">Add connection</Link>
+          </Button>
+        }
+      />
 
       {error && (
         <p className="alert alert-error">
@@ -89,6 +95,7 @@ export default function ConnectionsPage() {
 
       {connections?.length === 0 && (
         <EmptyState
+          icon={Network}
           title="No connections yet"
           action={
             <Link to="/connections/new" className="button primary">
@@ -113,12 +120,12 @@ export default function ConnectionsPage() {
             </tr>
           </thead>
           <tbody>
-            {connections.map((conn) => {
+            {connections.map((conn, index) => {
               const result = testResults[conn.id];
               return (
-                <tr key={conn.id}>
+                <tr key={conn.id} className="stagger-item" data-enter={Math.min(index, 12)}>
                   <td>
-                    <Link to={`/connections/${conn.id}/browse`}>{conn.name}</Link>
+                    <Link to={`/connections/${conn.id}/browse`} className="row-title">{conn.name}</Link>
                     {result && <TestResultMessage result={result} compact />}
                   </td>
                   <td>{conn.db_type === "postgresql" ? "PostgreSQL" : "MySQL"}</td>

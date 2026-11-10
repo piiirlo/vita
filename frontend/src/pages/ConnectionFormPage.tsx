@@ -14,6 +14,7 @@ import {
 import TestResultMessage from "../components/TestResultMessage.tsx";
 import { usePageTitle } from "../components/usePageTitle.ts";
 import { toast } from "../components/toast.ts";
+import PageHeader from "../shell/PageHeader.tsx";
 
 /** Form values are kept as strings; converted when submitting. */
 type FormState = {
@@ -201,7 +202,15 @@ export default function ConnectionFormPage() {
 
   return (
     <div className="narrow">
-      <h1>{isEdit ? "Edit connection" : "Add connection"}</h1>
+      <PageHeader
+        eyebrow={
+          <Link to="/connections" className="crumb">
+            Connections
+          </Link>
+        }
+        title={isEdit ? "Edit connection" : "Add connection"}
+        search={false}
+      />
 
       <form className="card form" onSubmit={(e) => void handleSubmit(e)} noValidate>
         <label>

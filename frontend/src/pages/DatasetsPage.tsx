@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Database, SearchX } from "lucide-react";
 import { Link } from "react-router";
 import { deleteDataset, listDatasets, type DatasetListItem } from "../api.ts";
 import ConfirmDialog from "../components/ConfirmDialog.tsx";
@@ -6,6 +7,9 @@ import { errorText, relativeTime } from "../datasets/format.ts";
 import { usePageTitle } from "../components/usePageTitle.ts";
 import { toast } from "../components/toast.ts";
 import EmptyState from "../components/EmptyState.tsx";
+import { Button } from "../components/ui/button.tsx";
+import { Input } from "../components/ui/input.tsx";
+import PageHeader from "../shell/PageHeader.tsx";
 
 export default function DatasetsPage() {
   usePageTitle("Datasets");
@@ -41,32 +45,43 @@ export default function DatasetsPage() {
 
   return (
     <div>
-      <div className="page-header">
-        <h1>Datasets</h1>
-        <div className="actions">
-          <input
-            type="search"
-            className="search-input"
-            placeholder="Search datasets…"
-            aria-label="Search datasets"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          <Link to="/datasets/new" className="button primary">
-            New dataset
-          </Link>
-        </div>
-      </div>
+      <PageHeader
+        eyebrow="Data"
+        title="Datasets"
+        actions={
+          <>
+            <Input
+                type="search"
+                className="w-56"
+                placeholder="Search datasets…"
+                aria-label="Search datasets"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            <Button asChild variant="primary">
+              <Link to="/datasets/new">New dataset</Link>
+            </Button>
+          </>
+        }
+      />
 
       {error && <p className="alert alert-error">{error}</p>}
       {datasets === null && !error && <p className="muted">Loading…</p>}
 
       {datasets?.length === 0 &&
         (search.trim() ? (
-          <EmptyState title={`No datasets match “${search.trim()}”.`}>Try a different search.</EmptyState>
+          <EmptyState icon={SearchX} title={`No datasets match “${search.trim()}”`}>Try a different word.</EmptyState>
         ) : (
-          <EmptyState title="No datasets yet">
-            Create one from a table, or write a query in <Link to="/sql-lab">SQL Lab</Link> and use “Save as dataset”.
+          <EmptyState
+            icon={Database}
+            title="No datasets yet"
+            action={
+              <Button asChild variant="primary">
+                <Link to="/datasets/new">New dataset</Link>
+              </Button>
+            }
+          >
+            Pick a table, or save a query from <Link to="/sql-lab">SQL Lab</Link>.
           </EmptyState>
         ))}
 
@@ -83,10 +98,12 @@ export default function DatasetsPage() {
             </tr>
           </thead>
           <tbody>
-            {datasets.map((d) => (
-              <tr key={d.id}>
+            {datasets.map((d, index) => (
+              <tr key={d.id} className="stagger-item" data-enter={Math.min(index, 12)}>
                 <td>
-                  <Link to={`/datasets/${d.id}`}>{d.name}</Link>
+                  <Link to={`/datasets/${d.id}`} className="row-title">
+                    {d.name}
+                  </Link>
                   {d.description && <div className="muted small">{d.description}</div>}
                 </td>
                 <td>{d.connection_name}</td>

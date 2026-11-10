@@ -1,0 +1,187 @@
+/*
+ * "Observatory" design tokens. Every color in the app comes from here: components use these
+ * variables (or the Tailwind utilities mapped to them in index.css), never literal colors.
+ * Light on :root, dark on [data-theme="dark"] (set on <html> before first paint, see
+ * index.html and src/theme/).
+ */
+
+:root {
+  color-scheme: light;
+
+  /* surfaces */
+  --bg: #f3f6f4;
+  --bg-dots: rgba(91, 110, 44, 0.16);
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-sunken: #eaeee9;
+  /* dark cards: hero number, query stream, SQL editor */
+  --surface-ink: #1b2010;
+  --rail-bg: rgba(255, 255, 255, 0.7);
+  --capsule-bg: rgba(255, 255, 255, 0.85);
+  --overlay: rgba(27, 32, 16, 0.38);
+
+  /* text */
+  --text: #1b2010;
+  --text-muted: #5f6658;
+  --text-faint: #676d60; /* was #6f7568: 4.37:1 on --bg */
+  /* text on --surface-ink */
+  --ink-text: #f3f6f4;
+  --ink-muted: #b3bca0;
+  --ink-border: rgba(243, 246, 244, 0.12);
+
+  /* lines */
+  --border: rgba(27, 32, 16, 0.1);
+  --border-strong: rgba(27, 32, 16, 0.16);
+  --border-hover: rgba(27, 32, 16, 0.35);
+  --hover: rgba(91, 110, 44, 0.08);
+  --selected: rgba(255, 90, 34, 0.08);
+
+  /* the one loud color */
+  --accent: #ff5a22;
+  --accent-fg: #1b2010; /* text ON orange: always dark */
+  --accent-text: #c2410c; /* orange-ish text on light backgrounds */
+  --accent-soft: rgba(255, 90, 34, 0.12);
+  /* links: olive in light mode, soft orange in dark (from the mockups) */
+  --link: #5b6e2c;
+  --link-hover: #3e4b1d;
+  --glow: 0 0 0 1px rgba(255, 90, 34, 0.12), 0 24px 60px -30px rgba(255, 90, 34, 0.4);
+  --glow-border: rgba(255, 90, 34, 0.55);
+  /* #FF5A22 is only 2.86:1 on the light page; the deeper orange passes 3:1 */
+  --focus-ring: var(--accent-text);
+
+  /* the active rail item / selected pill is inverted */
+  --inverse-bg: #1b2010;
+  --inverse-fg: #f3f6f4;
+
+  /* status */
+  --success: #5b6e2c;
+  --success-bg: rgba(125, 141, 57, 0.1);
+  --success-border: rgba(91, 110, 44, 0.3);
+  --danger: #c62828;
+  --danger-bg: rgba(198, 40, 40, 0.07);
+  --danger-border: rgba(198, 40, 40, 0.3);
+  /* error icon for plain-CSS alerts (same circle-alert as lucide), in --danger */
+  --icon-error: url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2718%27 height=%2718%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27%23C62828%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3E%3Ccircle cx=%2712%27 cy=%2712%27 r=%2710%27/%3E%3Cline x1=%2712%27 x2=%2712%27 y1=%278%27 y2=%2712%27/%3E%3Cline x1=%2712%27 x2=%2712.01%27 y1=%2716%27 y2=%2716%27/%3E%3C/svg%3E");
+  --warning-text: #8a4b0a;
+  --warning-bg: rgba(255, 176, 32, 0.12);
+  --warning-border: rgba(196, 120, 12, 0.35);
+
+  /* data series (charts, legends, share bars) */
+  --series-1: #ff5a22;
+  --series-2: #7d8d39;
+  --series-3: #3e4b1d;
+  --series-4: #ff9a73;
+  --series-5: #aab86b;
+  --series-6: #6b7a3a;
+  --series-7: #ffc4ab;
+  --series-8: #cbd4a0;
+  --chart-grid: rgba(27, 32, 16, 0.07);
+
+  /* code (SQL editor sits on --surface-ink in light mode too) */
+  --code-bg: var(--surface-ink);
+  --code-text: #e3e7e1;
+  --code-keyword: #ff7a47;
+  --code-function: #b5c566;
+  --code-string: #e8c99b;
+  --code-number: #ffb08a;
+  --code-comment: #8c977a;
+  --code-line-number: #848f6c; /* was #6f7a5c: 3.66:1 on the ink panel */
+  --code-line-active: rgba(243, 246, 244, 0.05);
+  --code-selection: rgba(255, 90, 34, 0.25);
+
+  --shadow: rgba(27, 32, 16, 0.14);
+
+  /* type */
+  --font-ui: "Space Grotesk Variable", "Space Grotesk", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, monospace;
+
+  /* shape */
+  --radius-card: 22px;
+  --radius-control: 12px;
+  --radius-pill: 999px;
+
+  /* motion */
+  --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --dur-fast: 150ms;
+  --dur: 200ms;
+  --dur-slow: 250ms;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #10130b;
+  --bg-dots: rgba(181, 197, 102, 0.13);
+  --surface: #171c0f;
+  --surface-raised: #1d2313;
+  --surface-sunken: #0b0d07;
+  --surface-ink: #1d2313;
+  --rail-bg: rgba(23, 28, 15, 0.75);
+  --capsule-bg: rgba(23, 28, 15, 0.85);
+  --overlay: rgba(0, 0, 0, 0.55);
+
+  --text: #f3f6f4;
+  --text-muted: #a3ab95;
+  --text-faint: #8e967f;
+  --ink-text: #f3f6f4;
+  --ink-muted: #b3bca0;
+  --ink-border: rgba(243, 246, 244, 0.1);
+
+  --border: rgba(243, 246, 244, 0.08);
+  --border-strong: rgba(243, 246, 244, 0.16);
+  --border-hover: rgba(243, 246, 244, 0.35);
+  --hover: rgba(243, 246, 244, 0.06);
+  --selected: rgba(255, 90, 34, 0.12);
+
+  --accent: #ff5a22;
+  --accent-fg: #10130b;
+  --accent-text: #ff8a5c;
+  --accent-soft: rgba(255, 90, 34, 0.16);
+  --link: #ff8a5c;
+  --link-hover: #ffb08f;
+  --glow: 0 0 0 1px rgba(255, 90, 34, 0.15), 0 24px 70px -30px rgba(255, 90, 34, 0.45);
+  --glow-border: rgba(255, 90, 34, 0.6);
+  --focus-ring: var(--accent);
+
+  --inverse-bg: #f3f6f4;
+  --inverse-fg: #10130b;
+
+  --success: #b5c566;
+  --success-bg: rgba(181, 197, 102, 0.1);
+  --success-border: rgba(181, 197, 102, 0.3);
+  --danger: #ff6b5e;
+  --danger-bg: rgba(255, 107, 94, 0.1);
+  --danger-border: rgba(255, 107, 94, 0.35);
+  --icon-error: url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2718%27 height=%2718%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27%23FF6B5E%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3E%3Ccircle cx=%2712%27 cy=%2712%27 r=%2710%27/%3E%3Cline x1=%2712%27 x2=%2712%27 y1=%278%27 y2=%2712%27/%3E%3Cline x1=%2712%27 x2=%2712.01%27 y1=%2716%27 y2=%2716%27/%3E%3C/svg%3E");
+  --warning-text: #ffc36b;
+  --warning-bg: rgba(255, 176, 32, 0.1);
+  --warning-border: rgba(255, 176, 32, 0.3);
+
+  --series-1: #ff5a22;
+  --series-2: #b5c566;
+  --series-3: #6f8235;
+  --series-4: #ff9a73;
+  --series-5: #d4dea0;
+  --series-6: #4e5c25;
+  --series-7: #ffc4ab;
+  --series-8: #8fa04a;
+  --chart-grid: rgba(243, 246, 244, 0.07);
+
+  --code-bg: var(--surface-sunken);
+  --code-line-active: rgba(243, 246, 244, 0.04);
+
+  --shadow: rgba(0, 0, 0, 0.5);
+}
+
+/* Legacy names used by App.css until round 2 replaces it. */
+:root,
+[data-theme="dark"] {
+  --muted: var(--text-muted);
+  --primary: var(--accent-text);
+  --primary-hover: var(--accent-text);
+  --ok: var(--success);
+  --ok-bg: var(--success-bg);
+  --error: var(--danger);
+  --error-bg: var(--danger-bg);
+  --selected-bg: var(--selected);
+}

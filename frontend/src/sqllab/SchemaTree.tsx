@@ -129,7 +129,7 @@ export default function SchemaTree({ connectionId, dbType, schema, onInsert, onP
                   <button className="tree-toggle" onClick={() => toggleSchema(s)} aria-label={`Toggle ${s}`}>
                     {open ? "▾" : "▸"}
                   </button>
-                  <span className="tree-icon">▤</span>
+                  <span className="tree-icon schema" aria-hidden />
                   <button className="tree-name" title="Insert schema name" onClick={() => onInsert(quoteIdent(s, dbType))}>
                     {s}
                   </button>
@@ -149,7 +149,7 @@ export default function SchemaTree({ connectionId, dbType, schema, onInsert, onP
                             <button className="tree-toggle" onClick={() => toggleTable(s, t.name)} aria-label={`Toggle ${t.name}`}>
                               {tableOpen ? "▾" : "▸"}
                             </button>
-                            <span className="tree-icon">{t.type === "view" ? "◫" : "▦"}</span>
+                            <span className={`tree-icon ${t.type}`} aria-hidden />
                             <button
                               className="tree-name"
                               title={`Insert ${s}.${t.name}`}

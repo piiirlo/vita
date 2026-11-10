@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ChartLine, SearchX } from "lucide-react";
 import { Link } from "react-router";
 import { deleteChart, listCharts, type SavedChart } from "../api.ts";
 import { VIZ_TYPES } from "../charts/model.ts";
@@ -7,6 +8,9 @@ import { errorText, relativeTime } from "../datasets/format.ts";
 import { usePageTitle } from "../components/usePageTitle.ts";
 import { toast } from "../components/toast.ts";
 import EmptyState from "../components/EmptyState.tsx";
+import { Button } from "../components/ui/button.tsx";
+import { Input } from "../components/ui/input.tsx";
+import PageHeader from "../shell/PageHeader.tsx";
 
 const vizLabel = (viz: string) => VIZ_TYPES.find((v) => v.value === viz)?.label ?? viz;
 
@@ -44,32 +48,43 @@ export default function ChartsPage() {
 
   return (
     <div>
-      <div className="page-header">
-        <h1>Charts</h1>
-        <div className="actions">
-          <input
-            type="search"
-            className="search-input"
-            placeholder="Search charts…"
-            aria-label="Search charts"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          <Link to="/charts/new" className="button primary">
-            New chart
-          </Link>
-        </div>
-      </div>
+      <PageHeader
+        eyebrow="Explore"
+        title="Charts"
+        actions={
+          <>
+            <Input
+                type="search"
+                className="w-56"
+                placeholder="Search charts…"
+                aria-label="Search charts"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            <Button asChild variant="primary">
+              <Link to="/charts/new">New chart</Link>
+            </Button>
+          </>
+        }
+      />
 
       {error && <p className="alert alert-error">{error}</p>}
       {charts === null && !error && <p className="muted">Loading…</p>}
 
       {charts?.length === 0 &&
         (search.trim() ? (
-          <EmptyState title={`No charts match “${search.trim()}”.`}>Try a different search.</EmptyState>
+          <EmptyState icon={SearchX} title={`No charts match “${search.trim()}”`}>Try a different word.</EmptyState>
         ) : (
-          <EmptyState title="No charts yet">
-            Start from a <Link to="/datasets">dataset</Link> (“Create chart”), or click “New chart”.
+          <EmptyState
+            icon={ChartLine}
+            title="No charts yet"
+            action={
+              <Button asChild variant="primary">
+                <Link to="/charts/new">New chart</Link>
+              </Button>
+            }
+          >
+            Turn a dataset into a table, big number, bar or line chart.
           </EmptyState>
         ))}
 
@@ -85,10 +100,12 @@ export default function ChartsPage() {
             </tr>
           </thead>
           <tbody>
-            {charts.map((c) => (
-              <tr key={c.id}>
+            {charts.map((c, index) => (
+              <tr key={c.id} className="stagger-item" data-enter={Math.min(index, 12)}>
                 <td>
-                  <Link to={`/charts/${c.id}`}>{c.name}</Link>
+                  <Link to={`/charts/${c.id}`} className="row-title">
+                    {c.name}
+                  </Link>
                   {c.description && <div className="muted small">{c.description}</div>}
                 </td>
                 <td>

@@ -1,0 +1,44 @@
+/* Page background, fonts and the few resets we need (no Tailwind preflight). */
+
+html {
+  background-color: var(--bg);
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: var(--font-ui);
+  color: var(--text);
+  background-color: var(--bg);
+  /* the faint "observatory" dot grid */
+  background-image: radial-gradient(var(--bg-dots) 1px, transparent 1px);
+  background-size: 28px 28px;
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Numbers, SQL, type labels and small uppercase labels use the mono face. */
+code,
+kbd,
+pre,
+.mono,
+.num,
+.font-mono {
+  font-family: var(--font-mono);
+}
+
+/* One focus style everywhere: an accent ring, only for keyboard focus. */
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--accent-soft);
+}
+
+/* Theme switches shouldn't animate every color on the page. */
+.theme-switching,
+.theme-switching * {
+  transition: none !important;
+}

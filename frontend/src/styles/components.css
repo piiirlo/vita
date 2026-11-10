@@ -1,0 +1,162 @@
+/* Shared Observatory classes used by the new components. */
+
+/* Small mono uppercase labels ("SPACES / SALES", "SOURCE", column type tags). */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* Cards: lift 2px and glow in the accent color on hover. */
+.card-hover {
+  transition:
+    border-color var(--dur-slow) var(--ease-out),
+    box-shadow var(--dur-slow) var(--ease-out),
+    transform var(--dur-slow) var(--ease-out);
+}
+.card-hover:hover {
+  border-color: var(--glow-border);
+  box-shadow: var(--glow);
+  transform: translateY(-2px);
+}
+
+/* Errors never rely on color alone: icon + the word "Error" (legacy .alert-error markup). */
+.alert.alert-error {
+  color: var(--text);
+  background-image: var(--icon-error);
+  background-repeat: no-repeat;
+  background-position: 12px 0.62em;
+  background-size: 18px 18px;
+  padding-left: 38px;
+}
+.alert.alert-error::before {
+  content: "Error: ";
+  font-weight: 600;
+  color: var(--danger);
+}
+.alert.alert-error.compact {
+  background-position: 8px 0.5em;
+  background-size: 15px 15px;
+  padding-left: 28px;
+}
+
+/* Skeleton shimmer (instead of spinners). */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--hover);
+  border-radius: 8px;
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, var(--hover), transparent);
+  animation: v-shimmer 1.4s var(--ease-out) infinite;
+}
+@keyframes v-shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* The pulsing "live" dot. */
+.live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  display: inline-block;
+  animation: v-pulse 2.2s ease-in-out infinite;
+}
+@keyframes v-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.35);
+  }
+}
+
+/* Page enter: fade + 12px rise. */
+.page-enter {
+  animation: v-page-in var(--dur-slow) var(--ease-out) both;
+}
+@keyframes v-page-in {
+  from {
+    opacity: 0;
+    translate: 0 12px;
+  }
+}
+
+/* Radix toast / dialog enter + exit (data-state is set by Radix). */
+@keyframes v-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+@keyframes v-pop-out {
+  to {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+}
+@keyframes v-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes v-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+.anim-pop[data-state="open"] {
+  animation: v-pop-in var(--dur) var(--ease-out);
+}
+.anim-pop[data-state="closed"] {
+  animation: v-pop-out var(--dur-fast) ease-in;
+}
+.anim-fade[data-state="open"] {
+  animation: v-fade-in var(--dur) var(--ease-out);
+}
+.anim-fade[data-state="closed"] {
+  animation: v-fade-out var(--dur-fast) ease-in;
+}
+.toast-root[data-state="open"] {
+  animation: v-pop-in var(--dur-slow) var(--ease-out);
+}
+.toast-root[data-state="closed"] {
+  animation: v-fade-out var(--dur-fast) ease-in;
+}
+.toast-root[data-swipe="move"] {
+  transform: translateX(var(--radix-toast-swipe-move-x));
+}
+.toast-root[data-swipe="end"] {
+  animation: v-fade-out var(--dur-fast) ease-in;
+}
+
+/* prefers-reduced-motion: no animation or movement anywhere. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .card-hover:hover {
+    transform: none;
+  }
+  .skeleton::after {
+    display: none;
+  }
+}

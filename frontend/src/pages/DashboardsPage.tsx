@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { LayoutDashboard, SearchX } from "lucide-react";
+import { Link, useLocation, useNavigate } from "react-router";
 import {
   createDashboard,
   deleteDashboard,
@@ -13,15 +14,20 @@ import SaveDialog from "../sqllab/SaveDialog.tsx";
 import { usePageTitle } from "../components/usePageTitle.ts";
 import { toast } from "../components/toast.ts";
 import EmptyState from "../components/EmptyState.tsx";
+import { Button } from "../components/ui/button.tsx";
+import { Input } from "../components/ui/input.tsx";
+import PageHeader from "../shell/PageHeader.tsx";
 
 export default function DashboardsPage() {
   usePageTitle("Dashboards");
   const navigate = useNavigate();
+  const location = useLocation();
+  const askedToCreate = (location.state as { createDashboard?: boolean } | null)?.createDashboard === true;
   const [dashboards, setDashboards] = useState<DashboardListItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [toDelete, setToDelete] = useState<DashboardListItem | null>(null);
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState(askedToCreate);
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
@@ -65,64 +71,76 @@ export default function DashboardsPage() {
 
   return (
     <div>
-      <div className="page-header">
-        <h1>Dashboards</h1>
-        <div className="actions">
-          <input
-            type="search"
-            className="search-input"
-            placeholder="Search dashboards…"
-            aria-label="Search dashboards"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          <button className="primary" onClick={() => setCreating(true)}>
-            New dashboard
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        eyebrow="Spaces"
+        title="Dashboards"
+        actions={
+          <>
+            <Input
+                type="search"
+                className="w-56"
+                placeholder="Search dashboards…"
+                aria-label="Search dashboards"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            <Button variant="primary" onClick={() => setCreating(true)}>
+              New dashboard
+            </Button>
+          </>
+        }
+      />
 
       {error && <p className="alert alert-error">{error}</p>}
       {dashboards === null && !error && <p className="muted">Loading…</p>}
 
       {dashboards?.length === 0 &&
         (search.trim() ? (
-          <EmptyState title={`No dashboards match “${search.trim()}”.`}>Try a different search.</EmptyState>
+          <EmptyState icon={SearchX} title={`No dashboards match “${search.trim()}”`}>Try a different word.</EmptyState>
         ) : (
-          <EmptyState title="No dashboards yet">
-            Click “New dashboard”, or use “Add to dashboard” in a <Link to="/charts">chart</Link>.
+          <EmptyState
+            icon={LayoutDashboard}
+            title="No dashboards yet"
+            action={
+              <Button variant="primary" onClick={() => setCreating(true)}>
+                New dashboard
+              </Button>
+            }
+          >
+            Put your charts side by side on a grid.
           </EmptyState>
         ))}
 
       {dashboards && dashboards.length > 0 && (
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th className="num">Charts</th>
-              <th>Last updated</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {dashboards.map((d) => (
-              <tr key={d.id}>
-                <td>
-                  <Link to={`/dashboards/${d.id}`}>{d.name}</Link>
-                  {d.description && <div className="muted small">{d.description}</div>}
-                </td>
-                <td className="num">{d.chart_count}</td>
-                <td title={new Date(d.updated_at).toLocaleString()}>{relativeTime(d.updated_at)}</td>
-                <td className="actions">
-                  <button onClick={() => void duplicate(d)}>Duplicate</button>
-                  <button className="danger" onClick={() => setToDelete(d)}>
-                    Delete
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="list-cards">
+          {dashboards.map((d, index) => (
+            <article key={d.id} className="list-card card-hover stagger-item" data-enter={Math.min(index, 12)}>
+              <span className="eyebrow">Space</span>
+              <Link to={`/dashboards/${d.id}`} className="list-card-title">
+                {d.name}
+              </Link>
+              {d.description && <p className="list-card-desc">{d.description}</p>}
+              <div className="list-card-stats">
+                <div className="list-card-stat">
+                  <span>Charts</span>
+                  <span>{d.chart_count}</span>
+                </div>
+                <div className="list-card-stat">
+                  <span>Last updated</span>
+                  <span title={new Date(d.updated_at).toLocaleString()}>{relativeTime(d.updated_at)}</span>
+                </div>
+              </div>
+              <div className="list-card-actions">
+                <button onClick={() => void duplicate(d)} aria-label={`Duplicate ${d.name}`}>
+                  Duplicate
+                </button>
+                <button className="danger" onClick={() => setToDelete(d)} aria-label={`Delete ${d.name}`}>
+                  Delete
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
       )}
 
       {creating && (

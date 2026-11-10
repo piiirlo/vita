@@ -1,4 +1,6 @@
 import { useState, type ReactNode } from "react";
+import { AlertDialog } from "./ui/alert-dialog.tsx";
+import { ErrorAlert } from "./ui/alert.tsx";
 
 type Props = {
   title: string;
@@ -26,27 +28,15 @@ export default function ConfirmDialog({ title, children, confirmLabel, onConfirm
   }
 
   return (
-    <div className="modal-backdrop" onMouseDown={onCancel}>
-      <div
-        className="modal card form"
-        role="alertdialog"
-        aria-label={title}
-        onMouseDown={(e) => e.stopPropagation()}
-        onKeyDown={(e) => e.key === "Escape" && onCancel()}
-      >
-        <h2 className="modal-title">{title}</h2>
-        <div className="confirm-body">{children}</div>
-        {error && <p className="alert alert-error">{error}</p>}
-        <div className="form-actions">
-          <span className="spacer" />
-          <button type="button" onClick={onCancel} autoFocus>
-            Cancel
-          </button>
-          <button type="button" className="danger" onClick={() => void confirm()} disabled={busy}>
-            {busy ? "Working…" : confirmLabel}
-          </button>
-        </div>
-      </div>
-    </div>
+    <AlertDialog
+      title={title}
+      confirmLabel={confirmLabel}
+      busy={busy}
+      error={error && <ErrorAlert className="mt-4">{error}</ErrorAlert>}
+      onConfirm={() => void confirm()}
+      onCancel={onCancel}
+    >
+      {children}
+    </AlertDialog>
   );
 }

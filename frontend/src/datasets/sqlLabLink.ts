@@ -4,7 +4,8 @@ import type { Dataset } from "../api.ts";
 export type OpenTabRequest = {
   title: string;
   sql: string;
-  connectionId: number;
+  /** null: use the connection of the tab that is open now (e.g. "New query"). */
+  connectionId: number | null;
   schema: string | null;
 };
 
@@ -17,7 +18,7 @@ export function isSqlLabLocationState(value: unknown): value is SqlLabLocationSt
     typeof tab === "object" &&
     tab !== null &&
     typeof (tab as OpenTabRequest).sql === "string" &&
-    typeof (tab as OpenTabRequest).connectionId === "number"
+    (typeof (tab as OpenTabRequest).connectionId === "number" || (tab as OpenTabRequest).connectionId === null)
   );
 }
 

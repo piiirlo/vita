@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { fetchHealth, type HealthResponse } from "../api.ts";
 import { usePageTitle } from "../components/usePageTitle.ts";
+import PageHeader from "../shell/PageHeader.tsx";
+import { Button } from "../components/ui/button.tsx";
+import { SkeletonLines } from "../components/ui/skeleton.tsx";
+import { RefreshCw } from "lucide-react";
 
 type HealthState =
   | { kind: "loading" }
@@ -37,10 +41,19 @@ export default function StatusPage() {
 
   return (
     <div className="narrow">
-      <h1>System status</h1>
+      <PageHeader
+        eyebrow="Instrument check"
+        title="System status"
+        search={false}
+        actions={
+          <Button onClick={() => void check()} disabled={state.kind === "loading"}>
+            <RefreshCw size={15} aria-hidden /> Check again
+          </Button>
+        }
+      />
 
       <section className="card">
-        {state.kind === "loading" && <p>Checking…</p>}
+        {state.kind === "loading" && <SkeletonLines lines={2} label="Checking…" />}
 
         {state.kind === "unreachable" && (
           <>
@@ -62,10 +75,6 @@ export default function StatusPage() {
           </>
         )}
       </section>
-
-      <button onClick={() => void check()} disabled={state.kind === "loading"}>
-        Check again
-      </button>
     </div>
   );
 }

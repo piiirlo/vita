@@ -5,7 +5,8 @@ import { useSyncExternalStore } from "react";
 export type ToastKind = "success" | "error" | "info";
 export type Toast = { id: number; kind: ToastKind; message: string };
 
-const DURATION_MS: Record<ToastKind, number> = { success: 3000, info: 4000, error: 7000 };
+/** How long each kind stays (Radix pauses the timer while hovered or focused). */
+export const TOAST_DURATION_MS: Record<ToastKind, number> = { success: 3000, info: 4000, error: 7000 };
 const MAX_TOASTS = 4;
 
 let toasts: Toast[] = [];
@@ -26,7 +27,6 @@ function show(kind: ToastKind, message: string): number {
   // The same message twice in a row replaces the old one instead of stacking.
   toasts = [...toasts.filter((t) => t.message !== message), { id, kind, message }].slice(-MAX_TOASTS);
   emit();
-  setTimeout(() => dismissToast(id), DURATION_MS[kind]);
   return id;
 }
 

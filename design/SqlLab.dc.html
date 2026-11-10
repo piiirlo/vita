@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SQL Lab · Vita</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F3F6F4}
+a{color:#5B6E2C}a:hover{color:#3E4B1D}
+.v-root{background-color:#F3F6F4;background-image:radial-gradient(rgba(91,110,44,.16) 1px,transparent 1px);background-size:28px 28px}
+@keyframes v-rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+@keyframes v-blink{0%,49%{opacity:1}50%,100%{opacity:0}}
+@keyframes v-row{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:none}}
+@keyframes v-glow{0%,100%{box-shadow:0 0 0 0 rgba(255,90,34,0)}50%{box-shadow:0 0 0 6px rgba(255,90,34,.18)}}
+@keyframes v-fill{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+.v-in{animation:v-rise .6s cubic-bezier(.2,.7,.2,1) both}
+.v-caret{display:inline-block;width:8px;height:18px;background:#FF5A22;vertical-align:-3px;animation:v-blink 1s steps(1) infinite}
+.v-r{animation:v-row .45s cubic-bezier(.2,.7,.2,1) both}
+.v-fill{transform-origin:left;animation:v-fill .9s .6s cubic-bezier(.2,.7,.2,1) both}
+.v-run{animation:v-glow 2.4s ease-in-out infinite}
+.v-btn{transition:background .2s,border-color .2s}
+.v-btn:hover{border-color:rgba(27,32,16,.35);background:rgba(91,110,44,.08)}
+.v-tr:hover{background:rgba(255,90,34,.05)}
+@media (prefers-reduced-motion: reduce){.v-in,.v-caret,.v-r,.v-run,.v-fill{animation:none}}
+</style>
+</helmet>
+<div class="v-root" style="min-height: 900px; width: 100%; box-sizing: border-box; display: flex; flex-wrap: wrap; font-family: 'Space Grotesk', Inter, system-ui, sans-serif; color: #1B2010">
+
+<nav aria-label="Main" style="flex: 1 1 72px; max-width: 72px; min-width: 72px; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 20px 0; border-right: 1px solid rgba(27,32,16,.09); background: rgba(255,255,255,.7)">
+<a href="Main.dc.html" aria-label="Vita home" style="width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; background: #FF5A22; color: #1B2010; font-weight: 700; font-size: 20px; text-decoration: none; margin-bottom: 18px">V</a>
+<a href="Main.dc.html" aria-label="Dashboards" class="v-btn" style="width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: #5F6658; border: 1px solid transparent">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"></rect><rect x="14" y="3" width="7" height="5" rx="1.5"></rect><rect x="14" y="12" width="7" height="9" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect></svg>
+</a>
+<a href="#" aria-label="SQL Lab" style="width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: #F3F6F4; background: #1B2010; border: 1px solid #1B2010">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M8 9l-4 3 4 3"></path><path d="M16 9l4 3-4 3"></path><path d="M13.5 6l-3 12"></path></svg>
+</a>
+<a href="#" aria-label="Charts" class="v-btn" style="width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: #5F6658; border: 1px solid transparent">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M3 20h18"></path><path d="M6 16l4-5 3 3 5-7"></path></svg>
+</a>
+<a href="#" aria-label="Datasets" class="v-btn" style="width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: #5F6658; border: 1px solid transparent">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><ellipse cx="12" cy="6" rx="7" ry="3"></ellipse><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6"></path><path d="M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"></path></svg>
+</a>
+<div style="flex: 1"></div>
+<button type="button" aria-label="Account" style="width: 36px; height: 36px; border-radius: 50%; border: 1px solid rgba(27,32,16,.2); background: #FFFFFF; color: #1B2010; font-family: inherit; font-weight: 600; cursor: pointer">M</button>
+</nav>
+
+<aside aria-label="Schema" class="v-in" style="flex: 1 1 260px; max-width: 280px; min-width: 220px; box-sizing: border-box; padding: 22px 16px; border-right: 1px solid rgba(27,32,16,.09); background: rgba(255,255,255,.6); display: flex; flex-direction: column; gap: 14px">
+<label style="display: flex; flex-direction: column; gap: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: .14em; color: #5F6658">SOURCE
+<select style="height: 40px; border-radius: 12px; border: 1px solid rgba(27,32,16,.16); background: #FFFFFF; color: #1B2010; font-family: 'Space Grotesk', sans-serif; font-size: 14px; padding: 0 12px; letter-spacing: 0"><option>sampledb · postgres</option><option>Rfam public · mysql</option></select>
+</label>
+<label for="v-schema-search" style="font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: .14em; color: #5F6658">SCHEMA · SALES</label>
+<input id="v-schema-search" type="search" placeholder="Filter tables" style="height: 36px; border-radius: 10px; border: 1px solid rgba(27,32,16,.14); background: #FFFFFF; color: #1B2010; font-family: inherit; font-size: 13px; padding: 0 12px">
+<div style="display: flex; flex-direction: column; gap: 2px; font-size: 14px">
+<div style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; background: #1B2010; color: #F3F6F4"><span style="width: 6px; height: 6px; border-radius: 50%; background: #FF5A22"></span>orders<span style="margin-left: auto; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #B3BCA0">800</span></div>
+<div style="display: flex; flex-direction: column; gap: 2px; padding: 4px 0 8px 26px; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #3E4B1D">
+<span>id <span style="color: #5F6658">int · pk</span></span><span>customer_id <span style="color: #5F6658">int</span></span><span>order_date <span style="color: #C2410C">date</span></span><span>status <span style="color: #5F6658">text</span></span><span>channel <span style="color: #5F6658">text</span></span>
+</div>
+<div style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; color: #1B2010"><span style="width: 6px; height: 6px; border-radius: 50%; background: #7D8D39"></span>order_items</div>
+<div style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; color: #1B2010"><span style="width: 6px; height: 6px; border-radius: 50%; background: #7D8D39"></span>customers</div>
+<div style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; color: #1B2010"><span style="width: 6px; height: 6px; border-radius: 50%; background: #7D8D39"></span>products</div>
+<div style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; color: #1B2010"><span style="width: 6px; height: 6px; border-radius: 1px; background: #5B6E2C"></span>order_totals <span style="margin-left: auto; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #5F6658">view</span></div>
+</div>
+</aside>
+
+<main style="flex: 999 1 560px; min-width: 0; padding: 22px 28px 32px; box-sizing: border-box; display: flex; flex-direction: column; gap: 16px">
+
+<div class="v-in" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; animation-delay: .05s">
+<button type="button" style="height: 36px; padding: 0 14px; border-radius: 10px; border: 1px solid #1B2010; background: #FFFFFF; color: #1B2010; font-family: inherit; font-size: 13px; cursor: pointer; box-shadow: inset 0 -2px 0 #FF5A22">Revenue by channel</button>
+<button type="button" class="v-btn" style="height: 36px; padding: 0 14px; border-radius: 10px; border: 1px solid rgba(27,32,16,.12); background: transparent; color: #5F6658; font-family: inherit; font-size: 13px; cursor: pointer">Untitled 2</button>
+<button type="button" aria-label="New tab" class="v-btn" style="width: 36px; height: 36px; border-radius: 10px; border: 1px solid rgba(27,32,16,.12); background: transparent; color: #5F6658; font-size: 18px; cursor: pointer">+</button>
+<div style="flex: 1"></div>
+<button type="button" class="v-btn" style="height: 40px; padding: 0 14px; border-radius: 12px; border: 1px solid rgba(27,32,16,.16); background: transparent; color: #1B2010; font-family: inherit; font-size: 14px; cursor: pointer">Format</button>
+<button type="button" class="v-btn" style="height: 40px; padding: 0 14px; border-radius: 12px; border: 1px solid rgba(27,32,16,.16); background: transparent; color: #1B2010; font-family: inherit; font-size: 14px; cursor: pointer">Save as dataset</button>
+<button type="button" class="v-run" style="height: 40px; padding: 0 18px; border-radius: 12px; border: 0; background: #FF5A22; color: #1B2010; font-family: inherit; font-weight: 600; font-size: 14px; cursor: pointer; display: flex; align-items: center; gap: 10px">Run <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; opacity: .75">Ctrl ⏎</span></button>
+</div>
+
+<section class="v-in" aria-label="Editor" style="animation-delay: .12s; border-radius: 20px; border: 1px solid #1B2010; background: #1B2010; color: #E3E7E1; padding: 20px 0; font-family: 'JetBrains Mono', monospace; font-size: 15px; line-height: 1.75; overflow-x: auto">
+<div style="display: flex; gap: 18px; padding: 0 22px"><span style="color: #6F7A5C; width: 18px; text-align: right">1</span><span><span style="color: #FF7A47">SELECT</span> o.channel,</span></div>
+<div style="display: flex; gap: 18px; padding: 0 22px"><span style="color: #6F7A5C; width: 18px; text-align: right">2</span><span>       <span style="color: #B5C566">SUM</span>(oi.quantity * oi.unit_price) <span style="color: #FF7A47">AS</span> revenue</span></div>
+<div style="display: flex; gap: 18px; padding: 0 22px"><span style="color: #6F7A5C; width: 18px; text-align: right">3</span><span><span style="color: #FF7A47">FROM</span> sales.orders o</span></div>
+<div style="display: flex; gap: 18px; padding: 0 22px"><span style="color: #6F7A5C; width: 18px; text-align: right">4</span><span><span style="color: #FF7A47">JOIN</span> sales.order_items oi <span style="color: #FF7A47">ON</span> oi.order_id = o.id</span></div>
+<div style="display: flex; gap: 18px; padding: 0 22px; background: rgba(243,246,244,.05)"><span style="color: #B3BCA0; width: 18px; text-align: right">5</span><span><span style="color: #FF7A47">GROUP BY</span> o.channel <span class="v-caret"></span></span></div>
+</section>
+
+<section class="v-in" aria-label="Results" style="animation-delay: .2s; border-radius: 20px; border: 1px solid rgba(27,32,16,.1); background: #FFFFFF; overflow: hidden; display: flex; flex-direction: column">
+<div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 14px 20px; border-bottom: 1px solid rgba(27,32,16,.08); font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #5F6658">
+<span style="display: flex; align-items: center; gap: 8px; color: #3E4B1D; font-weight: 500"><span style="width: 7px; height: 7px; border-radius: 50%; background: #7D8D39"></span>DONE</span>
+<span>3 rows</span><span>50 ms</span><span>read-only</span>
+<div style="flex: 1"></div>
+<button type="button" class="v-btn" style="height: 30px; padding: 0 12px; border-radius: 999px; border: 1px solid rgba(27,32,16,.14); background: transparent; color: #1B2010; font-family: inherit; font-size: 12px; cursor: pointer">Table</button>
+<button type="button" class="v-btn" style="height: 30px; padding: 0 12px; border-radius: 999px; border: 1px solid rgba(27,32,16,.14); background: transparent; color: #1B2010; font-family: inherit; font-size: 12px; cursor: pointer">Quick chart</button>
+<button type="button" class="v-btn" style="height: 30px; padding: 0 12px; border-radius: 999px; border: 1px solid rgba(27,32,16,.14); background: transparent; color: #1B2010; font-family: inherit; font-size: 12px; cursor: pointer">CSV</button>
+</div>
+<div style="overflow-x: auto">
+<table style="width: 100%; border-collapse: collapse; font-size: 14px">
+<thead><tr style="text-align: left; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: .1em; color: #5F6658">
+<th scope="col" style="padding: 12px 20px; font-weight: 500">CHANNEL <span style="color: #7A8070">text</span></th>
+<th scope="col" style="padding: 12px 20px; font-weight: 500; text-align: right">REVENUE <span style="color: #7A8070">numeric</span></th>
+<th scope="col" style="padding: 12px 20px; font-weight: 500; width: 45%">SHARE</th>
+</tr></thead>
+<tbody>
+<tr class="v-r v-tr" style="animation-delay: .35s; border-top: 1px solid rgba(27,32,16,.07)"><td style="padding: 14px 20px">web</td><td style="padding: 14px 20px; text-align: right; font-family: 'JetBrains Mono', monospace">172,708.91</td><td style="padding: 14px 20px"><div style="height: 6px; border-radius: 6px; background: rgba(27,32,16,.06)"><div class="v-fill" style="width: 54%; height: 6px; border-radius: 6px; background: #FF5A22"></div></div></td></tr>
+<tr class="v-r v-tr" style="animation-delay: .43s; border-top: 1px solid rgba(27,32,16,.07)"><td style="padding: 14px 20px">mobile</td><td style="padding: 14px 20px; text-align: right; font-family: 'JetBrains Mono', monospace">101,831.78</td><td style="padding: 14px 20px"><div style="height: 6px; border-radius: 6px; background: rgba(27,32,16,.06)"><div class="v-fill" style="width: 32%; height: 6px; border-radius: 6px; background: #7D8D39"></div></div></td></tr>
+<tr class="v-r v-tr" style="animation-delay: .51s; border-top: 1px solid rgba(27,32,16,.07)"><td style="padding: 14px 20px">store</td><td style="padding: 14px 20px; text-align: right; font-family: 'JetBrains Mono', monospace">44,929.82</td><td style="padding: 14px 20px"><div style="height: 6px; border-radius: 6px; background: rgba(27,32,16,.06)"><div class="v-fill" style="width: 14%; height: 6px; border-radius: 6px; background: #3E4B1D"></div></div></td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

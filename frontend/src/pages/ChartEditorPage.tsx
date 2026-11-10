@@ -345,7 +345,7 @@ export default function ChartEditorPage() {
             )}
             {results.status === "loading" && (
               <div className="chart-loading" role="status">
-                <span className="spinner" aria-hidden /> Loading…
+                <span className="live-dot" aria-hidden /> Updating…
               </div>
             )}
             {shown && results.status !== "error" && (

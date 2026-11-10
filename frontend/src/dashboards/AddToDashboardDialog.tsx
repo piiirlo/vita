@@ -9,6 +9,7 @@ import {
 } from "../api.ts";
 import { errorText } from "../datasets/format.ts";
 import { addChartTile } from "./layout.ts";
+import { Modal, ModalActions } from "../components/ui/dialog.tsx";
 
 type Props = {
   chartId: number;
@@ -63,66 +64,54 @@ export default function AddToDashboardDialog({ chartId, chartName, onClose }: Pr
   }
 
   return (
-    <div className="modal-backdrop" onMouseDown={onClose}>
-      <form
-        className="modal card form"
-        role="dialog"
-        aria-label="Add to dashboard"
-        onMouseDown={(e) => e.stopPropagation()}
-        onKeyDown={(e) => e.key === "Escape" && onClose()}
-        onSubmit={(e) => void submit(e)}
-      >
-        <h2 className="modal-title">Add “{chartName}” to a dashboard</h2>
-        {added ? (
-          <>
-            <p className="alert alert-ok" role="status">
-              Added to <strong>{added.name}</strong>.
-            </p>
-            <div className="form-actions">
-              <span className="spacer" />
-              <button type="button" onClick={onClose}>
-                Close
-              </button>
-              <Link className="button primary" to={`/dashboards/${added.id}`}>
-                Open dashboard
-              </Link>
-            </div>
-          </>
-        ) : (
-          <>
-            {dashboards === null && !error && <p className="muted small">Loading dashboards…</p>}
-            {dashboards !== null && (
-              <label>
-                Dashboard
-                <select value={choice} onChange={(e) => setChoice(e.target.value)} autoFocus>
-                  {dashboards.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.name}
-                    </option>
-                  ))}
-                  <option value={NEW}>New dashboard…</option>
-                </select>
-              </label>
-            )}
-            {choice === NEW && (
-              <label>
-                New dashboard name
-                <input value={newName} onChange={(e) => setNewName(e.target.value)} maxLength={200} autoFocus />
-              </label>
-            )}
-            {error && <p className="alert alert-error">{error}</p>}
-            <div className="form-actions">
-              <span className="spacer" />
-              <button type="button" onClick={onClose}>
-                Cancel
-              </button>
-              <button type="submit" className="primary" disabled={busy || dashboards === null}>
-                {busy ? "Adding…" : "Add"}
-              </button>
-            </div>
-          </>
-        )}
-      </form>
-    </div>
+    <Modal title={<>Add “{chartName}” to a dashboard</>} onClose={onClose} onSubmit={(e) => void submit(e)} label="Add to dashboard">
+      {added ? (
+        <>
+          <p className="alert alert-ok" role="status">
+            Added to <strong>{added.name}</strong>.
+          </p>
+          <ModalActions>
+            <button type="button" onClick={onClose}>
+              Close
+            </button>
+            <Link className="button primary" to={`/dashboards/${added.id}`}>
+              Open dashboard
+            </Link>
+          </ModalActions>
+        </>
+      ) : (
+        <>
+          {dashboards === null && !error && <p className="muted small">Loading dashboards…</p>}
+          {dashboards !== null && (
+            <label>
+              Dashboard
+              <select value={choice} onChange={(e) => setChoice(e.target.value)} autoFocus>
+                {dashboards.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+                <option value={NEW}>New dashboard…</option>
+              </select>
+            </label>
+          )}
+          {choice === NEW && (
+            <label>
+              New dashboard name
+              <input value={newName} onChange={(e) => setNewName(e.target.value)} maxLength={200} autoFocus />
+            </label>
+          )}
+          {error && <p className="alert alert-error">{error}</p>}
+          <ModalActions>
+            <button type="button" onClick={onClose}>
+              Cancel
+            </button>
+            <button type="submit" className="primary" disabled={busy || dashboards === null}>
+              {busy ? "Adding…" : "Add"}
+            </button>
+          </ModalActions>
+        </>
+      )}
+    </Modal>
   );
 }

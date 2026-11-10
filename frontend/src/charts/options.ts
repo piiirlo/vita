@@ -143,15 +143,14 @@ export function cartesianOption(
   // Say what is measured: with one metric the value axis is titled with its label (several
   // metrics are told apart by the legend instead).
   const axisTitle = query.metrics.length === 1 ? metricLabel(query.metrics[0]!, dataset) : undefined;
-  const titleStyle = { color: "#6b7280" };
   const valueAxis = {
     type: "value" as const,
     axisLabel: { formatter: (v: number) => formatNumber(v, axisFormat) },
     ...(axisTitle === undefined
       ? {}
       : horizontal
-        ? { name: axisTitle, nameLocation: "middle" as const, nameGap: 28, nameTextStyle: titleStyle }
-        : { name: axisTitle, nameLocation: "end" as const, nameTextStyle: { ...titleStyle, align: "left" as const } }),
+        ? { name: axisTitle, nameLocation: "middle" as const, nameGap: 28 }
+        : { name: axisTitle, nameLocation: "end" as const, nameTextStyle: { align: "left" as const } }),
   };
 
   const series: SeriesOption[] = pivoted.series.map((s) =>
@@ -176,7 +175,6 @@ export function cartesianOption(
   );
 
   return {
-    animation: false,
     grid: {
       ...GRID,
       // Room above the plot for the legend and/or the axis title (or below it, horizontal).
@@ -202,7 +200,6 @@ export function sparklineOption(state: ChartState, trend: ChartDataResult, datas
   const values = trend.rows.map((r) => toNumber(r[1]));
   const labels = trend.rows.map((r) => categoryLabel(r[0], grain));
   return {
-    animation: false,
     grid: { left: 4, right: 4, top: 6, bottom: 4 },
     xAxis: { type: "category", data: labels, show: false, boundaryGap: false },
     yAxis: { type: "value", show: false, scale: true },
