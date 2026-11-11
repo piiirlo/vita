@@ -30,6 +30,10 @@ One part at a time, in order:
 11. **More chart types** (15) — chart type gallery, area, combo, treemap, funnel, gauge,
     pivot table (date buckets), heatmap (time parts), scatter / bubble, histogram, world map
     *(done)*
+12. **CSV and Excel uploads** — a file becomes a table in the built-in Uploads database and a
+    dataset. Round 1 *(done)*: CSV / TSV, the Uploads database and roles, the basic flow.
+    Round 2 *(done)*: Excel, adjust panel polish, Replace / Append file, delete behavior,
+    the dataset's file panel, uploads in backups.
 
 **Out of scope for v1:** dashboard filters, multi-user permissions, alerts, scheduled
 reports, chart types beyond the 15 of Part 11.
@@ -157,6 +161,56 @@ This folder may contain the Apache Superset source code. It is **read-only refer
     Tests: `client` is logged in, `anon_client` is not (they are the **same** TestClient: once
     `client` logs in, `anon_client` is logged in too; log out to test 401s). argon2 uses cheap
     params in tests. New tables must be added to the TRUNCATE in `tests/conftest.py`.
+  - File uploads: `app/uploads/` + `app/api/uploads.py` (`/api/uploads`).
+    `bootstrap.py` creates at startup (idempotent, advisory lock; `VITA_UPLOADS_ON_STARTUP`)
+    the database `vita_uploads` (`VITA_UPLOADS_DB`) on the metadata Postgres server, its
+    schema `uploads`, the role `<db>_reader` (CONNECT + SELECT, `default_transaction_read_only`)
+    and `<db>_writer` (CREATE in `uploads` only, owns its tables), revokes PUBLIC's CONNECT on
+    both databases, and the built-in connection "Uploads" (`connections.builtin = "uploads"`,
+    reader role; the API refuses to edit / delete it). Role passwords are an HMAC of
+    VITA_SECRET_KEY, set again at every start. **Writes only through the writer's own psycopg
+    connection** (`importer.py`: CREATE TABLE + COPY FROM STDIN, names as `sql.Identifier`),
+    never through run_query; reads go through run_query like any connection.
+    Flow: `POST /api/uploads` takes the **raw body** (X-File-Name header; an async endpoint
+    only to stream to disk and stop at `VITA_UPLOAD_MAX_MB`), stores it under a random token
+    (`files.py`, `VITA_UPLOAD_DIR`; deleted after import, on cancel, or after an hour), and
+    returns the preview; `/{id}/preview` re-reads with options; `/{id}/import` starts a
+    background task (progress in the `uploads` row, so any worker can answer `GET /{id}`),
+    then a table dataset (columns synced, the first date column as time). The `uploads` table
+    is the record: file, table, columns, rows, mode, bad values, warnings, user, dates.
+    Reading (`reading.py`, csv module, streaming): encoding (BOM / strict UTF-8 /
+    Windows-1252 if 0x80-0x9F / Latin-1), delimiter (, ; tab |), header, skip rows. Types
+    (`types.py`: one parser for guessing, preview and import): text / integer / decimal /
+    date / datetime / boolean; decimal comma and thousands separators (`detect_number_format`);
+    dates: day/month order from values > 12, **ambiguous orders are never guessed** (a blocking
+    problem until the user picks). Values that don't fit become NULL and are reported, or stop
+    the import (`on_error: "stop"`). `preview.py` reports problems (misfits, garbled text,
+    one giant column, ragged rows, ambiguous dates, no rows, too many columns): they open the
+    adjust panel. Names: `names.py` (accents stripped, reserved words get "_", duplicates
+    _2). Limits: `VITA_UPLOAD_MAX_ROWS`, `VITA_UPLOAD_MAX_COLUMNS`. Tests use the database
+    `vita_uploads_test` (`uploads_db` fixture in tests/test_uploads.py); startup doesn't
+    create the Uploads connection in tests (`no_uploads_on_startup` in conftest).
+    Excel (`excel.py`, openpyxl read-only, opened from a file handle: stored uploads have no
+    .xlsx extension): .xlsx only (old .xls / other zips → 415); the zip is checked before
+    opening (`check_zip`: entries, total size, ratio); **formulas are never evaluated** (the
+    cached value, else the formula as text: two workbooks, `data_only` True / False); cells
+    become the same text the CSV reader gives (`cell_text`), so one set of parsers serves
+    both; the first sheet with data is detected, `options.sheet` picks another. `open_source`
+    (preview.py) is the one entry for both formats; text checks (garbled, one column) are CSV
+    only. Replace / Append: `POST /api/uploads?dataset_id=&mode=replace|append` (a table
+    dataset on the Uploads connection only); the preview matches file columns to the table's
+    by name, case-insensitive (`_match_target`: matched keep the table's name and type,
+    `locked`); missing columns block (`columns_mismatch`, `missing_columns`); extra columns
+    block an append (a fresh guess leaves them out) and are added on replace. Replace fills
+    `<table>__new` then DROP + RENAME in one transaction (same table name: labels, metrics,
+    charts keep working); afterwards `_refresh_dataset` merges the columns and bumps the
+    Uploads connection's `updated_at` (chart cache key). Datasets: `is_upload`, and
+    `upload_source` (`app/uploads/datasets.py`: latest file, rows = last create / replace +
+    appends after, history). `DELETE /api/datasets/{id}?drop_table=true` also drops the table
+    (writer role; dropped before the commit, so a failed drop keeps the dataset), 409 while
+    other datasets read it (table datasets on it, SQL datasets on Uploads naming it).
+    Startup gives tables not owned by the writer back to it and re-grants the reader
+    (restored backups come back owned by the admin).
   - Lint/types: `ruff check .`, `ruff format .`, `mypy .` (strict, pydantic plugin; config in
     `pyproject.toml`). sqlglot 30 type hints use `exp.Expr` (the base class), not
     `exp.Expression`.
@@ -171,6 +225,22 @@ This folder may contain the Apache Superset source code. It is **read-only refer
     `tabs.ts` (tab state, localStorage `vita.sqllab.tabs.v1`), pure helpers in
     `completion.ts` / `results.ts` (unit-tested). SQL Lab opens a new tab from router state
     `{ openTab }` (`src/datasets/sqlLabLink.ts`); "Open in SQL Lab" uses it.
+  - Uploads: `src/pages/UploadPage.tsx` (lazy, `/datasets/upload`) + `src/uploads/`: pick or drop
+    a file → preview (`PreviewTable`, bad cells dashed) → "Create dataset" → progress →
+    the dataset (or a report of values left empty). `AdjustPanel` ("Adjust how the file is
+    read") opens by itself on a new set of problems; read options re-guess the columns
+    (`withReadOption` sets `columns: null`), column type / ignore / date order re-read with
+    the columns, names don't re-read. `fileDrop.ts`: `useFileDrop` (drop anywhere on the
+    Datasets page, overlay) and the picked file handed to the upload page. The file goes up
+    with XHR (`uploadFile` in api.ts: upload progress). Ctrl+K has "Upload file"; the
+    Connections list shows the built-in Uploads connection with a badge, no Edit / Delete.
+    `?dataset=<id>&mode=replace|append` turns the page into Replace file / Append file (no
+    name field, "Replace data" asks first, "Append rows"); locked columns can't change type
+    or name, "new" / "not in the dataset" badges; Excel shows a sheet picker instead of the
+    CSV options; "Reset to detected" (`sameReadOptions`). The dataset page shows
+    `UploadSourcePanel` (file, rows, who / when, history, Replace / Append file) for upload
+    datasets; `DeleteDatasetDialog` (Datasets list and dataset page) offers "Also delete its
+    table" for them. The frontend is **not** Prettier-formatted: never run prettier on it.
   - Datasets: `src/pages/Dataset*Page.tsx` + `src/datasets/` (Columns/Metrics/Preview tabs,
     SQL Lab's "Save as dataset" dialog, `ValueLabelsDialog`). Preview reuses `ResultsPane`.
   - Charts: `src/pages/ChartsPage.tsx`, `ChartEditorPage.tsx` (lazy-loaded with ECharts) +
@@ -289,7 +359,9 @@ This folder may contain the Apache Superset source code. It is **read-only refer
   backend without reload (`INSTALL_DEV=false`, migrations then `--workers`, `--proxy-headers`),
   `sampledb` only with `--profile demo`. Use a list-form `command:` (folded YAML broke args).
 - `scripts/backup.sh` / `scripts/restore.sh` — pg_dump / pg_restore of the metadata DB
-  (`-f docker-compose.prod.yml` for prod). Restore takes a safety backup first. Backups also
+  (`-f docker-compose.prod.yml` for prod), plus `<name>.uploads.dump` (schema `uploads` of
+  the Uploads database, `VITA_UPLOADS_DB` read from `.env`; no owners / grants: the backend
+  restores them at startup). Restore takes a safety backup first. Backups also
   need `VITA_SECRET_KEY`. `.sh` files must stay LF (`.gitattributes`).
 - API endpoints are plain `def` (FastAPI runs them in a threadpool) so slow user queries don't
   block other requests. Don't make an endpoint `async def` if it does blocking DB calls

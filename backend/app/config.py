@@ -24,6 +24,17 @@ class Settings(BaseSettings):
     # "auto": Secure cookie unless the request is for localhost / 127.0.0.1.
     vita_cookie_secure: Literal["auto", "true", "false"] = "auto"
 
+    # File uploads (CSV / Excel -> a table in the built-in Uploads database, on the same
+    # Postgres server as the metadata DB; see app/uploads/).
+    vita_uploads_db: str = "vita_uploads"
+    vita_upload_max_mb: int = 50
+    vita_upload_max_rows: int = 5_000_000
+    vita_upload_max_columns: int = 500
+    # Where files wait between upload and import (deleted after import or after an hour).
+    vita_upload_dir: str = "/tmp/vita-uploads"
+    # Create the Uploads database, roles and connection on startup (tests turn this off).
+    vita_uploads_on_startup: bool = True
+
     @field_validator("vita_secret_key")
     @classmethod
     def _valid_fernet_key(cls, value: str) -> str:

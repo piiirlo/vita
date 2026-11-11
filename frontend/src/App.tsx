@@ -26,6 +26,7 @@ const ChartEditorPage = lazy(() => import("./pages/ChartEditorPage.tsx"));
 const DashboardPage = lazy(() => import("./pages/DashboardPage.tsx"));
 // The dataset editor's preview grid (TanStack Table + Virtual) is only needed there.
 const DatasetEditPage = lazy(() => import("./pages/DatasetEditPage.tsx"));
+const UploadPage = lazy(() => import("./pages/UploadPage.tsx"));
 
 const lazyPage = (page: ReactNode, what: string) => (
   <Suspense fallback={<SkeletonLines lines={4} label={`Loading ${what}…`} className="page-pad max-w-xl" />}>{page}</Suspense>
@@ -90,6 +91,7 @@ function Shell({ user }: { user: CurrentUser }) {
                 <Route path="/charts/:id" element={lazyPage(<ChartEditorPage />, "chart editor")} />
                 <Route path="/datasets" element={<DatasetsPage />} />
                 <Route path="/datasets/new" element={<DatasetNewPage />} />
+                <Route path="/datasets/upload" element={lazyPage(<UploadPage />, "upload")} />
                 <Route path="/datasets/:id" element={lazyPage(<DatasetEditPage />, "dataset")} />
                 <Route path="/status" element={<StatusPage />} />
                 <Route path="/connections" element={<ConnectionsPage />} />

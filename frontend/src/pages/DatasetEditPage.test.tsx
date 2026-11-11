@@ -59,6 +59,8 @@ const DATASET: Dataset = {
   ],
   warnings: [],
   sqllab_sql: 'SELECT * FROM "sales"."orders"',
+  is_upload: false,
+  upload_source: null,
 };
 
 function json(body: unknown, status = 200): Response {
@@ -210,5 +212,47 @@ describe("Dataset edit page", () => {
     const put = calls.find((c) => c.method === "PUT")!.body as { columns: Record<string, unknown>[] };
     expect(put.columns).toHaveLength(1);
     expect(put.columns[0]).toMatchObject({ id: 1, value_labels: { "1": "Lethbridge", "2": "Woodridge" } });
+  });
+});
+
+describe("Dataset edit page: a dataset made from an uploaded file", () => {
+  it("shows the file, its history and Replace / Append file", async () => {
+    const uploaded: Dataset = {
+      ...DATASET,
+      connection_name: "Uploads",
+      schema: "uploads",
+      table_name: "ventes",
+      is_upload: true,
+      upload_source: {
+        file_name: "ventes-avril.xlsx",
+        uploaded_at: "2026-11-10T09:00:00Z",
+        uploaded_by: "admin",
+        row_count: 1250,
+        history: [
+          { mode: "append", file_name: "ventes-avril.xlsx", rows: 250, uploaded_at: "2026-11-10T09:00:00Z", uploaded_by: "admin" },
+          { mode: "create", file_name: "ventes.csv", rows: 1000, uploaded_at: "2026-11-01T09:00:00Z", uploaded_by: "admin" },
+        ],
+      },
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => (String(input) === "/api/datasets/7" ? json(uploaded) : json({ detail: "unexpected" }, 404))),
+    );
+    renderPage();
+    const panel = await screen.findByRole("region", { name: "Uploaded file" });
+    expect(panel).toHaveTextContent("ventes-avril.xlsx");
+    expect(panel).toHaveTextContent("1,250 rows · appended");
+    expect(panel).toHaveTextContent("by admin");
+    expect(within(panel).getByText("History (2)")).toBeInTheDocument();
+    expect(panel).toHaveTextContent("+250 rows");
+    expect(within(panel).getByRole("link", { name: "Replace file" })).toHaveAttribute("href", "/datasets/upload?dataset=7&mode=replace");
+    expect(within(panel).getByRole("link", { name: "Append file" })).toHaveAttribute("href", "/datasets/upload?dataset=7&mode=append");
+  });
+
+  it("other datasets have no file panel", async () => {
+    mockApi();
+    renderPage();
+    await screen.findByDisplayValue("Orders");
+    expect(screen.queryByRole("region", { name: "Uploaded file" })).not.toBeInTheDocument();
   });
 });

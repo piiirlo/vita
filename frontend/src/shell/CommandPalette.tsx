@@ -12,6 +12,7 @@ import {
   Activity,
   SunMoon,
   FileCode2,
+  Upload,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router";
@@ -120,6 +121,9 @@ export default function CommandPalette() {
             New query
           </Item>
           <Item icon={<Plus size={16} />} onSelect={() => go("/datasets/new")}>New dataset</Item>
+          <Item icon={<Upload size={16} />} onSelect={() => go("/datasets/upload")} keywords={["csv", "file", "import", "tsv"]}>
+            Upload file
+          </Item>
           <Item icon={<Plus size={16} />} onSelect={() => go("/connections/new")}>New connection</Item>
           <Item icon={<SunMoon size={16} />} onSelect={() => run(toggleTheme)} keywords={["dark", "light", "mode"]}>
             Toggle theme

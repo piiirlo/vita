@@ -20,6 +20,7 @@ from app.datasets.sql import (
 from app.datasets.sync import DetectedColumn, SyncResult, detect_columns, merge_columns
 
 __all__ = [
+    "COUNT_METRIC",
     "DatasetSource",
     "DetectedColumn",
     "SyncResult",
@@ -37,3 +38,6 @@ __all__ = [
     "time_extent",
     "validate_metric",
 ]
+
+# The built-in metric every dataset gets (can't be deleted).
+COUNT_METRIC = {"name": "count", "label": "Count", "expression": "COUNT(*)"}

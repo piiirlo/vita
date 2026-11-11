@@ -57,6 +57,14 @@ def get_connection_or_404(db: Session, connection_id: int) -> Connection:
     return conn
 
 
+def _not_builtin(conn: Connection, action: str) -> None:
+    if conn.builtin is not None:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            f'"{conn.name}" is managed by Vita and can\'t be {action}.',
+        )
+
+
 def saved_connection_details(conn: Connection) -> ConnectionDetails:
     try:
         return details_from_connection(conn)
@@ -150,6 +158,7 @@ def get_connection(connection_id: int, db: DbSession) -> Connection:
 @router.put("/{connection_id}", response_model=ConnectionOut)
 def update_connection(connection_id: int, payload: ConnectionUpdate, db: DbSession) -> Connection:
     conn = get_connection_or_404(db, connection_id)
+    _not_builtin(conn, "edited")
     for field, value in payload.model_dump(exclude={"password", "clear_password"}).items():
         setattr(conn, field, value)
     if payload.clear_password:
@@ -165,6 +174,7 @@ def update_connection(connection_id: int, payload: ConnectionUpdate, db: DbSessi
 @router.delete("/{connection_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_connection(connection_id: int, db: DbSession) -> Response:
     conn = get_connection_or_404(db, connection_id)
+    _not_builtin(conn, "deleted")
     used_by = list(
         db.scalars(
             select(Dataset.name).where(Dataset.connection_id == conn.id).order_by(Dataset.name)

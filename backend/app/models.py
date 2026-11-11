@@ -3,6 +3,7 @@ from typing import Any
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -31,6 +32,9 @@ class Connection(Base):
     # NULL means "no password". Never expose this column through the API.
     password_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     extra: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    # A connection Vita manages itself ("uploads": the Uploads database). Can't be edited
+    # or deleted through the API.
+    builtin: Mapped[str | None] = mapped_column(String(20), unique=True, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -311,3 +315,39 @@ class ChartCacheEntry(Base):
     size_bytes: Mapped[int]
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class Upload(Base):
+    """An uploaded file and its import into a table of the Uploads database (app/uploads/).
+    From upload to import it waits on disk (`token` names the file); afterwards the file is
+    deleted and this row is the record: what was imported, how, by whom, with what warnings."""
+
+    __tablename__ = "uploads"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    token: Mapped[str] = mapped_column(String(64), unique=True)
+    file_name: Mapped[str] = mapped_column(String(255))
+    file_size: Mapped[int] = mapped_column(BigInteger)
+    file_kind: Mapped[str] = mapped_column(String(10))  # csv | xlsx
+    # pending (waiting for import) | importing | done | failed | cancelled | expired
+    status: Mapped[str] = mapped_column(String(20), index=True)
+    mode: Mapped[str] = mapped_column(String(10), default="create")  # create | replace | append
+    options: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    table_schema: Mapped[str | None] = mapped_column(String(63), nullable=True)
+    table_name: Mapped[str | None] = mapped_column(String(63), nullable=True)
+    columns: Mapped[list[Any] | None] = mapped_column(JSON, nullable=True)
+    row_count: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    rows_done: Mapped[int] = mapped_column(BigInteger, default=0)
+    progress: Mapped[float] = mapped_column(default=0.0)
+    # Values that didn't fit their column ([{column, count, examples}]) and other notes.
+    bad_values: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    warnings: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    dataset_id: Mapped[int | None] = mapped_column(
+        ForeignKey("datasets.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

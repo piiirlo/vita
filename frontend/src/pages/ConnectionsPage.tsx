@@ -126,6 +126,11 @@ export default function ConnectionsPage() {
                 <tr key={conn.id} className="stagger-item" data-enter={Math.min(index, 12)}>
                   <td>
                     <Link to={`/connections/${conn.id}/browse`} className="row-title">{conn.name}</Link>
+                    {conn.builtin === "uploads" && (
+                      <span className="tag tag-builtin" title="Managed by Vita: the tables of your uploaded files (read-only)">
+                        Uploads
+                      </span>
+                    )}
                     {result && <TestResultMessage result={result} compact />}
                   </td>
                   <td>{conn.db_type === "postgresql" ? "PostgreSQL" : "MySQL"}</td>
@@ -143,12 +148,16 @@ export default function ConnectionsPage() {
                     <Link to={`/connections/${conn.id}/browse`} className="button">
                       Browse
                     </Link>
-                    <Link to={`/connections/${conn.id}/edit`} className="button">
-                      Edit
-                    </Link>
-                    <button className="danger" onClick={() => setToDelete(conn)}>
-                      Delete
-                    </button>
+                    {!conn.builtin && (
+                      <>
+                        <Link to={`/connections/${conn.id}/edit`} className="button">
+                          Edit
+                        </Link>
+                        <button className="danger" onClick={() => setToDelete(conn)}>
+                          Delete
+                        </button>
+                      </>
+                    )}
                   </td>
                 </tr>
               );

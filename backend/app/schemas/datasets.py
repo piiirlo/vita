@@ -142,9 +142,30 @@ class DatasetListItem(BaseModel):
     metric_count: int
     created_at: datetime
     updated_at: datetime
+    # A table dataset on an uploaded file's table (Replace / Append file; delete its table).
+    is_upload: bool = False
+
+
+class UploadEvent(BaseModel):
+    mode: Literal["create", "replace", "append"]
+    file_name: str
+    rows: int
+    uploaded_at: datetime
+    uploaded_by: str | None
+
+
+class UploadSource(BaseModel):
+    """Where an uploaded dataset's data came from: the latest file, and the history."""
+
+    file_name: str
+    uploaded_at: datetime
+    uploaded_by: str | None
+    row_count: int  # the last create / replace plus the appends after it
+    history: list[UploadEvent]  # newest first
 
 
 class DatasetOut(DatasetListItem):
+    upload_source: UploadSource | None = None
     db_type: str
     sql: str | None
     main_time_column: str | None

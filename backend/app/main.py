@@ -13,9 +13,12 @@ from app.api import (
     health,
     query,
     saved_queries,
+    uploads,
 )
 from app.auth import ensure_admin_user
+from app.config import settings
 from app.db import SessionLocal
+from app.uploads.bootstrap import ensure_uploads
 
 logging.basicConfig(level=logging.INFO)
 
@@ -23,6 +26,9 @@ logging.basicConfig(level=logging.INFO)
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     ensure_admin_user(SessionLocal)
+    if settings.vita_uploads_on_startup:
+        # The Uploads database, its roles and the built-in connection (idempotent).
+        ensure_uploads(SessionLocal)
     yield
 
 
@@ -51,4 +57,7 @@ app.include_router(
 app.include_router(charts.router, prefix="/api", tags=["charts"], dependencies=login_required)
 app.include_router(
     dashboards.router, prefix="/api/dashboards", tags=["dashboards"], dependencies=login_required
+)
+app.include_router(
+    uploads.router, prefix="/api/uploads", tags=["uploads"], dependencies=login_required
 )

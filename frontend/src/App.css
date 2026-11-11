@@ -1636,14 +1636,16 @@ button.small.icon {
   display: none;
 }
 
-.chart-controls .control {
+.chart-controls .control,
+.adjust .control {
   display: flex;
   flex-direction: column;
   gap: 6px;
   font-size: 14px;
 }
 
-.chart-controls .control > span {
+.chart-controls .control > span,
+.adjust .control > span {
   font-family: var(--font-mono);
   font-weight: 500;
   color: var(--text-muted);
@@ -1653,7 +1655,9 @@ button.small.icon {
 }
 
 .chart-controls select,
-.chart-controls input:not([type="checkbox"]):not([type="radio"]) {
+.chart-controls input:not([type="checkbox"]):not([type="radio"]),
+.adjust select,
+.adjust input:not([type="checkbox"]):not([type="radio"]) {
   font: inherit;
   font-size: 14px;
   height: 38px;
@@ -1666,18 +1670,23 @@ button.small.icon {
 }
 
 .chart-controls select:hover,
-.chart-controls input:not([type="checkbox"]):not([type="radio"]):hover {
+.chart-controls input:not([type="checkbox"]):not([type="radio"]):hover,
+.adjust select:hover,
+.adjust input:not([type="checkbox"]):not([type="radio"]):hover {
   border-color: var(--border-hover);
 }
 
-.chart-controls .checkbox {
+.chart-controls .checkbox,
+.adjust .checkbox {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   font-size: 14px;
 }
 
-.chart-controls input[type="checkbox"] {
+.chart-controls input[type="checkbox"],
+.adjust input[type="checkbox"],
+.delete-table-check input[type="checkbox"] {
   accent-color: var(--accent);
   width: 16px;
   height: 16px;
@@ -4076,4 +4085,546 @@ button.tile-menu-item {
 
 .dash-tile-hero .pivot-footnote {
   color: var(--ink-muted);
+}
+
+/* ---------- Part 12: file uploads ---------- */
+
+/* the built-in Uploads connection */
+.tag-builtin {
+  margin-left: 8px;
+  border-color: var(--success-border);
+  background: var(--success-bg);
+  color: var(--text);
+}
+
+/* dropping a file anywhere on the Datasets page */
+.drop-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  background: var(--overlay);
+  animation: v-fade-in var(--dur) var(--ease-out) both;
+  pointer-events: none;
+}
+
+.drop-overlay-card {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 36px 48px;
+  border: 2px dashed var(--accent);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 17px;
+  font-weight: 500;
+}
+
+.drop-overlay-card svg {
+  color: var(--accent-text);
+}
+
+.drop-overlay-card p {
+  margin: 0;
+}
+
+/* upload page */
+.upload-page {
+  display: grid;
+  gap: 16px;
+}
+
+.upload-drop {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 56px 24px;
+  border: 2px dashed var(--border-strong);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  text-align: center;
+  transition:
+    border-color var(--dur) var(--ease-out),
+    background-color var(--dur) var(--ease-out);
+}
+
+.upload-drop.is-dragging {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.upload-drop-icon {
+  color: var(--accent-text);
+}
+
+.upload-drop-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.upload-drop p {
+  margin: 0;
+}
+
+.upload-error {
+  margin-top: 12px;
+  text-align: left;
+  max-width: 640px;
+}
+
+.upload-progress {
+  display: grid;
+  gap: 10px;
+  padding: 24px;
+}
+
+.upload-progress-label {
+  margin: 0;
+  font-weight: 500;
+}
+
+.upload-progress p {
+  margin: 0;
+}
+
+.progress-track {
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-sunken);
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width var(--dur-slow) var(--ease-out);
+}
+
+.upload-summary {
+  display: grid;
+  gap: 8px;
+  padding: 16px 20px;
+}
+
+.upload-summary p {
+  margin: 0;
+}
+
+.upload-name {
+  display: grid;
+  gap: 6px;
+  max-width: 480px;
+}
+
+.upload-name input {
+  font-size: 16px;
+}
+
+.upload-blocked {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 13px;
+}
+
+.upload-blocked svg {
+  color: var(--warning-text);
+  flex-shrink: 0;
+}
+
+/* adjust panel */
+.adjust {
+  padding: 0;
+  overflow: hidden;
+}
+
+.adjust-toggle {
+  width: 100%;
+  justify-content: flex-start;
+  gap: 8px;
+  height: 48px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 0;
+  font-weight: 500;
+}
+
+.adjust-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 6px;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--warning-border);
+  background: var(--warning-bg);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.adjust-count svg,
+.adjust-problems svg,
+.misfits svg {
+  color: var(--warning-text);
+  flex-shrink: 0;
+}
+
+.adjust-body {
+  display: grid;
+  gap: 16px;
+  padding: 4px 20px 20px;
+  animation: v-fade-in var(--dur) var(--ease-out) both;
+}
+
+.adjust-problems {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+
+.adjust-problems li {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 8px 12px;
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-control);
+  background: var(--warning-bg);
+  font-size: 13px;
+}
+
+.adjust-problems li svg {
+  margin-top: 2px;
+}
+
+.adjust-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 12px 16px;
+  align-items: end;
+}
+
+.adjust-checks {
+  display: grid;
+  gap: 6px;
+  grid-column: span 2;
+}
+
+.adjust-columns {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.adjust-columns th {
+  text-align: left;
+  padding: 6px 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+}
+
+.adjust-columns td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.adjust-columns td input:not([type="checkbox"]),
+.adjust-columns td select {
+  width: 100%;
+  min-width: 120px;
+}
+
+.adjust-columns tr.has-problem td:first-child {
+  box-shadow: inset 3px 0 0 var(--warning-text);
+}
+
+.adjust-columns tr.has-problem {
+  background: var(--warning-bg);
+}
+
+.adjust-columns tr.is-ignored td:not(:last-child) {
+  opacity: 0.55;
+}
+
+.adjust .adjust-columns select.needs-answer {
+  border-color: var(--warning-text);
+  border-style: dashed;
+}
+
+.misfits {
+  display: inline-flex;
+  gap: 4px;
+  align-items: flex-start;
+}
+
+/* preview table */
+.upload-preview {
+  padding: 0;
+  overflow: hidden;
+  transition: opacity var(--dur) var(--ease-out);
+}
+
+.upload-preview.is-busy {
+  opacity: 0.6;
+}
+
+.upload-preview-scroll {
+  max-height: 520px;
+  overflow: auto;
+}
+
+.upload-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+  min-width: 100%;
+}
+
+.upload-table th,
+.upload-table td {
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+}
+
+.upload-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface);
+  vertical-align: bottom;
+}
+
+.upload-table .col-name {
+  display: block;
+  font-weight: 600;
+}
+
+.upload-table .col-type {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.upload-table .row-number {
+  color: var(--text-muted);
+  font-size: 11px;
+  text-align: right;
+}
+
+.upload-table .is-ignored {
+  opacity: 0.45;
+}
+
+/* a value that doesn't fit its column: dashed underline + tint (and a note for screen readers) */
+.upload-table td.cell-bad {
+  background: var(--warning-bg);
+  text-decoration: underline dashed var(--warning-text);
+  text-underline-offset: 3px;
+}
+
+.upload-preview-more {
+  margin: 0;
+  padding: 8px 16px;
+  border-top: 1px solid var(--border);
+}
+
+.upload-report {
+  display: grid;
+  gap: 10px;
+  padding: 24px;
+}
+
+.upload-report h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font-family: inherit;
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text);
+}
+
+.upload-report > button {
+  justify-self: start;
+}
+
+.upload-report h2 svg {
+  color: var(--warning-text);
+}
+
+.upload-report p,
+.upload-report ul {
+  margin: 0;
+}
+
+/* Part 12 round 2: replace / append, Excel sheets, the dataset's file */
+.upload-into {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin: 0;
+  font-size: 16px;
+}
+
+.upload-target-columns {
+  max-width: 560px;
+  margin: 4px 0 0;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.adjust-reset {
+  display: flex;
+  align-items: center;
+}
+
+.adjust-reset .link-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.adjust-reset .link-button:disabled {
+  color: var(--text-faint);
+  cursor: default;
+  text-decoration: none;
+}
+
+.adjust-target-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+}
+
+.adjust .adjust-columns select:disabled,
+.adjust .adjust-columns input[readonly] {
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.column-status {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-strong);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.column-status.is-new {
+  border-color: var(--success-border);
+  background: var(--success-bg);
+  color: var(--text);
+}
+
+.column-status.is-extra {
+  border-color: var(--warning-border);
+  background: var(--warning-bg);
+  color: var(--warning-text);
+}
+
+/* where an uploaded dataset's data came from (dataset page) */
+.upload-source {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 10px 14px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface-sunken);
+}
+
+.upload-source-icon {
+  margin-top: 2px;
+  color: var(--success);
+  flex-shrink: 0;
+}
+
+.upload-source-body {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.upload-source-body p {
+  margin: 0;
+}
+
+.upload-source-file {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.upload-source-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.upload-history {
+  margin-top: 6px;
+}
+
+.upload-history summary {
+  cursor: pointer;
+  color: var(--link);
+}
+
+.upload-history ol {
+  margin: 6px 0 0;
+  padding-left: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+}
+
+.upload-history .eyebrow {
+  display: inline-block;
+  min-width: 76px;
+}
+
+.delete-table-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.delete-table-check input {
+  margin-top: 3px;
 }

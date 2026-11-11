@@ -56,10 +56,20 @@ def session_factory(test_engine: Engine) -> sessionmaker[Session]:
     with test_engine.begin() as conn:
         conn.execute(
             text(
-                "TRUNCATE chart_cache, login_failures, sessions, users, dashboard_charts, dashboards, charts, dataset_metrics, dataset_columns, datasets, saved_queries, query_history, connections RESTART IDENTITY"
+                "TRUNCATE uploads, chart_cache, login_failures, sessions, users, dashboard_charts, dashboards, charts, dataset_metrics, dataset_columns, datasets, saved_queries, query_history, connections RESTART IDENTITY"
             )
         )
     return sessionmaker(bind=test_engine, autoflush=False, expire_on_commit=False)
+
+
+@pytest.fixture(autouse=True, scope="session")
+def no_uploads_on_startup() -> Iterator[None]:
+    """Startup doesn't create the Uploads database / connection in tests (every test starts
+    with no connections); upload tests use the `uploads_db` fixture (tests/test_uploads.py)."""
+    original = settings.vita_uploads_on_startup
+    settings.vita_uploads_on_startup = False
+    yield
+    settings.vita_uploads_on_startup = original
 
 
 @pytest.fixture(autouse=True, scope="session")

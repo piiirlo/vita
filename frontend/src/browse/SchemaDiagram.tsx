@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronRight, KeyRound, Link2, Maximize, Minus, Plus, Search, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useNavigate } from "react-router";
 import { getSchemaDiagram, runQuery, type DbType, type QueryResult, type SchemaDiagram as Diagram } from "../api.ts";
 import { ErrorAlert } from "../components/ui/alert.tsx";
@@ -57,9 +57,9 @@ export default function SchemaDiagram({ connectionId, dbType, schema }: Props) {
     setView(next);
   }, []);
 
-  // Fit the whole schema when it first arrives.
+  // Fit the whole schema when it first arrives (before it is painted: no jump).
   const fitted = useRef<Diagram | null>(null);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!layout || !diagram || fitted.current === diagram) return;
     fitted.current = diagram;
     setView(fitAll(layout, viewportSize()));

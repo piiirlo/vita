@@ -58,6 +58,8 @@ class ConnectionOut(ConnectionFields):
     id: int
     name: str
     has_password: bool
+    # "uploads": the built-in Uploads connection (read-only in the UI, can't be edited).
+    builtin: str | None = None
     created_at: datetime
     updated_at: datetime
 

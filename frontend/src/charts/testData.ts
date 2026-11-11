@@ -48,4 +48,6 @@ export const DATASET: Dataset = {
   ],
   warnings: [],
   sqllab_sql: "SELECT 1",
+  is_upload: false,
+  upload_source: null,
 };

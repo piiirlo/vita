@@ -7,6 +7,7 @@ app.datasets, which uses run_query. The metadata-DB session is closed while thos
 from dataclasses import asdict
 from typing import Annotated, NoReturn
 
+import psycopg
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
@@ -15,6 +16,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.api.connections import get_connection_or_404, saved_connection_details
 from app.charts.usage import GROUP, TIME, QueryUsage, query_usage, used_by_message
 from app.datasets import (
+    COUNT_METRIC,
     DatasetSource,
     check_dataset_sql,
     detect_columns,
@@ -51,12 +53,13 @@ from app.schemas.datasets import (
     TimeExtentOut,
 )
 from app.schemas.query import QueryErrorOut
+from app.uploads.datasets import is_upload_dataset, table_users, upload_source
+from app.uploads.importer import drop_table as drop_upload_table
 
 router = APIRouter()
 
 DbSession = Annotated[Session, Depends(get_db)]
 
-COUNT_METRIC = {"name": "count", "label": "Count", "expression": "COUNT(*)"}
 
 QUERY_ERROR_RESPONSES: dict[int | str, dict[str, object]] = {
     400: {"description": "The query on the user database failed", "model": QueryErrorOut}
@@ -133,10 +136,11 @@ def _list_item_fields(dataset: Dataset) -> dict[str, object]:
         "metric_count": len(dataset.metrics),
         "created_at": dataset.created_at,
         "updated_at": dataset.updated_at,
+        "is_upload": is_upload_dataset(dataset),
     }
 
 
-def _out(dataset: Dataset) -> DatasetOut:
+def _out(db: Session, dataset: Dataset) -> DatasetOut:
     db_type = dataset.connection.db_type
     return DatasetOut(
         **_list_item_fields(dataset),
@@ -147,6 +151,7 @@ def _out(dataset: Dataset) -> DatasetOut:
         metrics=[DatasetMetricOut.model_validate(m) for m in dataset.metrics],
         warnings=_warnings(dataset),
         sqllab_sql=sqllab_sql(source_of(dataset), db_type),
+        upload_source=upload_source(db, dataset),
     )
 
 
@@ -281,12 +286,12 @@ def create_dataset(payload: DatasetCreate, db: DbSession) -> DatasetOut:
     dataset.metrics.append(DatasetMetric(**COUNT_METRIC, is_builtin=True))
     db.add(dataset)
     _commit(db, f'A dataset named "{name}" already exists')
-    return _out(get_dataset_or_404(db, dataset.id))
+    return _out(db, get_dataset_or_404(db, dataset.id))
 
 
 @router.get("/{dataset_id}", response_model=DatasetOut)
 def get_dataset(dataset_id: int, db: DbSession) -> DatasetOut:
-    return _out(get_dataset_or_404(db, dataset_id))
+    return _out(db, get_dataset_or_404(db, dataset_id))
 
 
 @router.put("/{dataset_id}", response_model=DatasetOut, responses=QUERY_ERROR_RESPONSES)
@@ -367,11 +372,13 @@ def update_dataset(dataset_id: int, payload: DatasetUpdate, db: DbSession) -> Da
     _touch(dataset)
     _commit(db, f'A dataset named "{name}" already exists')
     db.expire_all()
-    return _out(get_dataset_or_404(db, dataset_id))
+    return _out(db, get_dataset_or_404(db, dataset_id))
 
 
 @router.delete("/{dataset_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_dataset(dataset_id: int, db: DbSession) -> Response:
+def delete_dataset(dataset_id: int, db: DbSession, drop_table: bool = False) -> Response:
+    """With `drop_table` (datasets made from an uploaded file), its table in the Uploads
+    database is dropped too, unless another dataset reads it."""
     dataset = get_dataset_or_404(db, dataset_id)
     used_by = list(
         db.scalars(select(Chart.name).where(Chart.dataset_id == dataset.id).order_by(Chart.name))
@@ -386,7 +393,36 @@ def delete_dataset(dataset_id: int, db: DbSession) -> Response:
                 "charts": used_by,
             },
         )
+    table = dataset.table_name if drop_table and is_upload_dataset(dataset) else None
+    if drop_table and table is None:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Only datasets made from an uploaded file have a table that can be deleted with them.",
+        )
+    if table is not None:
+        others = table_users(db, dataset)
+        if others:
+            noun = "dataset uses" if len(others) == 1 else "datasets use"
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                {
+                    "message": f"The table “{table}” can't be deleted: {len(others)} other "
+                    f"{noun} it ({', '.join(others)}). Delete only the dataset, or those first.",
+                    "datasets": others,
+                },
+            )
     db.delete(dataset)
+    db.flush()
+    if table is not None:
+        # Dropped before the commit: if the drop fails, the dataset stays too.
+        try:
+            drop_upload_table(table)
+        except psycopg.Error as exc:
+            db.rollback()
+            raise HTTPException(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                f"The table “{table}” couldn't be deleted, so the dataset was kept: {exc}",
+            ) from None
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -409,7 +445,7 @@ def sync_dataset(dataset_id: int, db: DbSession) -> SyncOut:
     db.commit()
     db.expire_all()
     return SyncOut(
-        dataset=_out(get_dataset_or_404(db, dataset_id)), summary=SyncSummary(**asdict(result))
+        dataset=_out(db, get_dataset_or_404(db, dataset_id)), summary=SyncSummary(**asdict(result))
     )
 
 

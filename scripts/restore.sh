@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Restore Vita's metadata database from a backup made with scripts/backup.sh.
+# Restore Vita's metadata database from a backup made with scripts/backup.sh, and the
+# uploaded files' tables from the <name>.uploads.dump next to it (when there is one).
 # This REPLACES all current Vita data. A safety backup of the current data is taken first.
 #
 #   scripts/restore.sh backups/vita-20261105-101500.dump
@@ -28,6 +29,11 @@ if [[ -z "$file" || ! -f "$file" ]]; then
   exit 2
 fi
 
+uploads_file="${file%.dump}.uploads.dump"
+# The Uploads database (uploaded files' tables): VITA_UPLOADS_DB from .env, else vita_uploads.
+uploads_db="$(sed -n 's/^VITA_UPLOADS_DB=//p' .env 2>/dev/null | tail -n 1 | tr -d '\r" ')"
+uploads_db="${uploads_db:-vita_uploads}"
+
 if [[ "$assume_yes" != true ]]; then
   read -r -p "This replaces ALL current Vita data with $file. Type 'restore' to continue: " answer
   [[ "$answer" == "restore" ]] || { echo "Cancelled."; exit 1; }
@@ -48,6 +54,24 @@ echo "Restoring $file..."
 "${compose[@]}" exec -T db sh -c \
   'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --no-owner --exit-on-error --single-transaction' \
   <"$file"
+
+if [[ -f "$uploads_file" ]]; then
+  echo "Restoring uploaded files' tables from $uploads_file..."
+  # The database is created if it's missing (the backend sets its roles and grants at startup).
+  "${compose[@]}" exec -T -e UPLOADS_DB="$uploads_db" db sh -c '
+    set -e
+    psql -U "$POSTGRES_USER" -d "$UPLOADS_DB" -qc "" >/dev/null 2>&1 ||
+      createdb -U "$POSTGRES_USER" "$UPLOADS_DB"
+    psql -v ON_ERROR_STOP=1 -q -U "$POSTGRES_USER" -d "$UPLOADS_DB" \
+      -c "DROP SCHEMA IF EXISTS uploads CASCADE"'
+  # Tables come back owned by the admin user; the backend gives them to the upload roles
+  # (and grants SELECT to the reader) when it starts.
+  "${compose[@]}" exec -T -e UPLOADS_DB="$uploads_db" db sh -c \
+    'pg_restore -U "$POSTGRES_USER" -d "$UPLOADS_DB" --no-owner --no-acl --exit-on-error --single-transaction' \
+    <"$uploads_file"
+else
+  echo "No $uploads_file: uploaded files' tables are left as they are."
+fi
 
 echo "Starting the backend (it runs any newer migrations)..."
 "${compose[@]}" start backend

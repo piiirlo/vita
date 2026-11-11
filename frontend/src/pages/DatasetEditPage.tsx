@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import {
   ApiError,
-  deleteDataset,
   getDataset,
   isQueryErrorDetail,
   syncDataset,
@@ -11,11 +10,12 @@ import {
   type Dataset,
   type SyncResponse,
 } from "../api.ts";
-import ConfirmDialog from "../components/ConfirmDialog.tsx";
 import ColumnsTab from "../datasets/ColumnsTab.tsx";
+import DeleteDatasetDialog from "../datasets/DeleteDatasetDialog.tsx";
 import { errorText } from "../datasets/format.ts";
 import MetricsTab from "../datasets/MetricsTab.tsx";
 import PreviewTab from "../datasets/PreviewTab.tsx";
+import UploadSourcePanel from "../datasets/UploadSourcePanel.tsx";
 import { openDatasetInSqlLab } from "../datasets/sqlLabLink.ts";
 import { usePageTitle } from "../components/usePageTitle.ts";
 import { toast } from "../components/toast.ts";
@@ -211,13 +211,6 @@ export default function DatasetEditPage() {
     }
   }
 
-  async function remove() {
-    if (!dataset) return;
-    await deleteDataset(dataset.id);
-    toast.success(`Deleted "${dataset.name}".`);
-    void navigate("/datasets");
-  }
-
   const update = (patch: Partial<Draft>) => setDraft((d) => (d ? { ...d, ...patch } : d));
   const activeColumns = dataset.columns.filter((c) => !c.is_missing).length;
 
@@ -270,6 +263,7 @@ export default function DatasetEditPage() {
             <span>SQL query</span>
           )}
         </div>
+        {dataset.is_upload && <UploadSourcePanel dataset={dataset} />}
         {dataset.kind === "sql" && (
           <details className="dataset-sql">
             <summary className="small">Show SQL</summary>
@@ -352,17 +346,7 @@ export default function DatasetEditPage() {
       {tab === "preview" && <PreviewTab datasetId={dataset.id} title={dataset.name} reloadKey={previewKey} />}
 
       {confirmDelete && (
-        <ConfirmDialog
-          title="Delete dataset"
-          confirmLabel="Delete"
-          onConfirm={remove}
-          onCancel={() => setConfirmDelete(false)}
-        >
-          <p>
-            Delete <strong>{dataset.name}</strong> with its column settings and metrics? This cannot be
-            undone. The table or query in the database is not affected.
-          </p>
-        </ConfirmDialog>
+        <DeleteDatasetDialog dataset={dataset} onDeleted={() => void navigate("/datasets")} onCancel={() => setConfirmDelete(false)} />
       )}
     </div>
   );
