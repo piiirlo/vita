@@ -70,8 +70,12 @@ export function minTileSize(tile: DashboardTile, viz: VizType | undefined): { w:
     case "pie":
     case "treemap":
     case "funnel":
+    case "heatmap":
+    case "scatter":
       return { w: 6, h: 12 };
-    default: // bar, line, area, combo, or not loaded yet
+    case "world_map":
+      return { w: 8, h: 14 };
+    default: // bar, line, area, combo, histogram, or not loaded yet
       return { w: 6, h: 10 };
   }
 }

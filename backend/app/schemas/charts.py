@@ -23,9 +23,14 @@ VizType = Literal[
     "funnel",
     "gauge",
     "pivot_table",
+    "heatmap",
+    "scatter",
+    "histogram",
+    "world_map",
 ]
 Aggregate = Literal["SUM", "AVG", "MIN", "MAX", "COUNT", "COUNT_DISTINCT"]
 Grain = Literal["day", "week", "month", "quarter", "year"]
+GRAINS: tuple[str, ...] = ("day", "week", "month", "quarter", "year")
 RangeKind = Literal[
     "none",
     "last_7_days",
@@ -48,6 +53,9 @@ DEFAULT_SERIES_LIMIT = 10
 # Pivot tables: at most this many row / column dimensions (every total level is a grouping).
 MAX_PIVOT_ROW_DIMENSIONS = 3
 MAX_PIVOT_COLUMN_DIMENSIONS = 2
+# Histograms: bins by number (default) or width.
+DEFAULT_BINS = 20
+MAX_BINS = 200
 
 
 class AdhocMetric(BaseModel):
@@ -99,6 +107,15 @@ class Filter(BaseModel):
     value: FilterValue = None
 
 
+class BinSpec(BaseModel):
+    """Histogram bins of one number column: `count` bins between its MIN and MAX, or bins
+    of a fixed `width` (aligned to multiples of it). Width wins when both are set."""
+
+    column: str = Field(min_length=1)
+    count: int | None = Field(default=DEFAULT_BINS, ge=1, le=MAX_BINS)
+    width: float | None = Field(default=None, gt=0)
+
+
 class OrderBy(BaseModel):
     # A metric name, a dimension / series / raw column, or the time column.
     by: str = Field(min_length=1)
@@ -117,6 +134,8 @@ class ChartQuery(BaseModel):
     totals: bool = False
     # Bar / line / area: the dimension that splits the chart into series.
     series: str | None = None
+    # Histogram: the number column and its bins.
+    bins: BinSpec | None = None
     # Table "raw records" mode: these columns, no grouping (metrics must be empty).
     columns: list[str] = Field(default_factory=list)
     time: TimeSpec | None = None

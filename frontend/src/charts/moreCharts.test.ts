@@ -44,13 +44,16 @@ function chart(viz: ChartState["vizType"], query: Partial<ChartState["query"]> =
 }
 
 describe("chart type gallery and switching", () => {
-  it("lists 11 types in groups and searches labels, groups and keywords", () => {
-    expect(VIZ_INFO.map((v) => v.value)).toHaveLength(11);
+  it("lists 15 types in groups and searches labels, groups and keywords", () => {
+    expect(VIZ_INFO.map((v) => v.value)).toHaveLength(15);
+    expect(searchViz("distribution").map((v) => v.value)).toEqual(["histogram", "scatter", "heatmap"]);
+    expect(searchViz("choropleth").map((v) => v.value)).toEqual(["world_map"]);
+    expect(searchViz("bubble").map((v) => v.value)).toEqual(["scatter"]);
     expect(searchViz("donut").map((v) => v.value)).toEqual(["pie"]);
     expect(searchViz("KPI").map((v) => v.value)).toEqual(["big_number", "gauge"]);
     expect(searchViz("totals").map((v) => v.value)).toEqual(["pivot_table"]);
     expect(searchViz("part of whole").map((v) => v.value)).toEqual(["pie", "treemap", "funnel"]);
-    expect(searchViz("  ")).toHaveLength(11);
+    expect(searchViz("  ")).toHaveLength(15);
   });
 
   it("keeps compatible settings and says what didn't carry over", () => {

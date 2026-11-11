@@ -89,6 +89,10 @@ describe("DashboardGrid resizing", () => {
     expect(minTileSize(chart, "pivot_table")).toEqual({ w: 8, h: 10 });
     expect(minTileSize(chart, "area")).toEqual({ w: 6, h: 10 });
     expect(minTileSize(chart, "combo")).toEqual({ w: 6, h: 10 });
+    expect(minTileSize(chart, "heatmap")).toEqual({ w: 6, h: 12 });
+    expect(minTileSize(chart, "scatter")).toEqual({ w: 6, h: 12 });
+    expect(minTileSize(chart, "histogram")).toEqual({ w: 6, h: 10 });
+    expect(minTileSize(chart, "world_map")).toEqual({ w: 8, h: 14 });
     expect(minTileSize({ id: "t", type: "text", text: "", x: 0, y: 0, w: 4, h: 4 }, undefined)).toEqual({ w: 3, h: 3 });
   });
 });

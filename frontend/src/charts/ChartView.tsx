@@ -1,5 +1,5 @@
 import { ArrowDown, ArrowUp, TriangleAlert } from "lucide-react";
-import { useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import { lazy, Suspense, useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import type { ChartDataResult, Dataset } from "../api.ts";
 import { CountUp } from "../components/motion.tsx";
 import { cssVar } from "../lib/cssVar.ts";
@@ -16,6 +16,11 @@ import { funnelOption, gaugeOption, gaugeTargetText, nonAdditive, treemapOption 
 import { cartesianLayout, pieOption, sparklineOption, type DrawContext, type DrawToken } from "./options.ts";
 import PivotTable from "./PivotTable.tsx";
 import TableChart from "./TableChart.tsx";
+import { isGrain, splitDim } from "./dimensions.ts";
+import { heatmapOption, histogramBins, histogramOption, scatterOption } from "./distribution.ts";
+
+// The world map (and its GeoJSON) load only when a map is drawn.
+const WorldMapView = lazy(() => import("./geo/WorldMapView.tsx"));
 
 /** Bar-like charts with a category or time x axis. */
 const CARTESIAN = new Set(["bar", "line", "area", "combo"]);
@@ -83,6 +88,8 @@ function useDrawColors(): Pick<DrawContext, "colors" | "labelColor" | "tokens"> 
             ["success", "--success"],
             ["accent", "--accent"],
             ["surface", "--surface"],
+            ["sunken", "--surface-sunken"],
+            ["tint", "--heat-2"],
           ] as [DrawToken, string][]
         ).map(([k, v]) => [k, cssVar(v)]),
       ),
@@ -111,6 +118,26 @@ export default function ChartView({
   const timeColumn = query.time?.column ?? null;
   const needsExtent = (CARTESIAN.has(vizType) && hasTimeAxis(state)) || (vizType === "big_number" && trend !== null);
   const extent = useTimeExtent(dataset?.id ?? null, timeColumn, needsExtent && result.rows.length > 0);
+  // Heatmaps and pivot tables with date buckets ("order_date@month") mark incomplete periods
+  // of the first bucketed column: its data extent, plus the time range when it filters on it.
+  const bucketRefs = vizType === "heatmap" || vizType === "pivot_table" ? [...query.dimensions, ...(query.column_dimensions ?? [])] : [];
+  const bucketColumn = bucketRefs.map((r) => splitDim(r, dataset)).find((d) => isGrain(d.part))?.column ?? null;
+  const bucketExtent = useTimeExtent(dataset?.id ?? null, bucketColumn, bucketColumn !== null && result.rows.length > 0);
+  const rangeColumn = timeColumn ?? dataset?.main_time_column ?? null;
+  const coverageFor = useCallback(
+    (ref: string): Coverage | null => {
+      const { column, part } = splitDim(ref, dataset);
+      if (!isGrain(part) || column !== bucketColumn || !bucketExtent) return null;
+      const filtered = column === rangeColumn;
+      return {
+        rangeStart: filtered ? result.range_start : null,
+        rangeEnd: filtered ? result.range_end : null,
+        dataMin: bucketExtent.min,
+        dataMax: bucketExtent.max,
+      };
+    },
+    [dataset, bucketColumn, bucketExtent, rangeColumn, result.range_start, result.range_end],
+  );
   const coverage: Coverage = useMemo(
     () => ({
       rangeStart: (trend ?? result).range_start,
@@ -153,7 +180,19 @@ export default function ChartView({
   } else if (vizType === "big_number") {
     body = <BigNumber state={state} result={result} trend={trend} previous={previous} dataset={dataset} coverage={coverage} drawColors={drawColors} />;
   } else if (vizType === "pivot_table") {
-    body = <PivotTable state={state} result={result} dataset={dataset} />;
+    body = <PivotTable state={state} result={result} dataset={dataset} coverageFor={coverageFor} />;
+  } else if (vizType === "heatmap") {
+    body = <HeatmapView state={state} result={result} dataset={dataset} drawColors={drawColors} coverageFor={coverageFor} />;
+  } else if (vizType === "scatter") {
+    body = <ScatterView state={state} result={result} dataset={dataset} drawColors={drawColors} />;
+  } else if (vizType === "histogram") {
+    body = <HistogramView state={state} result={result} dataset={dataset} drawColors={drawColors} />;
+  } else if (vizType === "world_map") {
+    body = (
+      <Suspense fallback={<div className="skeleton map-skeleton" role="status" aria-label="Loading the map" />}>
+        <WorldMapView state={state} result={result} dataset={dataset} drawColors={drawColors} showHints={showHints} />
+      </Suspense>
+    );
   } else if (vizType === "treemap") {
     body = <TreemapView state={state} result={result} total={total} dataset={dataset} drawColors={drawColors} showHints={showHints} />;
   } else if (vizType === "funnel") {
@@ -291,6 +330,69 @@ function TreemapView({
         <p className="chart-notice" role="note">
           <TriangleAlert size={14} aria-hidden />
           <span>Box sizes add up their parts, which isn't meaningful for this metric. Hover a group for its real value, or use a sum or count.</span>
+        </p>
+      )}
+    </>
+  );
+}
+
+function HeatmapView({
+  state,
+  result,
+  dataset,
+  drawColors,
+  coverageFor,
+}: {
+  state: ChartState;
+  result: ChartDataResult;
+  dataset: Dataset | null;
+  drawColors: DrawColors;
+  coverageFor: (ref: string) => Coverage | null;
+}) {
+  const { option, partial } = useMemo(
+    () => heatmapOption(state, result, dataset, { ...drawColors, coverageFor }),
+    [state, result, dataset, drawColors, coverageFor],
+  );
+  const metric = state.query.metrics[0];
+  return (
+    <EChart
+      option={option}
+      label={`Heatmap of ${metric ? metricLabel(metric, dataset) : ""}${partial ? " (dashed cells: incomplete period)" : ""}`}
+    />
+  );
+}
+
+function ScatterView({ state, result, dataset, drawColors }: { state: ChartState; result: ChartDataResult; dataset: Dataset | null; drawColors: DrawColors }) {
+  const option = useMemo(() => scatterOption(state, result, dataset, drawColors), [state, result, dataset, drawColors]);
+  const [x, y] = state.query.metrics;
+  return (
+    <>
+      <EChart option={option} label={`Scatter plot of ${y ? metricLabel(y, dataset) : ""} against ${x ? metricLabel(x, dataset) : ""}`} />
+      {result.truncated && (
+        <p className="chart-notice" role="note">
+          <TriangleAlert size={14} aria-hidden />
+          <span>Showing the first {result.rows.length.toLocaleString("en-US")} points: add a filter or raise the row limit to see more.</span>
+        </p>
+      )}
+    </>
+  );
+}
+
+function HistogramView({ state, result, dataset, drawColors }: { state: ChartState; result: ChartDataResult; dataset: Dataset | null; drawColors: DrawColors }) {
+  const option = useMemo(() => histogramOption(state, result, dataset, drawColors), [state, result, dataset, drawColors]);
+  const { missing } = useMemo(() => histogramBins(state, result), [state, result]);
+  const metric = state.query.metrics[0];
+  const format = metric ? metricFormatter(state.display, metric, dataset) : (v: unknown) => String(v);
+  return (
+    <>
+      <EChart option={option} label={`Histogram of ${state.query.bins?.column ?? ""}`} />
+      {(missing !== null || result.truncated) && (
+        <p className="chart-notice" role="note">
+          <TriangleAlert size={14} aria-hidden />
+          <span>
+            {missing !== null && `Rows without a value aren't in any bin (${format(missing)}). `}
+            {result.truncated && "Too many bins for the row limit: widen the bins or raise the limit."}
+          </span>
         </p>
       )}
     </>

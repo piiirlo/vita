@@ -15,6 +15,10 @@ export const VIZ_LABELS: Record<VizType, string> = {
   gauge: "Gauge",
   table: "Table",
   pivot_table: "Pivot table",
+  heatmap: "Heatmap",
+  scatter: "Scatter / bubble",
+  histogram: "Histogram",
+  world_map: "World map",
 };
 
 export const vizLabel = (viz: string) => VIZ_LABELS[viz as VizType] ?? viz;

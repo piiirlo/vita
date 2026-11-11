@@ -130,6 +130,16 @@ export function unavailableOptions(state: ChartState, dataset: Dataset | null): 
     hints.legend = vizType === "treemap" ? "Boxes are labelled on the chart" : "Steps are labelled on the chart";
     hints.single_color = vizType === "treemap" ? "Each box needs its own color" : "Each step needs its own color";
   }
+  if (vizType === "heatmap" || vizType === "world_map") {
+    hints.legend = "The color scale is the legend";
+    hints.single_color = "Values are shown on a color scale";
+    if (vizType === "world_map") {
+      hints.axis_titles = "A map has no axes";
+      hints.value_labels = "Hover a country for its value";
+    }
+  }
+  if (vizType === "scatter" && !query.series) hints.legend = "Pick a \"Color by\" column to tell groups apart";
+  if (vizType === "histogram") hints.legend = "One series: nothing to tell apart";
   if (vizType === "gauge") {
     hints.legend = "A gauge has no legend";
     hints.axis_titles = "A gauge has its own scale";

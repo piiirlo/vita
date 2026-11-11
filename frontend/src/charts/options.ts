@@ -121,7 +121,7 @@ export type DrawContext = {
 };
 
 /** Token colors a chart may need besides the series palette. */
-export type DrawToken = "text" | "muted" | "border" | "band" | "danger" | "warning" | "success" | "accent" | "surface";
+export type DrawToken = "text" | "muted" | "border" | "band" | "danger" | "warning" | "success" | "accent" | "surface" | "sunken" | "tint";
 
 type TooltipItem = {
   axisValueLabel?: string;
@@ -475,6 +475,12 @@ export function seriesNamesOf(state: ChartState, result: ChartDataResult, datase
     const oi = result.columns.findIndex((c) => c.name === OTHER_COLUMN);
     const names = result.rows.map((row) => (oi >= 0 && toNumber(row[oi]) === 1 ? OTHER_LABEL : dimensionLabel(row[di], dim, dataset)));
     return [...new Set(names)];
+  }
+  if (state.vizType === "scatter") {
+    // The "Color by" groups.
+    const series = state.query.series;
+    const si = series ? result.columns.findIndex((c) => c.name === series) : -1;
+    return si < 0 ? [] : [...new Set(result.rows.map((row) => dimensionLabel(row[si], series, dataset)))];
   }
   if (!["bar", "line", "area", "combo"].includes(state.vizType)) return [];
   const xColumn = hasTimeAxis(state) ? state.query.time!.column! : (state.query.dimensions[0] ?? "");

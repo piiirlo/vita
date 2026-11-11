@@ -103,4 +103,38 @@ describe("new chart types render from a mocked response", () => {
     render(<ChartView state={state} result={result(["status", "__row_level", "__col_level", "count"], [["open", 1, 0, 2]], { truncated: true })} trend={null} dataset={DATASET} />);
     expect(screen.getByRole("note")).toHaveTextContent("The row limit was reached");
   });
+
+  it("heatmap", () => {
+    const state = chart("heatmap", { dimensions: ["status", "channel"] });
+    render(<ChartView state={state} result={result(["status", "channel", "count"], [["paid", "web", 3]])} trend={null} dataset={DATASET} />);
+    expect(screen.getByRole("img", { name: "Heatmap of Count" })).toBeInTheDocument();
+    expect(seriesTypes()).toEqual(["heatmap"]);
+  });
+
+  it("scatter, with a notice when the points were capped", () => {
+    const state = chart("scatter", { metrics: ["revenue", "count"], dimensions: ["status"] });
+    const rows = result(["status", "revenue", "count"], [["paid", 10, 2], ["open", 5, 1]], { truncated: true });
+    render(<ChartView state={state} result={rows} trend={null} dataset={DATASET} />);
+    expect(screen.getByRole("img", { name: "Scatter plot of Count against Revenue" })).toBeInTheDocument();
+    expect(seriesTypes()).toEqual(["scatter"]);
+    expect(screen.getByRole("note")).toHaveTextContent("Showing the first 2 points");
+  });
+
+  it("histogram, saying how many rows had no value", () => {
+    const state = chart("histogram", { bins: { column: "line_total", count: 2 } });
+    const rows = result(["__bin", "__bin_start", "__bin_end", "count"], [[null, null, null, 3], [0, 0, 5, 1], [1, 5, 10, 2]]);
+    render(<ChartView state={state} result={rows} trend={null} dataset={DATASET} />);
+    expect(screen.getByRole("img", { name: "Histogram of line_total" })).toBeInTheDocument();
+    expect(seriesTypes()).toEqual(["bar"]);
+    expect(screen.getByRole("note")).toHaveTextContent("Rows without a value aren't in any bin (3).");
+  });
+
+  it("world map: loads the shapes lazily and lists the countries it couldn't match", async () => {
+    const state = chart("world_map", { dimensions: ["status"] });
+    const rows = result(["status", "count"], [["USA", 3], ["Russian Federation", 2], ["Narnia", 1]]);
+    render(<ChartView state={state} result={rows} trend={null} dataset={DATASET} showHints />);
+    expect(await screen.findByRole("img", { name: "World map of Count: 2 countries" }, { timeout: 5000 })).toBeInTheDocument();
+    expect(seriesTypes()).toEqual(["map"]);
+    expect(screen.getByTestId("map-unmatched")).toHaveTextContent("1 value couldn't be matched to a country: Narnia.");
+  });
 });

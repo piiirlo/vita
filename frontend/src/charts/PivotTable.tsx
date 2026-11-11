@@ -1,6 +1,7 @@
 import { ChevronDown, ChevronRight, TriangleAlert } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { ChartDataResult, Dataset } from "../api.ts";
+import type { Coverage } from "./display.ts";
 import { PIVOT_MAX_COLUMNS, type ChartState } from "./model.ts";
 import { PIVOT_MAX_ROWS_SHOWN, pivotLayout } from "./pivotTable.ts";
 
@@ -13,7 +14,22 @@ const toggle = (set: ReadonlySet<string>, key: string) => {
 
 /** Rows x columns with SQL-computed totals. Groups collapse (rows, and outer columns when
  * there are two column dimensions); that only changes the view, never the query. */
-export default function PivotTable({ state, result, dataset }: { state: ChartState; result: ChartDataResult; dataset: Dataset | null }) {
+/** An incomplete period: dashed underline + italic (not color alone), and said for screen readers. */
+function Incomplete({ on }: { on?: boolean }) {
+  return on ? <span className="sr-only"> (incomplete period)</span> : null;
+}
+
+export default function PivotTable({
+  state,
+  result,
+  dataset,
+  coverageFor,
+}: {
+  state: ChartState;
+  result: ChartDataResult;
+  dataset: Dataset | null;
+  coverageFor?: (ref: string) => Coverage | null;
+}) {
   const { query, display } = state;
   const [collapsedRows, setCollapsedRows] = useState<ReadonlySet<string>>(new Set());
   const [collapsedCols, setCollapsedCols] = useState<ReadonlySet<string>>(new Set());
@@ -29,8 +45,9 @@ export default function PivotTable({ state, result, dataset }: { state: ChartSta
         dataset,
         collapsedRows,
         collapsedCols,
+        coverageFor,
       }),
-    [result, query.dimensions, query.column_dimensions, query.metrics, totals, display, dataset, collapsedRows, collapsedCols],
+    [result, query.dimensions, query.column_dimensions, query.metrics, totals, display, dataset, collapsedRows, collapsedCols, coverageFor],
   );
   const canCollapseRows = totals && query.dimensions.length > 1;
 
@@ -58,7 +75,8 @@ export default function PivotTable({ state, result, dataset }: { state: ChartSta
                     colSpan={h.colSpan}
                     rowSpan={h.rowSpan}
                     scope={h.kind === "corner" ? undefined : "col"}
-                    className={`pivot-h pivot-h-${h.kind}`}
+                    className={`pivot-h pivot-h-${h.kind}${h.incomplete ? " pivot-incomplete" : ""}`}
+                    title={h.incomplete ? "Incomplete period" : undefined}
                   >
                     {h.groupKey ? (
                       <button
@@ -70,9 +88,13 @@ export default function PivotTable({ state, result, dataset }: { state: ChartSta
                       >
                         {h.collapsed ? <ChevronRight size={14} aria-hidden /> : <ChevronDown size={14} aria-hidden />}
                         {h.label}
+                        <Incomplete on={h.incomplete} />
                       </button>
                     ) : (
-                      h.label
+                      <>
+                        {h.label}
+                        <Incomplete on={h.incomplete} />
+                      </>
                     )}
                   </th>
                 ))}
@@ -82,7 +104,12 @@ export default function PivotTable({ state, result, dataset }: { state: ChartSta
           <tbody>
             {layout.body.map((row) => (
               <tr key={`${row.kind}:${row.depth}:${row.key}`} className={`pivot-row-${row.kind}`}>
-                <th scope="row" className="pivot-label" style={{ paddingLeft: 12 + row.depth * 16 }}>
+                <th
+                  scope="row"
+                  className={`pivot-label${row.incomplete ? " pivot-incomplete" : ""}`}
+                  title={row.incomplete ? "Incomplete period" : undefined}
+                  style={{ paddingLeft: 12 + row.depth * 16 }}
+                >
                   {row.kind === "group" && canCollapseRows ? (
                     <button
                       type="button"
@@ -93,9 +120,13 @@ export default function PivotTable({ state, result, dataset }: { state: ChartSta
                     >
                       {row.collapsed ? <ChevronRight size={14} aria-hidden /> : <ChevronDown size={14} aria-hidden />}
                       {row.label}
+                      <Incomplete on={row.incomplete} />
                     </button>
                   ) : (
-                    row.label
+                    <>
+                      {row.label}
+                      <Incomplete on={row.incomplete} />
+                    </>
                   )}
                 </th>
                 {row.cells.map((c, ci) => (
@@ -108,6 +139,14 @@ export default function PivotTable({ state, result, dataset }: { state: ChartSta
           </tbody>
         </table>
       </div>
+      {layout.hasIncomplete && (
+        <p className="pivot-footnote">
+          <span className="pivot-incomplete" aria-hidden>
+            Dashed
+          </span>{" "}
+          = incomplete period (the time range or the data covers only part of it)
+        </p>
+      )}
     </div>
   );
 }

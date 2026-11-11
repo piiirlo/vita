@@ -531,10 +531,10 @@ describe("Chart editor", () => {
       await screen.findByLabelText("Dataset");
       fireEvent.click(screen.getByRole("button", { name: /^Chart type / }));
       const dialog = screen.getByRole("dialog", { name: "Chart type" });
-      for (const group of ["Trends", "Compare", "Part of whole", "Single value", "Tables"]) {
+      for (const group of ["Trends", "Compare", "Part of whole", "Single value", "Tables", "Distribution", "Geo"]) {
         expect(within(dialog).getByRole("region", { name: group })).toBeInTheDocument();
       }
-      expect(within(dialog).getAllByRole("radio")).toHaveLength(11);
+      expect(within(dialog).getAllByRole("radio")).toHaveLength(15);
       fireEvent.change(within(dialog).getByLabelText("Search chart types"), { target: { value: "kpi" } });
       expect(within(dialog).getAllByRole("radio").map((r) => r.getAttribute("aria-label"))).toEqual(["Big number", "Gauge"]);
       fireEvent.keyDown(within(dialog).getByLabelText("Search chart types"), { key: "Enter" });
@@ -573,6 +573,34 @@ describe("Chart editor", () => {
       fireEvent.click(screen.getByRole("button", { name: "Update chart" }));
       await waitFor(() => expect(requests.at(-1)?.viz_type).toBe("pivot_table"));
       expect(requests.at(-1)!.query).toMatchObject({ dimensions: ["status", "region", "segment"], column_dimensions: ["channel", "order_date"], totals: true });
+    });
+
+    it("pivot rows and columns can be date buckets (month, quarter, year)", async () => {
+      const requests = mockApi();
+      renderEditor();
+      await screen.findByLabelText("Dataset");
+      pickChartType("Pivot table");
+      const add = screen.getByLabelText("Add to Columns");
+      expect(within(add).getByRole("option", { name: "order_date · by quarter" })).toBeInTheDocument();
+      fireEvent.change(add, { target: { value: "order_date@month" } });
+      expect(within(screen.getByRole("list", { name: "Columns" })).getByText("order_date · by month")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Update chart" }));
+      await waitFor(() => expect(requests.at(-1)?.viz_type).toBe("pivot_table"));
+      expect(requests.at(-1)!.query).toMatchObject({ column_dimensions: ["order_date@month"] });
+    });
+
+    it("histogram: a number column in bins, by number or by width", async () => {
+      const requests = mockApi();
+      renderEditor();
+      await screen.findByLabelText("Dataset");
+      pickChartType("Histogram");
+      expect(screen.getByLabelText("Number column")).toHaveValue("line_total");
+      expect(screen.getByLabelText("Number of bins")).toHaveValue(20);
+      fireEvent.click(screen.getByRole("radio", { name: "Bin width" }));
+      fireEvent.change(screen.getByLabelText("Bin width"), { target: { value: "25" } });
+      fireEvent.click(screen.getByRole("button", { name: "Update chart" }));
+      await waitFor(() => expect(requests.at(-1)?.viz_type).toBe("histogram"));
+      expect(requests.at(-1)!.query).toMatchObject({ bins: { column: "line_total", width: 25 }, dimensions: [], metrics: ["count"] });
     });
   });
 });

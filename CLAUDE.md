@@ -27,9 +27,9 @@ One part at a time, in order:
 9. **Visual redesign ("Observatory")** — tokens, shell, every page; no feature changes *(done)*
 10. **Fixes from real usage** — Customize tab, pie/donut, chart-data cache, value labels,
     schema diagram, 24-column grid with 8 resize handles, unsaved-chart warning *(done)*
-11. **More chart types** (15 in two rounds) — round 1: chart type gallery, area, combo,
-    treemap, funnel, gauge, pivot table *(round 1 done)*; round 2: heatmap (time parts),
-    scatter / bubble, histogram, world map
+11. **More chart types** (15) — chart type gallery, area, combo, treemap, funnel, gauge,
+    pivot table (date buckets), heatmap (time parts), scatter / bubble, histogram, world map
+    *(done)*
 
 **Out of scope for v1:** dashboard filters, multi-user permissions, alerts, scheduled
 reports, chart types beyond the 15 of Part 11.
@@ -105,7 +105,22 @@ This folder may contain the Apache Superset source code. It is **read-only refer
     columns (at most 3 / 2), metrics; with `totals` every (row prefix × column prefix) level
     is grouped **in SQL** (Postgres `GROUPING SETS`, one scan; MySQL has none: `UNION ALL`, one
     branch per level), each row tagged `__row_level` / `__col_level` (how many dims are
-    grouped) so a real NULL is never a total. The browser only lays it out. Chart-data responses carry `range_start`/`range_end`
+    grouped) so a real NULL is never a total. The browser only lays it out.
+    Dimensions can be a date bucket or a time part of a time column: `"order_date@month"`
+    (day / week / month / quarter / year: `time_bucket`, a DATE) or `"created_at@day_of_week"`
+    (`timegrain.time_part`: day_of_week 1 = Monday ... 7 on both databases — Postgres
+    `EXTRACT(ISODOW)`, MySQL `WEEKDAY() + 1` —, hour_of_day, month_of_year; integers).
+    `_Builder.dim(ref)` resolves every dimension (all chart types, pivot rows / columns,
+    series); the output column is named by the ref. No hour for plain DATE columns.
+    Heatmap = two dimensions + one metric, ordered by both. Scatter = 2-3 metrics (x, y,
+    size) + one dimension (a point each) + optional series (color), never a top-N join.
+    World map = one dimension + one metric (matching countries is in the browser).
+    Histogram (`build_histogram`, `ChartQuery.bins` = {column, count | width}): a fixed
+    width bins FLOOR(x / width) (aligned to multiples, negatives fine); a number of bins
+    splits [MIN, MAX] of the filtered rows (a CROSS JOIN on the bounds; MAX in the last bin;
+    one distinct value = one bin; x cast to float first: MySQL rounds DECIMAL division). Rows
+    without a value are bin NULL. Output `__bin`, `__bin_start`, `__bin_end`, metric; the
+    range is computed outside the grouping (MySQL's ONLY_FULL_GROUP_BY). Chart-data responses carry `range_start`/`range_end`
     (the range filtered on, days inclusive). An ungrouped total over a time range gets a hidden
     last column `__first_time` = MIN(time column) (`rows_probe`); the API strips it and returns
     **no rows** when it is NULL, so "no data in the range" (big number shows "-" + the hint)
@@ -169,7 +184,7 @@ This folder may contain the Apache Superset source code. It is **read-only refer
     tests mock it. Canvas can't read CSS variables: ChartView resolves the series palette and
     `DrawContext.tokens` (text, border, danger / warning (ochre) / success, accent, surface)
     with `cssVar`, so charts never hold literal colors.
-    Chart types: 11 so far. Names in `vizTypes.ts` (tiny: the charts list and "Add chart"
+    Chart types: 15. Names in `vizTypes.ts` (tiny: the charts list and "Add chart"
     are in the main bundle); the gallery (`ChartTypePicker.tsx` + `VizThumb.tsx` static SVGs
     in theme colors, groups / descriptions / search in `vizGallery.ts`) is editor-only.
     Never import `model.ts` from a main-bundle page. `adaptToViz` keeps what fits;
@@ -181,7 +196,24 @@ This folder may contain the Apache Superset source code. It is **read-only refer
     donut total: `chartRequests` → `total` + `totalViz`; labels pick a readable token color
     with `readableOn`; funnel labels sit beside the steps). Pivot layout is pure
     (`pivotTable.ts`: header rows, groups, SQL totals, collapse, 50-column cap, heat levels
-    `--heat-1..5`) + `PivotTable.tsx`. Gauge and big number show "-" + the hint with no rows.
+    `--heat-1..5`; date-bucket headers / rows of incomplete periods are dashed + italic with
+    a footnote) + `PivotTable.tsx`. Gauge and big number show "-" + the hint with no rows.
+    `dimensions.ts`: "column@part" refs (`splitDim`, labels "Mon" / "08:00" / "Mar 2026",
+    `dimensionOptions` for pickers); `columnLabel` / `dimensionLabel` understand them.
+    Heatmap / scatter / histogram options in `distribution.ts` (heatmap axes: every value
+    of a time part, Monday first, else sorted; incomplete date buckets dashed; continuous
+    color scale `scaleColors` = `--heat-2` tint → the two olives by contrast, empty cells and
+    countries without data stay the card color; scatter keeps 9 colors + "Other"; histogram
+    fills empty bins and says how many rows had no value). ChartView's `coverageFor` gives
+    heatmaps and pivots the time extent of their first bucketed column.
+    World map: `geo/WorldMapView.tsx` is lazy and loads `geo/world.json` (Natural Earth
+    1:110m via world-atlas, no Antarctica, antimeridian stitched; ~55 kB gzipped, its own
+    chunk) and registers it once. `geo/countryMatch.ts` matches ISO-2 / ISO-3 / names
+    (accents, case, punctuation, "the" ignored) using `geo/countries.ts` (generated) and
+    `geo/countryAliases.ts` (hand-written: add aliases there). Dataset value labels apply
+    first, so the editor's "N values couldn't be matched" notice can be fixed with them.
+    `scripts/build-world.mjs` regenerates world.json / countries.ts from dev-only packages
+    (world-atlas, topojson-client, i18n-iso-countries).
     Side panel tabs: **Data** (`ChartControls.tsx`: what to query, debounced auto-update, cache
     setting) and **Customize** (`CustomizePanel.tsx`: the look, stored in `display`).
     `display.ts`: per-metric `FormatSpec` (chart format beats the metric's own; works for
@@ -205,7 +237,7 @@ This folder may contain the Apache Superset source code. It is **read-only refer
     Refresh all, auto-refresh, Retry) passes `refresh`. `DashboardGrid.tsx` wraps
     react-grid-layout v2 (page tests mock it; `DashboardGrid.test.tsx` drives the real one):
     24 columns, resize from all 8 handles (`RESIZE_HANDLES`), minimum size per chart type
-    (gauge 4×8, pivot 8×10, treemap / funnel 6×12, ...)
+    (gauge 4×8, pivot 8×10, treemap / funnel / heatmap / scatter 6×12, world map 8×14, ...)
     (`minTileSize`); handles are hidden outside edit mode. Text tiles
     are markdown rendered by `markdown.ts` (marked + DOMPurify — always sanitize). Pure helpers
     in `layout.ts`. Narrow screens stack tiles (view mode). The router is a data router
@@ -296,7 +328,7 @@ Calm, earthy, instrument-like; **one** loud signal color. Mockups: `design/*.dc.
   live in `App.css` (organized by page); new components prefer Tailwind utilities.
 - **Lazy chunks**: SQL Lab, chart editor, dashboard page, dataset editor, the schema diagram
   and the command palette are lazy-loaded; keep heavy libraries (Monaco, ECharts, TanStack,
-  cmdk, Motion, dagre, chart code) out of the main bundle.
+  cmdk, Motion, dagre, chart code, the world map) out of the main bundle.
 
 ## Testing notes
 - Backend tests run against a separate `vita_test` database (created and migrated

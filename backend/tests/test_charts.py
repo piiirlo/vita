@@ -1264,3 +1264,109 @@ def test_funnel_gauge_area_combo_run(
         len(combo["rows"])
         == expect("SELECT COUNT(DISTINCT DATE_TRUNC('month', order_date)) FROM lines")[0][0]
     )
+
+
+# ---------- Part 11 round 2 on a real database ----------
+
+# Negative values, a NULL, a repeated value and timestamps on known weekdays / hours.
+POINTS_SQL = """
+SELECT * FROM (VALUES
+  (-3.5::numeric, TIMESTAMP '2026-11-02 08:15', 'a'),
+  (-1.0, TIMESTAMP '2026-11-02 08:45', 'a'),
+  (0.0, TIMESTAMP '2026-11-03 13:00', 'b'),
+  (0.5, TIMESTAMP '2026-11-08 23:59', 'b'),
+  (2.0, TIMESTAMP '2026-11-08 00:00', 'c'),
+  (2.0, TIMESTAMP '2026-03-01 12:00', 'c'),
+  (NULL, TIMESTAMP '2026-03-01 12:30', 'c')
+) AS t(x, at, grp)
+"""
+
+
+@pytest.fixture
+def points(client: TestClient, connection_id: int) -> int:
+    response = client.post("/api/datasets", json={"name": "Points", "connection_id": connection_id,
+                                                  "kind": "sql", "sql": POINTS_SQL})  # fmt: skip
+    assert response.status_code == 201, response.text
+    dataset_id = int(response.json()["id"])
+    # Text columns are dimensions; "at" is the time column.
+    by_name = {c["name"]: c for c in client.get(f"/api/datasets/{dataset_id}").json()["columns"]}
+    assert by_name["grp"]["is_dimension"] and by_name["at"]["is_temporal"]
+    return dataset_id
+
+
+def test_histogram_bins_with_negatives_and_nulls(client: TestClient, points: int) -> None:
+    data = chart_data(
+        client, "histogram", points, metrics=["count"], bins={"column": "x", "count": 11}
+    )
+    assert [c["name"] for c in data["columns"]] == ["__bin", "__bin_start", "__bin_end", "count"]
+    rows = [[None if v is None else float(v) for v in r] for r in data["rows"]]
+    # [-3.5, 2.0] in 11 bins of 0.5: NULL first, MAX in the last bin (10).
+    assert rows[0] == [None, None, None, 1.0]
+    got = {int(r[0]): (r[1], r[2], int(r[3])) for r in rows[1:]}  # type: ignore[arg-type]
+    assert got == {
+        0: (-3.5, -3.0, 1),
+        5: (-1.0, -0.5, 1),
+        7: (0.0, 0.5, 1),
+        8: (0.5, 1.0, 1),
+        10: (1.5, 2.0, 2),
+    }
+
+    width = chart_data(
+        client, "histogram", points, metrics=["count"], bins={"column": "x", "width": 2}
+    )
+    # Bins aligned to multiples of 2: [-4, -2), [-2, 0), [0, 2), [2, 4).
+    assert [[None if v is None else float(v) for v in r] for r in width["rows"]] == [
+        [None, None, None, 1.0],
+        [-2.0, -4.0, -2.0, 1.0],
+        [-1.0, -2.0, 0.0, 1.0],
+        [0.0, 0.0, 2.0, 2.0],
+        [1.0, 2.0, 4.0, 2.0],
+    ]
+
+
+def test_histogram_with_one_distinct_value_is_one_bin(client: TestClient, points: int) -> None:
+    only = [{"column": "x", "operator": "=", "value": 2}]
+    data = chart_data(
+        client,
+        "histogram",
+        points,
+        metrics=["count"],
+        filters=only,
+        bins={"column": "x", "count": 5},
+    )
+    assert [[float(v) for v in r] for r in data["rows"]] == [[0.0, 2.0, 2.0, 2.0]]
+
+
+def test_time_parts_and_heatmap(client: TestClient, points: int) -> None:
+    data = chart_data(client, "heatmap", points, metrics=["count"],
+                      dimensions=["at@day_of_week", "at@hour_of_day"])  # fmt: skip
+    # 2026-11-02 is a Monday (1), 11-03 Tuesday (2), 11-08 and 03-01 Sundays (7).
+    assert data["rows"] == [[1, 8, 2], [2, 13, 1], [7, 0, 1], [7, 12, 2], [7, 23, 1]]
+    months = chart_data(client, "bar", points, metrics=["count"], dimensions=["at@month_of_year"],
+                        order_by={"by": "at@month_of_year", "descending": False})  # fmt: skip
+    assert months["rows"] == [[3, 2], [11, 5]]
+
+
+def test_pivot_with_date_buckets_and_totals(client: TestClient, points: int) -> None:
+    data = chart_data(client, "pivot_table", points, metrics=["count"], dimensions=["grp"],
+                      column_dimensions=["at@month"], totals=True)  # fmt: skip
+    got = {(r[0], r[1], r[2], r[3]): r[4] for r in data["rows"]}
+    assert got[("c", "2026-03-01", 1, 1)] == 2
+    assert got[("c", "2026-11-01", 1, 1)] == 1
+    assert got[(None, "2026-11-01", 0, 1)] == 5
+    assert got[(None, None, 0, 0)] == 7
+
+
+def test_scatter_one_point_per_value_colored_by_series(client: TestClient, lines: int) -> None:
+    dataset = client.get(f"/api/datasets/{lines}").json()
+    customer = column_settings(dataset, "customer_id", is_dimension=True)
+    assert save_columns(client, lines, customer).status_code == 200
+    data = chart_data(client, "scatter", lines, metrics=["revenue", "count"], dimensions=["customer_id"],
+                      series="channel", series_limit=1, row_limit=5000)  # fmt: skip
+    assert [c["name"] for c in data["columns"]] == ["customer_id", "channel", "revenue", "count"]
+    assert {r[1] for r in data["rows"]} == {"web", "mobile", "store"}  # every color kept
+
+
+def test_world_map_query(client: TestClient, lines: int) -> None:
+    data = chart_data(client, "world_map", lines, metrics=["count"], dimensions=["channel"])
+    assert [c["name"] for c in data["columns"]] == ["channel", "count"]

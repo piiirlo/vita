@@ -109,6 +109,20 @@ export default function CustomizePanel({ state, dataset, seriesNames, onDisplay,
 
       {vizType === "funnel" && <FunnelSection state={state} seriesNames={seriesNames} onDisplay={onDisplay} />}
 
+      {vizType === "histogram" && (
+        <section>
+          <h3 className="control-heading">Bars</h3>
+          <ColorPicker display={display} onDisplay={onDisplay} />
+        </section>
+      )}
+
+      {vizType === "scatter" && seriesNames.length > 0 && (
+        <section>
+          <h3 className="control-heading">Points</h3>
+          <SeriesNames names={seriesNames} display={display} onDisplay={onDisplay} title="Color names" />
+        </section>
+      )}
+
       {vizType === "gauge" && <GaugeSection display={display} onDisplay={onDisplay} />}
 
       {vizType === "pivot_table" && (

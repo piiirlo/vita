@@ -13,6 +13,44 @@ export default function VizThumb({ viz }: { viz: VizType }) {
 const axis = <path className="g" d="M6 34H58" />;
 
 const SHAPES: Record<VizType, React.ReactNode> = {
+  heatmap: (
+    <>
+      {[0, 1, 2, 3].map((r) =>
+        [0, 1, 2, 3, 4, 5].map((c) => (
+          <rect key={`${r}-${c}`} className={`s2 h${((r * 3 + c * 2) % 4) + 1}`} x={7 + c * 8.5} y={4 + r * 8.2} width="7.5" height="7.2" rx="1" />
+        )),
+      )}
+    </>
+  ),
+  scatter: (
+    <>
+      {axis}
+      <circle className="s1" cx="14" cy="27" r="2.5" />
+      <circle className="s1" cx="22" cy="22" r="4" />
+      <circle className="s2" cx="31" cy="24" r="3" />
+      <circle className="s1" cx="38" cy="14" r="5" />
+      <circle className="s2" cx="48" cy="11" r="3.5" />
+      <circle className="s1" cx="54" cy="18" r="2.5" />
+    </>
+  ),
+  histogram: (
+    <>
+      {axis}
+      <rect className="s1" x="8" y="28" width="7" height="6" />
+      <rect className="s1" x="16" y="19" width="7" height="15" />
+      <rect className="s1" x="24" y="9" width="7" height="25" />
+      <rect className="s1" x="32" y="6" width="7" height="28" />
+      <rect className="s1" x="40" y="16" width="7" height="18" />
+      <rect className="s1" x="48" y="26" width="7" height="8" />
+    </>
+  ),
+  world_map: (
+    <>
+      <path className="s2 soft" d="M6 13 Q11 7 19 9 L24 14 L21 21 L15 22 L11 18 Z M18 24 L23 25 L25 33 L20 36 L17 30 Z" />
+      <path className="s1" d="M30 9 L40 7 L44 11 L40 15 L33 15 Z M33 17 L41 17 L42 28 L37 31 L34 24 Z" />
+      <path className="s2" d="M44 8 L56 9 L59 15 L53 19 L46 16 Z M51 26 L57 26 L58 31 L52 32 Z" />
+    </>
+  ),
   line: (
     <>
       {axis}

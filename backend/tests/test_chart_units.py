@@ -532,3 +532,145 @@ def test_pivot_without_totals_is_one_group_by(db: str) -> None:
 )  # fmt: skip
 def test_part11_validation(viz: VizType, query: dict[str, Any], message: str) -> None:
     assert message in error(query, viz)
+
+
+# ---------- Part 11 round 2: time parts, date buckets, heatmap, scatter, histogram, map ----------
+
+
+@pytest.mark.parametrize(
+    ("part", "postgres", "mysql"),
+    [
+        ("day_of_week", 'CAST(EXTRACT(ISODOW FROM "created at") AS INT)', "( WEEKDAY(`created at`) + 1 )"),
+        ("hour_of_day", 'CAST(EXTRACT(HOUR FROM "created at") AS INT)', "HOUR(`created at`)"),
+        ("month_of_year", 'CAST(EXTRACT(MONTH FROM "created at") AS INT)', "MONTH(`created at`)"),
+    ],
+)  # fmt: skip
+def test_time_parts(part: str, postgres: str, mysql: str) -> None:
+    """Integers on both databases; day_of_week is 1 = Monday ... 7 = Sunday on both."""
+    query = {"metrics": ["count"], "dimensions": [f"created at@{part}"]}
+    assert f'{postgres} AS "created at@{part}"' in sql(query, PG)
+    assert f"{mysql} AS `created at@{part}`" in sql(query, MY)
+    assert f"GROUP BY {postgres}" in sql(query, PG)
+
+
+@pytest.mark.parametrize("db", [PG, MY])
+def test_date_buckets_as_dimensions(db: str) -> None:
+    text = sql({"metrics": ["count"], "dimensions": ["order_date@quarter"]}, db)
+    bucket = (
+        "CAST(DATE_TRUNC('quarter', \"order_date\") AS DATE)"
+        if db == PG
+        else "MAKEDATE(YEAR(`order_date`), 1) + INTERVAL ( QUARTER(`order_date`) - 1 ) QUARTER"
+    )
+    assert bucket in text
+
+
+@pytest.mark.parametrize(
+    ("dimension", "message"),
+    [
+        ("status@month", '"status" is not a time column'),
+        ("order_date@hour_of_day", "is a date without a time, so it has no hour"),
+        ("order_date@fortnight", 'Unknown time part "fortnight"'),
+        ("nope@month", 'Unknown column "nope"'),
+    ],
+)
+def test_time_part_errors(dimension: str, message: str) -> None:
+    assert message in error({"metrics": ["count"], "dimensions": [dimension]})
+
+
+@pytest.mark.parametrize("db", [PG, MY])
+def test_pivot_with_date_buckets_on_both_sides(db: str) -> None:
+    q = '"' if db == PG else "`"
+    text = sql({"metrics": ["count"], "dimensions": ["order_date@year"],
+                "column_dimensions": ["created at@month"], "totals": True}, db, "pivot_table")  # fmt: skip
+    assert f"AS {q}order_date@year{q}" in text
+    assert f"AS {q}created at@month{q}" in text
+    if db == PG:
+        assert "GROUPING(CAST(DATE_TRUNC('year', \"order_date\") AS DATE))" in text
+    else:
+        assert text.count("UNION ALL") == 3
+
+
+@pytest.mark.parametrize("db", [PG, MY])
+def test_heatmap_orders_by_its_two_dimensions(db: str) -> None:
+    q = '"' if db == PG else "`"
+    text = sql({"metrics": ["count"], "dimensions": ["created at@day_of_week", "created at@hour_of_day"]},
+               db, "heatmap")  # fmt: skip
+    nulls = " NULLS FIRST" if db == PG else ""
+    assert text.endswith(
+        f"ORDER BY {q}created at@day_of_week{q} ASC{nulls}, {q}created at@hour_of_day{q} ASC{nulls} LIMIT 1001"
+    )
+
+
+@pytest.mark.parametrize("db", [PG, MY])
+def test_scatter_keeps_every_point_of_every_color(db: str) -> None:
+    q = '"' if db == PG else "`"
+    text = sql({"metrics": ["revenue", "count"], "dimensions": ["status"], "series": "select",
+                "series_limit": 3, "row_limit": 5000}, db, "scatter")  # fmt: skip
+    assert "top_series" not in text  # no top-N join: points would disappear
+    assert f"GROUP BY {q}status{q}, {q}select{q}" in text
+    assert text.endswith("LIMIT 5001")
+
+
+@pytest.mark.parametrize("db", [PG, MY])
+def test_histogram_by_number_of_bins(db: str) -> None:
+    q = '"' if db == PG else "`"
+    text = sql({"metrics": ["count"], "bins": {"column": "amount", "count": 10}}, db, "histogram")
+    # NULL values: their own bin; one value only: bin 0; MAX goes in the last bin.
+    assert f"WHEN {q}amount{q} IS NULL THEN NULL" in text
+    assert f"WHEN {q}__bounds{q}.{q}__hi{q} = {q}__bounds{q}.{q}__lo{q} THEN 0" in text
+    assert "* 10 ), 9 )" in text
+    assert (
+        f"CROSS JOIN ( SELECT MIN({q}amount{q}) AS {q}__lo{q}, MAX({q}amount{q}) AS {q}__hi{q}"
+        in text
+    )
+    float_type = "DOUBLE PRECISION" if db == PG else "DOUBLE"
+    assert f"CAST({q}amount{q} AS {float_type})" in text
+
+
+@pytest.mark.parametrize("db", [PG, MY])
+def test_histogram_by_width_is_aligned_to_multiples(db: str) -> None:
+    q = '"' if db == PG else "`"
+    text = sql({"metrics": ["count"], "bins": {"column": "amount", "width": 2.5}}, db, "histogram")
+    assert "__bounds" not in text
+    assert f"{q}__binned{q}.{q}__bin{q} * 2.5 AS {q}__bin_start{q}" in text
+    assert f"( {q}__binned{q}.{q}__bin{q} + 1 ) * 2.5 AS {q}__bin_end{q}" in text
+
+
+def test_histogram_respects_filters_in_both_scans() -> None:
+    text = sql({"metrics": ["count"], "bins": {"column": "amount"},
+                "filters": [{"column": "status", "operator": "=", "value": "paid"}]}, PG, "histogram")  # fmt: skip
+    assert text.count("WHERE \"status\" = 'paid'") == 2  # the bounds and the bins
+
+
+@pytest.mark.parametrize(
+    ("viz", "query", "message"),
+    [
+        ("heatmap", {"metrics": ["count"], "dimensions": ["status"]}, "two dimensions"),
+        ("heatmap", {"metrics": ["count"], "dimensions": ["status", "status"]}, "two different dimensions"),
+        ("heatmap", {"metrics": ["count"], "dimensions": ["status", "select"],
+                     "time": {"column": "order_date", "grain": "month"}}, "use a date bucket"),
+        ("scatter", {"metrics": ["count"], "dimensions": ["status"]}, "an x and a y metric"),
+        ("scatter", {"metrics": ["count", "revenue"], "dimensions": []}, "one point per value"),
+        ("histogram", {"metrics": ["count"]}, "a number column to bin"),
+        ("histogram", {"metrics": ["count"], "bins": {"column": "status"}}, "isn't a number column"),
+        ("histogram", {"metrics": ["count"], "bins": {"column": "amount"}, "dimensions": ["status"]},
+         "no dimensions"),
+        ("bar", {"metrics": ["count"], "dimensions": ["status"], "bins": {"column": "amount"}},
+         "Only histograms have bins"),
+        ("world_map", {"metrics": ["count"], "dimensions": []}, "the countries"),
+        ("world_map", {"metrics": ["count", "revenue"], "dimensions": ["status"]}, "exactly one metric"),
+    ],
+)  # fmt: skip
+def test_round2_validation(viz: VizType, query: dict[str, Any], message: str) -> None:
+    assert message in error(query, viz)
+
+
+def test_bin_spec_limits() -> None:
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        ChartQuery(dataset_id=1, bins={"column": "amount", "count": 0})
+    with pytest.raises(ValidationError):
+        ChartQuery(dataset_id=1, bins={"column": "amount", "count": 201})
+    with pytest.raises(ValidationError):
+        ChartQuery(dataset_id=1, bins={"column": "amount", "width": 0})

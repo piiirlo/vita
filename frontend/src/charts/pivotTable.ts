@@ -3,6 +3,8 @@
 import type { ChartDataResult, Dataset, MetricRef } from "../api.ts";
 import { metricFormatter } from "./display.ts";
 import { toNumber } from "./format.ts";
+import { incompleteBuckets, type Coverage } from "./display.ts";
+import { isGrain, splitDim } from "./dimensions.ts";
 import { columnLabel, dimensionLabel, metricLabel, metricName, PIVOT_MAX_COLUMNS, type DisplayOptions } from "./model.ts";
 
 export const ROW_LEVEL = "__row_level";
@@ -21,16 +23,30 @@ export type PivotSpec = {
   /** Keys of collapsed row groups / outer column groups. */
   collapsedRows?: ReadonlySet<string>;
   collapsedCols?: ReadonlySet<string>;
+  /** Date-bucket dimensions: the coverage (time range + data extent) of their column, to mark
+   * the incomplete first / last periods. Null: not marked. */
+  coverageFor?: (ref: string) => Coverage | null;
 };
 
 /** One column of values: a column slot (leaf combination, a group subtotal or the total) x a metric. */
 export type PivotColumn = { slot: string; kind: "leaf" | "subtotal" | "total"; metric: string };
 
-export type HeaderCell = { label: string; colSpan: number; rowSpan: number; kind: "dim" | "leaf" | "subtotal" | "total" | "metric" | "corner"; groupKey?: string; collapsed?: boolean };
+export type HeaderCell = {
+  label: string;
+  colSpan: number;
+  rowSpan: number;
+  kind: "dim" | "leaf" | "subtotal" | "total" | "metric" | "corner";
+  groupKey?: string;
+  collapsed?: boolean;
+  /** A date bucket that isn't complete (the first / last period of a partial range). */
+  incomplete?: boolean;
+};
 
 export type PivotCell = { text: string; value: number | null; heat: number | null };
 
 export type PivotRow = {
+  /** A date bucket that isn't complete. */
+  incomplete?: boolean;
   key: string;
   label: string;
   /** 0 = outermost row dimension. */
@@ -50,6 +66,8 @@ export type PivotLayout = {
   totalColumns: number;
   /** Body rows not drawn (over PIVOT_MAX_ROWS_SHOWN). */
   hiddenRows: number;
+  /** Some row or column label is an incomplete period (the table explains the mark). */
+  hasIncomplete: boolean;
 };
 
 const keyPart = (v: unknown) => (v === null || v === undefined ? "\u0000" : String(v));
@@ -84,6 +102,25 @@ export function pivotLayout(result: ChartDataResult, spec: PivotSpec): PivotLayo
       values: mi.map((i) => row[i]),
     };
   });
+  // Date buckets: which values are incomplete periods (first / last of the covered range).
+  const partialValues = new Map<string, Set<string>>();
+  [...rows, ...cols].forEach((ref, k) => {
+    const { part } = splitDim(ref, dataset);
+    const coverage = spec.coverageFor?.(ref) ?? null;
+    if (!isGrain(part) || !coverage) return;
+    const at = [...ri, ...ci][k]!;
+    const values = [...new Set(result.rows.map((row) => row[at]).filter((v) => v !== null && v !== undefined).map(String))].sort();
+    const partial = incompleteBuckets(values, part, coverage);
+    partialValues.set(ref, new Set([...partial].map((i) => values[i]!)));
+  });
+  const isPartial = (ref: string | undefined, value: unknown) =>
+    ref !== undefined && value !== null && value !== undefined && Boolean(partialValues.get(ref)?.has(String(value)));
+  let hasIncomplete = false;
+  const mark = (flag: boolean) => {
+    if (flag) hasIncomplete = true;
+    return flag || undefined;
+  };
+
   const cell = new Map<string, unknown[]>();
   for (const rec of records) cell.set(`${rec.rowPath.length}:${pathKey(rec.rowPath)}|${rec.colPath.length}:${pathKey(rec.colPath)}`, rec.values);
   const lookup = (rowPath: unknown[], colPath: unknown[]) => cell.get(`${rowPath.length}:${pathKey(rowPath)}|${colPath.length}:${pathKey(colPath)}`);
@@ -144,7 +181,13 @@ export function pivotLayout(result: ChartDataResult, spec: PivotSpec): PivotLayo
     const m = metrics.length;
     if (c === 1) {
       for (const s of slots) {
-        top.push({ label: s.kind === "total" ? TOTAL_LABEL : label(s.path[0], cols[0]!), colSpan: m, rowSpan: 1, kind: s.kind === "total" ? "total" : "leaf" });
+        top.push({
+          label: s.kind === "total" ? TOTAL_LABEL : label(s.path[0], cols[0]!),
+          colSpan: m,
+          rowSpan: 1,
+          kind: s.kind === "total" ? "total" : "leaf",
+          incomplete: s.kind === "total" ? undefined : mark(isPartial(cols[0], s.path[0])),
+        });
       }
     } else {
       let i = 0;
@@ -160,9 +203,23 @@ export function pivotLayout(result: ChartDataResult, spec: PivotSpec): PivotLayo
         const group: Slot[] = [];
         while (i < slots.length && slots[i]!.kind !== "total" && keyPart(slots[i]!.path[0]) === keyPart(outer)) group.push(slots[i++]!);
         const collapsed = canCollapseCols && collapsedCols.has(groupKey);
-        top.push({ label: label(outer, cols[0]!), colSpan: group.length * m, rowSpan: 1, kind: "dim", groupKey: canCollapseCols ? groupKey : undefined, collapsed });
+        top.push({
+          label: label(outer, cols[0]!),
+          colSpan: group.length * m,
+          rowSpan: 1,
+          kind: "dim",
+          groupKey: canCollapseCols ? groupKey : undefined,
+          collapsed,
+          incomplete: mark(isPartial(cols[0], outer)),
+        });
         for (const g of group) {
-          second.push({ label: g.kind === "subtotal" ? TOTAL_LABEL : label(g.path[1], cols[1]!), colSpan: m, rowSpan: 1, kind: g.kind });
+          second.push({
+            label: g.kind === "subtotal" ? TOTAL_LABEL : label(g.path[1], cols[1]!),
+            colSpan: m,
+            rowSpan: 1,
+            kind: g.kind,
+            incomplete: g.kind === "subtotal" ? undefined : mark(isPartial(cols[1], g.path[1])),
+          });
         }
       }
     }
@@ -230,16 +287,32 @@ export function pivotLayout(result: ChartDataResult, spec: PivotSpec): PivotLayo
         if (!opened.has(`${depth}:${k}`)) {
           opened.add(`${depth}:${k}`);
           const collapsed = collapsedRows.has(k);
-          body.push({ key: k, label: label(prefix[depth], rows[depth]!), depth, kind: "group", collapsed, cells: totals ? cellsFor(prefix) : cellsFor(null) });
+          body.push({
+            key: k,
+            label: label(prefix[depth], rows[depth]!),
+            depth,
+            kind: "group",
+            collapsed,
+            incomplete: mark(isPartial(rows[depth], prefix[depth])),
+            cells: totals ? cellsFor(prefix) : cellsFor(null),
+          });
         }
         if (collapsedRows.has(k)) hidden = true;
       }
-      if (!hidden) body.push({ key: pathKey(path), label: label(path[r - 1], rows[r - 1]!), depth: r - 1, kind: "leaf", cells: cellsFor(path) });
+      if (!hidden)
+        body.push({
+          key: pathKey(path),
+          label: label(path[r - 1], rows[r - 1]!),
+          depth: r - 1,
+          kind: "leaf",
+          incomplete: mark(isPartial(rows[r - 1], path[r - 1])),
+          cells: cellsFor(path),
+        });
     }
     if (totals) body.push({ key: "total", label: TOTAL_LABEL, depth: 0, kind: "total", cells: cellsFor([]) });
   }
   const hiddenRows = Math.max(0, body.length - PIVOT_MAX_ROWS_SHOWN);
   const last = body[body.length - 1];
   const shown = !hiddenRows ? body : last?.kind === "total" ? [...body.slice(0, PIVOT_MAX_ROWS_SHOWN - 1), last] : body.slice(0, PIVOT_MAX_ROWS_SHOWN);
-  return { header, columns, body: shown, hiddenColumns, totalColumns, hiddenRows };
+  return { header, columns, body: shown, hiddenColumns, totalColumns, hiddenRows, hasIncomplete };
 }

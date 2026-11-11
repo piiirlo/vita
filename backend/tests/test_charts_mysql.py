@@ -240,3 +240,111 @@ def test_treemap_and_funnel_and_gauge(details: ConnectionDetails) -> None:
     assert run(details, "gauge", metrics=["total"], time={"range": {"kind": "last_7_days"}}) == [
         [8.25]
     ]
+
+
+# ---------- Part 11 round 2 on MySQL: bins, time parts, date buckets ----------
+
+BIN_TABLE = "bin values"
+BIN_ROWS: list[tuple[float | None, datetime]] = [
+    (-3.5, datetime(2026, 11, 2, 8, 15)),  # Monday
+    (-1.0, datetime(2026, 11, 2, 8, 45)),
+    (0.0, datetime(2026, 11, 3, 13, 0)),  # Tuesday
+    (0.5, datetime(2026, 11, 8, 23, 59)),  # Sunday
+    (2.0, datetime(2026, 11, 8, 0, 0)),
+    (2.0, datetime(2026, 3, 1, 12, 0)),  # Sunday
+    (None, datetime(2026, 3, 1, 12, 30)),
+]
+
+
+@pytest.fixture(scope="module")
+def bins_details(details: ConnectionDetails) -> Iterator[ConnectionDetails]:
+    conn = pymysql.connect(host=HOST, user="root", password=details.password, database=DATABASE,
+                           autocommit=True)  # fmt: skip
+    try:
+        with conn.cursor() as cur:
+            cur.execute(f"DROP TABLE IF EXISTS `{BIN_TABLE}`")
+            cur.execute(f"CREATE TABLE `{BIN_TABLE}` (`x` DECIMAL(10, 2), `at` DATETIME)")
+            cur.executemany(f"INSERT INTO `{BIN_TABLE}` VALUES (%s, %s)", BIN_ROWS)
+        yield details
+    finally:
+        with conn.cursor() as cur:
+            cur.execute(f"DROP TABLE IF EXISTS `{BIN_TABLE}`")
+        conn.close()
+
+
+def bins_dataset() -> Dataset:
+    return Dataset(
+        kind="table",
+        schema=DATABASE,
+        table_name=BIN_TABLE,
+        main_time_column="at",
+        columns=[
+            DatasetColumn(
+                name="x",
+                generic_type="number",
+                generic_type_override=None,
+                is_temporal=False,
+                is_dimension=False,
+                is_hidden=False,
+                is_missing=False,
+            ),
+            DatasetColumn(
+                name="at",
+                generic_type="datetime",
+                generic_type_override=None,
+                is_temporal=True,
+                is_dimension=False,
+                is_hidden=False,
+                is_missing=False,
+            ),
+        ],
+        metrics=[DatasetMetric(name="count", expression="COUNT(*)", is_builtin=True)],
+    )
+
+
+def run_bins(details: ConnectionDetails, viz: VizType, **query: Any) -> list[list[Any]]:
+    built = build_chart_query(bins_dataset(), "mysql", viz, ChartQuery(dataset_id=1, **query),
+                              today=date(2026, 11, 10))  # fmt: skip
+    return run_query(details, built.sql, limit=built.row_limit).rows
+
+
+def floats(rows: list[list[Any]]) -> list[list[float | None]]:
+    return [[None if v is None else float(v) for v in r] for r in rows]
+
+
+def test_histogram_bins_on_mysql(bins_details: ConnectionDetails) -> None:
+    rows = floats(
+        run_bins(bins_details, "histogram", metrics=["count"], bins={"column": "x", "count": 11})
+    )
+    assert rows[0] == [None, None, None, 1.0]  # the NULL value
+    got = {int(r[0]): (r[1], r[2], r[3]) for r in rows[1:]}  # type: ignore[arg-type]
+    assert got == {0: (-3.5, -3.0, 1.0), 5: (-1.0, -0.5, 1.0), 7: (0.0, 0.5, 1.0),
+                   8: (0.5, 1.0, 1.0), 10: (1.5, 2.0, 2.0)}  # fmt: skip
+    width = floats(
+        run_bins(bins_details, "histogram", metrics=["count"], bins={"column": "x", "width": 2})
+    )
+    assert width == [
+        [None, None, None, 1.0],
+        [-2.0, -4.0, -2.0, 1.0],
+        [-1.0, -2.0, 0.0, 1.0],
+        [0.0, 0.0, 2.0, 2.0],
+        [1.0, 2.0, 4.0, 2.0],
+    ]
+
+
+def test_time_parts_heatmap_on_mysql(bins_details: ConnectionDetails) -> None:
+    rows = run_bins(
+        bins_details, "heatmap", metrics=["count"], dimensions=["at@day_of_week", "at@hour_of_day"]
+    )
+    # Monday = 1 ... Sunday = 7, like Postgres ISODOW.
+    assert rows == [[1, 8, 2], [2, 13, 1], [7, 0, 1], [7, 12, 2], [7, 23, 1]]
+
+
+def test_pivot_date_buckets_on_mysql(bins_details: ConnectionDetails) -> None:
+    rows = run_bins(bins_details, "pivot_table", metrics=["count"], dimensions=["at@month"],
+                    column_dimensions=["at@day_of_week"], totals=True, row_limit=1000)  # fmt: skip
+    got = {(r[0], r[1], r[2], r[3]): r[4] for r in rows}
+    assert got[("2026-03-01", 7, 1, 1)] == 2
+    assert got[("2026-11-01", None, 1, 0)] == 5
+    assert got[(None, 1, 0, 1)] == 2
+    assert got[(None, None, 0, 0)] == 7

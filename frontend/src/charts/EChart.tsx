@@ -1,5 +1,12 @@
-import { BarChart, FunnelChart, GaugeChart, LineChart, PieChart, TreemapChart } from "echarts/charts";
-import { GridComponent, LegendComponent, MarkAreaComponent, TitleComponent, TooltipComponent } from "echarts/components";
+import { BarChart, FunnelChart, GaugeChart, HeatmapChart, LineChart, PieChart, ScatterChart, TreemapChart } from "echarts/charts";
+import {
+  GridComponent,
+  LegendComponent,
+  MarkAreaComponent,
+  TitleComponent,
+  TooltipComponent,
+  VisualMapContinuousComponent,
+} from "echarts/components";
 import * as echarts from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
 import type { EChartsOption } from "echarts";
@@ -9,8 +16,12 @@ import { useTheme } from "../theme/theme.ts";
 import { registerVitaTheme } from "./echartsTheme.ts";
 
 // Bundled locally and tree-shaken: only the chart types Vita draws (the title is the donut's
-// center label; mark areas shade incomplete periods of area charts).
+// center label; mark areas shade incomplete periods of area charts; the continuous visual map
+// is the color scale of heatmaps and maps). The map series registers itself with the lazy map.
 echarts.use([
+  HeatmapChart,
+  ScatterChart,
+  VisualMapContinuousComponent,
   BarChart,
   LineChart,
   PieChart,

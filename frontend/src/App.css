@@ -4053,3 +4053,27 @@ button.tile-menu-item {
 .pivot-table td.heat-5 {
   background: var(--heat-5);
 }
+
+/* world map placeholder while the shapes load */
+.map-skeleton {
+  flex: 1;
+  min-height: 160px;
+  border-radius: var(--radius-control);
+}
+
+/* pivot: incomplete periods (dashed underline + italic, not color alone) */
+.pivot-incomplete {
+  font-style: italic;
+  text-decoration: underline dashed;
+  text-underline-offset: 3px;
+}
+
+.pivot-footnote {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.dash-tile-hero .pivot-footnote {
+  color: var(--ink-muted);
+}

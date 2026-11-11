@@ -13,6 +13,7 @@ import type {
 import type { FormatSpec } from "./display.ts";
 import { categoryLabel } from "./format.ts";
 import { vizLabel } from "./vizTypes.ts";
+import { PART_LABELS, isGrain, partValueLabel, splitDim } from "./dimensions.ts";
 
 export type DisplayOptions = {
   /** Table: grouped rows (default) or raw records. (Changes the query.) */
@@ -111,6 +112,9 @@ export const PIVOT_MAX_COLUMN_DIMENSIONS = 2;
 export const PIVOT_MAX_COLUMNS = 50;
 /** Pivot rows include every subtotal level: a bigger default row limit. */
 export const PIVOT_ROW_LIMIT = 10_000;
+/** Scatter plots: at most this many points by default (a notice says when there are more). */
+export const SCATTER_MAX_POINTS = 5000;
+export const DEFAULT_BINS = 20;
 
 export const GRAINS: { value: Grain; label: string }[] = [
   { value: "day", label: "Day" },
@@ -135,9 +139,12 @@ const AGGREGATE_LABELS: Record<AdhocMetric["aggregate"], string> = {
   COUNT_DISTINCT: "Distinct",
 };
 
+/** A column's label; a date bucket / time part reads "Order date · by month". */
 export function columnLabel(name: string, dataset: Dataset | null): string {
-  const col = dataset?.columns.find((c) => c.name === name);
-  return col?.label || name;
+  const { column, part } = splitDim(name, dataset);
+  const col = dataset?.columns.find((c) => c.name === column);
+  const label = col?.label || column;
+  return part ? `${label} · ${PART_LABELS[part]}` : label;
 }
 
 export function metricLabel(ref: MetricRef, dataset: Dataset | null): string {
@@ -207,6 +214,7 @@ export function adaptToViz(state: ChartState, viz: VizType, dataset: Dataset): C
     delete query.column_dimensions;
     delete query.totals;
   }
+  if (viz !== "histogram") delete query.bins;
   // Leaving a pivot's big row limit for a chart type that draws everything.
   if (state.vizType === "pivot_table" && viz !== "pivot_table" && viz !== "table" && query.row_limit === PIVOT_ROW_LIMIT) query.row_limit = 1000;
 
@@ -273,6 +281,48 @@ export function adaptToViz(state: ChartState, viz: VizType, dataset: Dataset): C
       query = { ...query, metrics: query.metrics.slice(0, 1), dimensions: [], series: null, order_by: null };
       if (query.time) query.time = { ...query.time, grain: null };
       break;
+    case "heatmap": {
+      // Two dimensions; with a datetime column, weekday x hour is the classic.
+      const time = temporalColumns(dataset);
+      const datetime = time.find((c) => c.effective_type === "datetime");
+      const dims = [...query.dimensions, ...(query.series ? [query.series] : [])].filter((d) => d);
+      const first = firstCategory();
+      const second = groupableColumns(dataset).find((c) => !c.is_temporal && c.name !== first)?.name ?? null;
+      const pair =
+        dims.length >= 2
+          ? dims.slice(0, 2)
+          : datetime
+            ? [`${datetime.name}@day_of_week`, `${datetime.name}@hour_of_day`]
+            : time[0] && first
+              ? [first, `${time[0].name}@month`]
+              : [first, second].filter((d): d is string => Boolean(d));
+      query = { ...query, metrics: query.metrics.slice(0, 1), dimensions: pair, series: null, order_by: null };
+      if (query.time) query.time = { ...query.time, grain: null };
+      break;
+    }
+    case "scatter": {
+      // x, y (and maybe size) metrics; one point per value of a dimension; color by the series.
+      const point = query.dimensions[0] ?? firstCategory();
+      const metrics = query.metrics.length >= 2 ? query.metrics.slice(0, 3) : [...query.metrics.slice(0, 1), ...(query.metrics[0] === "count" ? [] : ["count"])];
+      query = { ...query, metrics, dimensions: point ? [point] : [], order_by: null, series_limit: null };
+      if (query.time) query.time = { ...query.time, grain: null };
+      if (state.vizType !== "scatter") query.row_limit = SCATTER_MAX_POINTS;
+      break;
+    }
+    case "histogram": {
+      const number = usableColumns(dataset).find((c) => c.effective_type === "number" && !c.is_dimension)?.name ?? usableColumns(dataset).find((c) => c.effective_type === "number")?.name;
+      query = { ...query, metrics: ["count"], dimensions: [], series: null, order_by: null };
+      if (!query.bins && number) query.bins = { column: number, count: DEFAULT_BINS };
+      if (query.time) query.time = { ...query.time, grain: null };
+      break;
+    }
+    case "world_map": {
+      const looksLikeCountry = groupableColumns(dataset).find((c) => !c.is_temporal && /country|nation|land|pays/i.test(`${c.name} ${c.label ?? ""}`));
+      const country = looksLikeCountry?.name ?? query.dimensions[0] ?? firstCategory();
+      query = { ...query, metrics: query.metrics.slice(0, 1), dimensions: country ? [country] : [], series: null, order_by: null };
+      if (query.time) query.time = { ...query.time, grain: null };
+      break;
+    }
     case "pivot_table": {
       const rows = [...query.dimensions, ...(query.series ? [query.series] : [])];
       const across = (query.column_dimensions ?? []).filter((d) => !rows.includes(d));
@@ -336,6 +386,7 @@ export function chartRequests(state: ChartState): {
     delete query.column_dimensions;
     delete query.totals;
   }
+  if (vizType !== "histogram") delete query.bins;
   if (vizType === "treemap") {
     const main = { ...query, columns: [], series: null, order_by: null, time: noGrain(query) };
     // Two levels: each outer box's true value (an average isn't the sum of its parts).
@@ -345,8 +396,14 @@ export function chartRequests(state: ChartState): {
   if (vizType === "funnel" || vizType === "gauge") {
     return { main: { ...query, columns: [], series: null, order_by: null, time: noGrain(query) }, trend: null };
   }
-  if (vizType === "pivot_table") {
+  if (vizType === "pivot_table" || vizType === "heatmap" || vizType === "world_map") {
     return { main: { ...query, columns: [], series: null, order_by: null, time: noGrain(query) }, trend: null };
+  }
+  if (vizType === "scatter") {
+    return { main: { ...query, columns: [], order_by: null, series_limit: null, time: noGrain(query) }, trend: null };
+  }
+  if (vizType === "histogram") {
+    return { main: { ...query, columns: [], dimensions: [], series: null, order_by: null, time: noGrain(query) }, trend: null };
   }
   if (vizType === "pie") {
     const main = { ...query, columns: [], series: null, order_by: null, time: noGrain(query) };
@@ -395,6 +452,9 @@ export function fromParams(vizType: VizType, params: ChartParams, dataset: Datas
 /** A dimension value as shown: the dataset's value label for it ("1" -> "Lethbridge"), else
  * the value itself (time buckets by grain, NULL as "(empty)"). */
 export function dimensionLabel(value: unknown, column: string | null, dataset: Dataset | null, grain: Grain | null = null): string {
+  // A date bucket or time part: "Mar 2026", "Mon", "08:00".
+  const { part } = column ? splitDim(column, dataset) : { part: null };
+  if (part) return partValueLabel(value, part) ?? categoryLabel(value, isGrain(part) ? part : null);
   if (value !== null && value !== undefined && column && !grain) {
     const label = dataset?.columns.find((c) => c.name === column)?.value_labels?.[String(value)];
     if (label) return label;
@@ -443,6 +503,19 @@ export function missingFor(state: ChartState, dataset: Dataset): string[] {
     case "pivot_table":
       if (query.dimensions.length === 0 && (query.column_dimensions ?? []).length === 0) todo.push("Add a row or column dimension");
       break;
+    case "heatmap":
+      if (query.dimensions.length < 2) todo.push("Pick the heatmap's rows and columns (two dimensions)");
+      break;
+    case "scatter":
+      if (query.metrics.length < 2) todo.push("Pick a metric for the y axis");
+      if (query.dimensions.length === 0) todo.push("Pick what each point is (a dimension)");
+      break;
+    case "histogram":
+      if (!query.bins?.column) todo.push("Pick a number column to bin");
+      break;
+    case "world_map":
+      if (query.dimensions.length === 0) todo.push("Pick the column with the countries");
+      break;
   }
   return todo;
 }
@@ -468,6 +541,7 @@ export function switchReport(before: ChartState, after: ChartState, dataset: Dat
   const lostGroups = groupsBefore.filter((g) => !groupsAfter.has(g));
   if (lostGroups.length) dropped.push(`${lostGroups.map((g) => columnLabel(g, dataset)).join(", ")} (not used by a ${name})`);
   if (b.columns.length && !a.columns.length) dropped.push(`${plural(b.columns.length, "raw column")} (only tables list raw records)`);
+  if (b.bins && !a.bins) dropped.push(`the bins of ${columnLabel(b.bins.column, dataset)} (only histograms bin)`);
 
   const filters = completeFilters(b.filters).length;
   if (filters) kept.push(plural(filters, "filter"));

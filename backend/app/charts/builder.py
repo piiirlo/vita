@@ -21,7 +21,7 @@ from typing import NoReturn
 from sqlglot import exp
 
 from app.charts.filters import NUMERIC_OR_TEMPORAL, date_literal, filter_condition
-from app.charts.timegrain import time_bucket
+from app.charts.timegrain import TIME_PARTS, time_bucket, time_part
 from app.charts.timerange import aligned_bounds
 from app.datasets.checks import parse_metric_expression
 from app.datasets.sql import column as sql_column
@@ -29,6 +29,8 @@ from app.datasets.sql import dialect_for, from_clause, quoted, source_of
 from app.models import Dataset, DatasetColumn
 from app.query import QueryError
 from app.schemas.charts import (
+    DEFAULT_BINS,
+    GRAINS,
     MAX_PIVOT_COLUMN_DIMENSIONS,
     MAX_PIVOT_ROW_DIMENSIONS,
     AdhocMetric,
@@ -46,6 +48,23 @@ TOP_FLAG_COLUMN = "__is_top"
 # Pivot: how many row / column dimensions an output row is grouped by (fewer = a subtotal).
 ROW_LEVEL_COLUMN = "__row_level"
 COL_LEVEL_COLUMN = "__col_level"
+# Histogram output: bin number (NULL = rows without a value) and its [start, end) range.
+BIN_COLUMN = "__bin"
+BIN_START_COLUMN = "__bin_start"
+BIN_END_COLUMN = "__bin_end"
+# A dimension "column@part" groups by a date bucket (day ... year) or a time part.
+PART_SEPARATOR = "@"
+
+
+@dataclass(frozen=True)
+class Dim:
+    """A grouping dimension: its output name (as asked), SQL expression and column."""
+
+    name: str
+    expr: exp.Expr
+    column: DatasetColumn
+
+
 # Ungrouped totals over a time range get MIN(time column) as a last, hidden column: NULL means
 # no row fell in the range ("no data"), which a total of 0 or NULL can't tell apart.
 ROWS_PROBE_COLUMN = "__first_time"
@@ -123,6 +142,25 @@ class _Builder:
             )
         return col
 
+    def dim(self, ref: str, role: str) -> Dim:
+        """A dimension: a column (dimension or temporal), or "column@part" where part is a
+        grain (day, week, month, quarter, year: the bucket's first day) or a time part
+        (day_of_week 1 = Monday, hour_of_day, month_of_year)."""
+        if ref in self.columns or PART_SEPARATOR not in ref:
+            col = self.group_column(ref, role)
+            return Dim(ref, sql_column(col.name), col)
+        name, part = ref.rsplit(PART_SEPARATOR, 1)
+        col = self.column(name, role)
+        if not col.is_temporal:
+            _invalid(f'"{name}" is not a time column, so it has no "{part}".')
+        if part in GRAINS:
+            return Dim(ref, time_bucket(sql_column(col.name), part, self.db_type), col)  # type: ignore[arg-type]
+        if part in TIME_PARTS:
+            if part == "hour_of_day" and col.effective_type == "date":
+                _invalid(f'"{name}" is a date without a time, so it has no hour.')
+            return Dim(ref, time_part(sql_column(col.name), part, self.db_type), col)
+        _invalid(f'Unknown time part "{part}" ({role}).')
+
     def metric(self, ref: MetricRef) -> tuple[str, exp.Expr]:
         if isinstance(ref, str):
             saved = self.metrics.get(ref)
@@ -171,11 +209,14 @@ class _Builder:
             return self.build_top_n(query)
         if viz_type == "pivot_table":
             return self.build_pivot(query)
+        if viz_type == "histogram":
+            return self.build_histogram(query)
 
         time_col, grain = self.time_column(query, raw)
         conditions = self.conditions(query, time_col)
 
         metric_exprs: list[exp.Expr] = []
+        series_dim: Dim | None = None
         if raw:
             for name in query.columns:
                 self.add_output(name, sql_column(self.column(name, "columns").name), group=False)
@@ -188,17 +229,12 @@ class _Builder:
                 bucket = time_bucket(sql_column(time_col.name), grain, self.db_type)
                 self.add_output(time_col.name, bucket, group=True)
             for name in query.dimensions:
-                self.add_output(
-                    name, sql_column(self.group_column(name, "dimension").name), group=True
-                )
+                self.add_output(name, self.dim(name, "dimension").expr, group=True)
             if query.series is not None:
                 if query.series in query.dimensions:
                     _invalid(f'"{query.series}" is both a dimension and the series.')
-                self.add_output(
-                    query.series,
-                    sql_column(self.group_column(query.series, "series").name),
-                    group=True,
-                )
+                series_dim = self.dim(query.series, "series")
+                self.add_output(query.series, series_dim.expr, group=True)
             for ref in query.metrics:
                 name, expression = self.metric(ref)
                 metric_exprs.append(expression)
@@ -215,15 +251,23 @@ class _Builder:
             self.add_output(ROWS_PROBE_COLUMN, exp.Min(this=sql_column(time_col.name)), group=False)
 
         select = exp.select(*self.selects).from_(from_clause(source_of(self.dataset), self.db_type))
-        if query.series is not None and query.series_limit is not None and metric_exprs:
+        # Scatter colors points by the series: every point stays (no top-N join).
+        if (
+            series_dim is not None
+            and query.series_limit is not None
+            and metric_exprs
+            and viz_type != "scatter"
+        ):
             select = self.join_top_series(
-                select, query.series, metric_exprs[0], conditions, query.series_limit
+                select, series_dim.expr, metric_exprs[0], conditions, query.series_limit
             )
         if conditions:
             select = select.where(exp.and_(*[c.copy() for c in conditions]))
         if self.group_by:
             select = select.group_by(*self.group_by)
-        order = self.order(query, time_col if grain else None, raw)
+        order = self.order(
+            query, time_col if grain else None, raw, by_dimensions=viz_type == "heatmap"
+        )
         if order:
             select = select.order_by(*order)
         select = select.limit(query.row_limit + 1)
@@ -243,10 +287,10 @@ class _Builder:
         grouped inside each top value (nothing inside "Other")."""
         time_col, _ = self.time_column(query, raw=False)
         conditions = self.conditions(query, time_col)
-        dims = [self.group_column(name, "dimension") for name in query.dimensions]
+        dims = [self.dim(name, "dimension") for name in query.dimensions]
         if len(dims) == 2 and dims[0].name == dims[1].name:
             _invalid("Pick two different dimensions for the treemap's levels.")
-        refs = [sql_column(d.name) for d in dims]
+        refs = [d.expr for d in dims]
         name, metric_expr = self.metric(query.metrics[0])
         self.outputs = {d.name: r for d, r in zip(dims, refs, strict=True)}
         self.outputs[OTHER_COLUMN] = refs[0]
@@ -334,11 +378,11 @@ class _Builder:
         UNION ALL branch per level."""
         time_col, _ = self.time_column(query, raw=False)
         conditions = self.conditions(query, time_col)
-        rows = [self.group_column(n, "row dimension") for n in query.dimensions]
-        cols = [self.group_column(n, "column dimension") for n in query.column_dimensions]
+        rows = [self.dim(n, "row dimension") for n in query.dimensions]
+        cols = [self.dim(n, "column dimension") for n in query.column_dimensions]
         metrics = [self.metric(ref) for ref in query.metrics]
         for d in [*rows, *cols]:
-            self.outputs[d.name] = sql_column(d.name)
+            self.outputs[d.name] = d.expr
         for level_name in (ROW_LEVEL_COLUMN, COL_LEVEL_COLUMN):
             self.outputs[level_name] = exp.Null()
         for name, expression in metrics:
@@ -360,7 +404,7 @@ class _Builder:
         def metric_selects() -> list[exp.Expr]:
             return [e.copy().as_(name, quoted=True) for name, e in metrics]
 
-        def grouped_count(prefix: list[DatasetColumn]) -> exp.Expr:
+        def grouped_count(prefix: list[Dim]) -> exp.Expr:
             # How many of these are grouped: 1 - GROUPING(d) is 1 when d is grouped. They
             # are a prefix, so the count says exactly which ones.
             if not prefix:
@@ -368,7 +412,7 @@ class _Builder:
             terms: list[exp.Expr] = [
                 exp.Sub(
                     this=exp.Literal.number(1),
-                    expression=exp.Anonymous(this="GROUPING", expressions=[sql_column(d.name)]),
+                    expression=exp.Anonymous(this="GROUPING", expressions=[d.expr.copy()]),
                 )
                 for d in prefix
             ]
@@ -381,7 +425,7 @@ class _Builder:
         if len(levels) == 1 or self.db_type != "mysql":
             many = len(levels) > 1
             select = exp.select(
-                *[sql_column(d.name) for d in dims],
+                *[d.expr.copy().as_(d.name, quoted=True) for d in dims],
                 (grouped_count(rows) if many else exp.Literal.number(len(rows))).as_(
                     ROW_LEVEL_COLUMN, quoted=True
                 ),
@@ -394,12 +438,12 @@ class _Builder:
                 select = select.where(where)
             if many:
                 sets = [
-                    exp.Tuple(expressions=[sql_column(d.name) for d in [*rows[:i], *cols[:j]]])
+                    exp.Tuple(expressions=[d.expr.copy() for d in [*rows[:i], *cols[:j]]])
                     for i, j in levels
                 ]
                 select.set("group", exp.Group(expressions=[exp.GroupingSets(expressions=sets)]))
             elif dims:
-                select = select.group_by(*[sql_column(d.name) for d in dims])
+                select = select.group_by(*[d.expr.copy() for d in dims])
             statement = select
         else:
             branches: list[exp.Select] = []
@@ -408,9 +452,7 @@ class _Builder:
                 names = {d.name for d in grouped}
                 branch = exp.select(
                     *[
-                        (sql_column(d.name) if d.name in names else exp.Null()).as_(
-                            d.name, quoted=True
-                        )
+                        (d.expr.copy() if d.name in names else exp.Null()).as_(d.name, quoted=True)
                         for d in dims
                     ],
                     exp.Literal.number(i).as_(ROW_LEVEL_COLUMN, quoted=True),
@@ -420,7 +462,7 @@ class _Builder:
                 if where is not None:
                     branch = branch.where(where.copy())
                 if grouped:
-                    branch = branch.group_by(*[sql_column(d.name) for d in grouped])
+                    branch = branch.group_by(*[d.expr.copy() for d in grouped])
                 branches.append(branch)
             union: exp.Query = branches[0]
             for branch in branches[1:]:
@@ -436,6 +478,122 @@ class _Builder:
         statement = statement.order_by(*order).limit(query.row_limit + 1)
         return BuiltChartQuery(
             statement.sql(dialect=self.dialect, pretty=True),
+            query.row_limit,
+            time_start=self.time_bounds[0],
+            time_end=self.time_bounds[1],
+        )
+
+    def build_histogram(self, query: ChartQuery) -> BuiltChartQuery:
+        """One numeric column cut into bins, one metric per bin (usually the row count).
+
+        Bins of a fixed width are aligned to multiples of it (FLOOR(x / width)), so negative
+        values work. A number of bins splits [MIN, MAX] of the filtered rows evenly (MAX goes
+        in the last bin; one value only: a single bin). Rows without a value get bin NULL.
+        Plain arithmetic on both databases; the bin range is computed outside the grouping."""
+        assert query.bins is not None
+        time_col, _ = self.time_column(query, raw=False)
+        conditions = self.conditions(query, time_col)
+        col = self.column(query.bins.column, "histogram column")
+        if col.effective_type != "number":
+            _invalid(f"\"{col.name}\" isn't a number column, so it can't be binned.")
+        name, metric_expr = self.metric(query.metrics[0])
+        if name in (BIN_COLUMN, BIN_START_COLUMN, BIN_END_COLUMN):
+            _invalid(f'"{name}" is a reserved name; give the metric another label.')
+        x = sql_column(col.name)
+        source = from_clause(source_of(self.dataset), self.db_type)
+        inner_alias = "__binned"
+        num = exp.Literal.number
+
+        def binned(field: str) -> exp.Column:
+            return exp.Column(this=quoted(field), table=quoted(inner_alias))
+
+        if query.bins.width is not None:
+            width = num(query.bins.width)
+            bin_expr: exp.Expr = exp.Floor(this=exp.Div(this=x.copy(), expression=width.copy()))
+            inner = exp.select(
+                bin_expr.as_(BIN_COLUMN, quoted=True), metric_expr.as_(name, quoted=True)
+            ).from_(source)
+            group: list[exp.Expr] = [bin_expr.copy()]
+            start: exp.Expr = exp.Mul(this=binned(BIN_COLUMN), expression=width.copy())
+            end: exp.Expr = exp.Mul(
+                this=exp.Paren(this=exp.Add(this=binned(BIN_COLUMN), expression=num(1))),
+                expression=width.copy(),
+            )
+        else:
+            count = query.bins.count or DEFAULT_BINS
+            bounds_alias = "__bounds"
+            lo = exp.Column(this=quoted("__lo"), table=quoted(bounds_alias))
+            hi = exp.Column(this=quoted("__hi"), table=quoted(bounds_alias))
+            bounds = exp.select(
+                exp.Min(this=x.copy()).as_("__lo", quoted=True),
+                exp.Max(this=x.copy()).as_("__hi", quoted=True),
+            ).from_(from_clause(source_of(self.dataset), self.db_type))
+            if conditions:
+                bounds = bounds.where(exp.and_(*[c.copy() for c in conditions]))
+            span = exp.Paren(this=exp.Sub(this=hi.copy(), expression=lo.copy()))
+            as_float = exp.cast(x.copy(), exp.DataType.build("DOUBLE"))
+            scaled = exp.Floor(
+                this=exp.Mul(
+                    this=exp.Div(
+                        # As a float: MySQL rounds DECIMAL division, which could move a value
+                        # just under a bin edge into the next bin.
+                        this=exp.Paren(this=exp.Sub(this=as_float, expression=lo.copy())),
+                        expression=span.copy(),
+                    ),
+                    expression=num(count),
+                )
+            )
+            bin_expr = exp.Case(
+                ifs=[
+                    exp.If(this=exp.Is(this=x.copy(), expression=exp.Null()), true=exp.Null()),
+                    exp.If(this=exp.EQ(this=hi.copy(), expression=lo.copy()), true=num(0)),
+                ],
+                default=exp.Least(this=scaled, expressions=[num(count - 1)]),
+            )
+            inner = (
+                exp.select(
+                    bin_expr.as_(BIN_COLUMN, quoted=True),
+                    lo.copy().as_("__lo", quoted=True),
+                    hi.copy().as_("__hi", quoted=True),
+                    metric_expr.as_(name, quoted=True),
+                )
+                .from_(source)
+                .join(
+                    exp.Subquery(this=bounds, alias=exp.TableAlias(this=quoted(bounds_alias))),
+                    join_type="cross",
+                )
+            )
+            group = [bin_expr.copy(), lo.copy(), hi.copy()]
+            step = exp.Div(
+                this=exp.Paren(this=exp.Sub(this=binned("__hi"), expression=binned("__lo"))),
+                expression=num(count),
+            )
+            start = exp.Add(
+                this=binned("__lo"), expression=exp.Mul(this=binned(BIN_COLUMN), expression=step)
+            )
+            end = exp.Add(
+                this=binned("__lo"),
+                expression=exp.Mul(
+                    this=exp.Paren(this=exp.Add(this=binned(BIN_COLUMN), expression=num(1))),
+                    expression=step.copy(),
+                ),
+            )
+        if conditions:
+            inner = inner.where(exp.and_(*[c.copy() for c in conditions]))
+        inner = inner.group_by(*group)
+        select = (
+            exp.select(
+                binned(BIN_COLUMN).as_(BIN_COLUMN, quoted=True),
+                start.as_(BIN_START_COLUMN, quoted=True),
+                end.as_(BIN_END_COLUMN, quoted=True),
+                binned(name).as_(name, quoted=True),
+            )
+            .from_(exp.Subquery(this=inner, alias=exp.TableAlias(this=quoted(inner_alias))))
+            .order_by(_ordered(exp.Column(this=quoted(BIN_COLUMN)), desc=False))
+            .limit(query.row_limit + 1)
+        )
+        return BuiltChartQuery(
+            select.sql(dialect=self.dialect, pretty=True),
             query.row_limit,
             time_start=self.time_bounds[0],
             time_end=self.time_bounds[1],
@@ -475,14 +633,14 @@ class _Builder:
     def join_top_series(
         self,
         select: exp.Select,
-        series: str,
+        series: exp.Expr,
         first_metric: exp.Expr,
         conditions: list[exp.Expr],
         limit: int,
     ) -> exp.Select:
         """Keep only the top `limit` series by the first metric, computed in SQL. A JOIN, not
         IN (...): MySQL doesn't allow LIMIT inside an IN subquery. <=> keeps a NULL series."""
-        ref = sql_column(series)
+        ref = series
         top = (
             exp.select(ref.as_(TOP_SERIES_COLUMN, quoted=True))
             .from_(from_clause(source_of(self.dataset), self.db_type))
@@ -500,7 +658,11 @@ class _Builder:
         return select.join(joined, on=on)
 
     def order(
-        self, query: ChartQuery, time_col: DatasetColumn | None, raw: bool
+        self,
+        query: ChartQuery,
+        time_col: DatasetColumn | None,
+        raw: bool,
+        by_dimensions: bool = False,
     ) -> list[exp.Ordered]:
         def by(name: str, desc: bool) -> exp.Ordered:
             return _ordered(exp.Column(this=quoted(name)), desc)
@@ -512,6 +674,8 @@ class _Builder:
             return [by(name, query.order_by.descending)]
         if raw:
             return []
+        if by_dimensions:
+            return [by(name, False) for name in query.dimensions]
         if time_col is not None:
             order = [by(time_col.name, False)]
             if query.series is not None:
@@ -541,8 +705,10 @@ def _check_shape(viz_type: VizType, query: ChartQuery, raw: bool) -> None:
         if query.metrics or query.dimensions or query.series:
             _invalid("Raw records can't have metrics, dimensions or a series.")
         return
-    if query.series is not None and viz_type not in ("bar", "line", "area"):
+    if query.series is not None and viz_type not in ("bar", "line", "area", "scatter"):
         _invalid("Only bar and line charts (and area charts) have a series.")
+    if query.bins is not None and viz_type != "histogram":
+        _invalid("Only histograms have bins.")
     if query.column_dimensions and viz_type != "pivot_table":
         _invalid("Only pivot tables have column dimensions.")
     if viz_type == "table":
@@ -585,6 +751,36 @@ def _check_shape(viz_type: VizType, query: ChartQuery, raw: bool) -> None:
             _invalid(f"A {name} needs a time column and a time grain for its x axis.")
         if query.dimensions:
             _invalid(f"A {name}'s x axis is time; use the series to split it.")
+    elif viz_type == "heatmap":
+        if len(query.metrics) != 1:
+            _invalid("A heatmap shows exactly one metric.")
+        if len(query.dimensions) != 2:
+            _invalid("A heatmap needs two dimensions (its rows and columns).")
+        if query.dimensions[0] == query.dimensions[1]:
+            _invalid("Pick two different dimensions for the heatmap.")
+        if grain is not None:
+            _invalid("A heatmap has no time grain: use a date bucket (e.g. by month) instead.")
+    elif viz_type == "scatter":
+        if not 2 <= len(query.metrics) <= 3:
+            _invalid("A scatter plot needs an x and a y metric (and maybe a size metric).")
+        if len(query.dimensions) != 1:
+            _invalid("A scatter plot needs one dimension: one point per value.")
+        if grain is not None:
+            _invalid("A scatter plot has no time grain; use a time range to filter.")
+    elif viz_type == "histogram":
+        if query.bins is None:
+            _invalid("A histogram needs a number column to bin.")
+        if len(query.metrics) != 1:
+            _invalid("A histogram shows exactly one metric per bin (usually the count).")
+        if query.dimensions or grain is not None:
+            _invalid("A histogram has no dimensions or time grain; use filters instead.")
+    elif viz_type == "world_map":
+        if len(query.metrics) != 1:
+            _invalid("A world map shows exactly one metric.")
+        if len(query.dimensions) != 1:
+            _invalid("A world map needs one dimension: the countries.")
+        if grain is not None:
+            _invalid("A world map has no time grain; use a time range to filter.")
     elif viz_type == "pivot_table":
         if len(query.dimensions) > MAX_PIVOT_ROW_DIMENSIONS:
             _invalid(f"A pivot table has at most {MAX_PIVOT_ROW_DIMENSIONS} row dimensions.")

@@ -36,6 +36,10 @@ export const VIZ_INFO: VizInfo[] = [
   info("gauge", "Single value", "One number against a range", ["kpi", "dial", "meter", "target", "progress"]),
   info("table", "Tables", "Grouped rows or raw records", ["list", "grid", "records", "rows"]),
   info("pivot_table", "Tables", "Rows × columns with totals", ["crosstab", "cross tab", "matrix", "totals", "subtotals", "heat"]),
+  info("histogram", "Distribution", "How values spread, in bins", ["bins", "spread", "frequency", "buckets"]),
+  info("scatter", "Distribution", "Two metrics, one point each", ["bubble", "correlation", "points", "x y", "dots"]),
+  info("heatmap", "Distribution", "Two dimensions, colored by value", ["grid", "matrix", "weekday", "hour", "calendar", "heat"]),
+  info("world_map", "Geo", "Countries colored by value", ["map", "geo", "country", "countries", "choropleth", "world"]),
 ];
 
 /** Gallery search: label, group, description and keywords, case-insensitive. */

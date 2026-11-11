@@ -460,7 +460,11 @@ export type VizType =
   | "treemap"
   | "funnel"
   | "gauge"
-  | "pivot_table";
+  | "pivot_table"
+  | "heatmap"
+  | "scatter"
+  | "histogram"
+  | "world_map";
 export type Aggregate = "SUM" | "AVG" | "MIN" | "MAX" | "COUNT" | "COUNT_DISTINCT";
 export type Grain = "day" | "week" | "month" | "quarter" | "year";
 export type RangeKind =
@@ -507,6 +511,9 @@ export type ChartQuery = {
   /** Pivot table: subtotals and totals, computed in SQL (rows carry __row_level / __col_level). */
   totals?: boolean;
   series: string | null;
+  /** Histogram: the number column, cut into `count` bins between its min and max, or bins of
+   * `width` (aligned to multiples of it). Rows come back as __bin / __bin_start / __bin_end. */
+  bins?: { column: string; count?: number | null; width?: number | null } | null;
   /** Table "raw records" mode. */
   columns: string[];
   time: {
