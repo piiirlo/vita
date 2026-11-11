@@ -449,7 +449,18 @@ export const validateMetric = (datasetId: number, expression: string) =>
 
 // ---------- charts ----------
 
-export type VizType = "table" | "big_number" | "bar" | "line" | "pie";
+export type VizType =
+  | "table"
+  | "big_number"
+  | "bar"
+  | "line"
+  | "pie"
+  | "area"
+  | "combo"
+  | "treemap"
+  | "funnel"
+  | "gauge"
+  | "pivot_table";
 export type Aggregate = "SUM" | "AVG" | "MIN" | "MAX" | "COUNT" | "COUNT_DISTINCT";
 export type Grain = "day" | "week" | "month" | "quarter" | "year";
 export type RangeKind =
@@ -489,7 +500,12 @@ export type ChartFilter = {
 export type ChartQuery = {
   dataset_id: number;
   metrics: MetricRef[];
+  /** Grouping dimensions (treemap: its levels, outer first; pivot table: the rows). */
   dimensions: string[];
+  /** Pivot table: the dimensions across. */
+  column_dimensions?: string[];
+  /** Pivot table: subtotals and totals, computed in SQL (rows carry __row_level / __col_level). */
+  totals?: boolean;
   series: string | null;
   /** Table "raw records" mode. */
   columns: string[];

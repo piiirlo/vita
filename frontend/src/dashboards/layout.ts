@@ -61,12 +61,17 @@ export function minTileSize(tile: DashboardTile, viz: VizType | undefined): { w:
   if (tile.type === "text") return { w: 3, h: 3 };
   switch (viz) {
     case "big_number":
+    case "gauge":
       return { w: 4, h: 8 };
     case "table":
       return { w: 6, h: 8 };
+    case "pivot_table":
+      return { w: 8, h: 10 };
     case "pie":
+    case "treemap":
+    case "funnel":
       return { w: 6, h: 12 };
-    default: // bar, line, or not loaded yet
+    default: // bar, line, area, combo, or not loaded yet
       return { w: 6, h: 10 };
   }
 }

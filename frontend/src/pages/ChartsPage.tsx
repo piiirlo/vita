@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { ChartLine, SearchX } from "lucide-react";
 import { Link } from "react-router";
 import { deleteChart, listCharts, type SavedChart } from "../api.ts";
-import { VIZ_TYPES } from "../charts/model.ts";
+import { vizLabel } from "../charts/vizTypes.ts";
 import ConfirmDialog from "../components/ConfirmDialog.tsx";
 import { errorText, relativeTime } from "../datasets/format.ts";
 import { usePageTitle } from "../components/usePageTitle.ts";
@@ -12,7 +12,6 @@ import { Button } from "../components/ui/button.tsx";
 import { Input } from "../components/ui/input.tsx";
 import PageHeader from "../shell/PageHeader.tsx";
 
-const vizLabel = (viz: string) => VIZ_TYPES.find((v) => v.value === viz)?.label ?? viz;
 
 export default function ChartsPage() {
   usePageTitle("Charts");
@@ -84,7 +83,7 @@ export default function ChartsPage() {
               </Button>
             }
           >
-            Turn a dataset into a table, big number, bar or line chart.
+            Turn a dataset into a chart: trends, comparisons, shares, single numbers or tables.
           </EmptyState>
         ))}
 

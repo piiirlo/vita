@@ -1,12 +1,13 @@
 """Chart data (POST /api/chart-data) and saved charts CRUD (/api/charts)."""
 
+import logging
 from dataclasses import asdict
 from datetime import date, timedelta
-from typing import Annotated, NoReturn
+from typing import Annotated, Any, NoReturn
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy import func, or_, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.connections import saved_connection_details
@@ -17,6 +18,8 @@ from app.models import Chart, Dashboard, DashboardChart, Dataset
 from app.query import DEFAULT_TIMEOUT_SECONDS, QueryError, run_query
 from app.schemas.charts import ChartDataOut, ChartDataRequest, ChartIn, ChartOut, ChartParams
 from app.schemas.query import QueryErrorOut
+
+log = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -62,7 +65,11 @@ def chart_data(payload: ChartDataRequest, db: DbSession) -> ChartDataOut:
     if ttl > 0 and not payload.refresh:
         hit = cache.get(db, key)
         if hit is not None:
-            return ChartDataOut(**hit.result, **range_fields, cached_at=hit.created_at)
+            return ChartDataOut(
+                **_without_probe(hit.result, built.rows_probe),
+                **range_fields,
+                cached_at=hit.created_at,
+            )
     connection_id = connection.id
     db.close()  # don't hold a metadata-DB connection while the user DB is queried
 
@@ -73,9 +80,24 @@ def chart_data(payload: ChartDataRequest, db: DbSession) -> ChartDataOut:
     except QueryError as error:
         _query_error(error)
     if ttl > 0:
-        cache.put(db, key, connection_id, asdict(result), ttl)
-        db.close()
-    return ChartDataOut(**asdict(result), **range_fields)
+        try:
+            cache.put(db, key, connection_id, asdict(result), ttl)
+        except SQLAlchemyError:
+            # The result is fine; only caching it failed. Never fail the chart for that.
+            db.rollback()
+            log.exception("Couldn't cache chart data")
+        finally:
+            db.close()
+    return ChartDataOut(**_without_probe(asdict(result), built.rows_probe), **range_fields)
+
+
+def _without_probe(result: dict[str, Any], rows_probe: bool) -> dict[str, Any]:
+    """Drop the builder's rows probe (last column, MIN of the time column). NULL there means no
+    row was in the time range: return no rows, so "no data" never looks like a total of 0."""
+    if not rows_probe:
+        return result
+    rows = [row[:-1] for row in result["rows"] if row[-1] is not None]
+    return {**result, "columns": result["columns"][:-1], "rows": rows, "row_count": len(rows)}
 
 
 # ---------- saved charts ----------

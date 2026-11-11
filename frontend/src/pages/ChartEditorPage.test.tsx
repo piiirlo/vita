@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 import type { EChartsOption } from "echarts";
+import type { Dataset } from "../api.ts";
 import { DATASET } from "../charts/testData.ts";
 import { adaptToViz, defaultQuery, toParams } from "../charts/model.ts";
 import ChartEditorPage from "./ChartEditorPage.tsx";
@@ -95,7 +96,7 @@ const BIG_CHART = {
 /** Saves (PUT / POST of /api/charts) seen by the mock. */
 const saves: { method: string; url: string; body: Record<string, unknown> }[] = [];
 
-function mockApi() {
+function mockApi(ds: Dataset = DATASET) {
   const requests: { viz_type: string; query: Record<string, unknown> }[] = [];
   saves.length = 0;
   vi.stubGlobal(
@@ -103,8 +104,8 @@ function mockApi() {
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       const method = init?.method ?? "GET";
-      if (url === "/api/datasets") return json([{ ...DATASET, columns: undefined }]);
-      if (url === "/api/datasets/4") return json(DATASET);
+      if (url === "/api/datasets") return json([{ ...ds, columns: undefined }]);
+      if (url === "/api/datasets/4") return json(ds);
       if (url === "/api/charts/7" && method === "GET") return json(SAVED_CHART);
       if ((url === "/api/charts/7" && method === "PUT") || (url === "/api/charts" && method === "POST")) {
         const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
@@ -172,12 +173,22 @@ function openSideTab(name: "Data" | "Customize") {
   fireEvent.mouseDown(within(screen.getByRole("tablist", { name: "Chart settings" })).getByRole("tab", { name }));
 }
 
+/** The chart type gallery: open it and pick a type. */
+function pickChartType(name: string) {
+  fireEvent.click(screen.getByRole("button", { name: /^Chart type / }));
+  fireEvent.click(within(screen.getByRole("dialog", { name: "Chart type" })).getByRole("radio", { name }));
+}
+
 describe("Chart editor", () => {
   it("loads with the dataset, chart type picker and a table of the default metric", async () => {
     mockApi();
     renderEditor();
     expect(await screen.findByLabelText("Dataset")).toHaveValue("4");
-    expect(screen.getByRole("radio", { name: "Table" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("button", { name: "Chart type Table" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^Chart type / }));
+    expect(within(screen.getByRole("dialog", { name: "Chart type" })).getByRole("radio", { name: "Table" })).toHaveAttribute("aria-checked", "true");
+    fireEvent.keyDown(screen.getByRole("dialog", { name: "Chart type" }), { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Chart type" })).not.toBeInTheDocument());
     expect(within(screen.getByRole("list", { name: "Metrics" })).getByText("Count")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Update chart" })).toBeInTheDocument();
     // Auto-update ran the query and rendered the mocked response with labels and formats.
@@ -192,7 +203,7 @@ describe("Chart editor", () => {
     await screen.findByLabelText("Dataset");
 
     // Data controls are on the Data tab; the look (Stacked, Horizontal, ...) on Customize.
-    fireEvent.click(screen.getByRole("radio", { name: "Bar" }));
+    pickChartType("Bar");
     expect(screen.getByLabelText("X axis")).toBeInTheDocument();
     expect(screen.getByLabelText("Series")).toBeInTheDocument();
     openSideTab("Customize");
@@ -200,21 +211,21 @@ describe("Chart editor", () => {
     expect(screen.getByText("Horizontal")).toBeInTheDocument();
     openSideTab("Data");
 
-    fireEvent.click(screen.getByRole("radio", { name: "Line" }));
+    pickChartType("Line");
     expect(screen.queryByLabelText("X axis")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Time grain")).toHaveValue("month");
     openSideTab("Customize");
     expect(screen.getByText("Show points")).toBeInTheDocument();
     openSideTab("Data");
 
-    fireEvent.click(screen.getByRole("radio", { name: "Big number" }));
+    pickChartType("Big number");
     expect(screen.queryByLabelText("Series")).not.toBeInTheDocument();
     openSideTab("Customize");
     expect(screen.getByText("Show trend line")).toBeInTheDocument();
     expect(screen.getByText("Subtitle")).toBeInTheDocument();
     openSideTab("Data");
 
-    fireEvent.click(screen.getByRole("radio", { name: "Table" }));
+    pickChartType("Table");
     fireEvent.click(screen.getByRole("radio", { name: "Raw records" }));
     expect(screen.getByRole("list", { name: "Columns" })).toBeInTheDocument();
     expect(screen.queryByRole("list", { name: "Metrics" })).not.toBeInTheDocument();
@@ -225,7 +236,7 @@ describe("Chart editor", () => {
     renderEditor();
     await screen.findByLabelText("Dataset");
 
-    fireEvent.click(screen.getByRole("radio", { name: "Line" }));
+    pickChartType("Line");
     fireEvent.change(screen.getByLabelText("Add a saved metric"), { target: { value: "revenue" } });
     expect(await screen.findByRole("img", { name: /Line chart of Count, Revenue/ })).toBeInTheDocument();
     await waitFor(() => {
@@ -236,7 +247,7 @@ describe("Chart editor", () => {
     expect(lineRequest.viz_type).toBe("line");
     expect(lineRequest.query).toMatchObject({ metrics: ["count", "revenue"], time: { grain: "month" } });
 
-    fireEvent.click(screen.getByRole("radio", { name: "Big number" }));
+    pickChartType("Big number");
     expect(await screen.findByTestId("big-number-value")).toHaveTextContent("4,321");
     await waitFor(() => expect(screen.getByRole("img", { name: "Trend" })).toBeInTheDocument());
     // Two requests: the total (no grain) and the trend (by month).
@@ -311,7 +322,7 @@ describe("Chart editor", () => {
       mockApi();
       const router = renderEditor();
       await screen.findByText("completed");
-      fireEvent.click(screen.getByRole("radio", { name: "Bar" }));
+      pickChartType("Bar");
       expect(screen.getByLabelText("Unsaved changes")).toBeInTheDocument();
 
       // Cancel in the name dialog: stay on the editor.
@@ -494,7 +505,7 @@ describe("Chart editor", () => {
     const requests = mockApi();
     renderEditor();
     await screen.findByText("completed");
-    fireEvent.click(screen.getByRole("radio", { name: "Pie" }));
+    pickChartType("Pie / donut");
     expect(await screen.findByRole("img", { name: /Pie chart of Count/ })).toBeInTheDocument();
     expect(requests.at(-1)).toMatchObject({ viz_type: "pie", query: { series_limit: 6, series: null } });
     expect(screen.getByLabelText("Slices")).toHaveValue("status");
@@ -511,5 +522,57 @@ describe("Chart editor", () => {
     await waitFor(() => expect(requests.length).toBeGreaterThanOrEqual(before + 2));
     expect(requests.slice(before).map((r) => r.viz_type).sort()).toEqual(["big_number", "pie"]);
     expect(await screen.findByRole("img", { name: /Donut chart of Count/ })).toBeInTheDocument();
+  });
+
+  describe("chart type gallery", () => {
+    it("groups the types, searches them, and Enter picks the first match", async () => {
+      mockApi();
+      renderEditor();
+      await screen.findByLabelText("Dataset");
+      fireEvent.click(screen.getByRole("button", { name: /^Chart type / }));
+      const dialog = screen.getByRole("dialog", { name: "Chart type" });
+      for (const group of ["Trends", "Compare", "Part of whole", "Single value", "Tables"]) {
+        expect(within(dialog).getByRole("region", { name: group })).toBeInTheDocument();
+      }
+      expect(within(dialog).getAllByRole("radio")).toHaveLength(11);
+      fireEvent.change(within(dialog).getByLabelText("Search chart types"), { target: { value: "kpi" } });
+      expect(within(dialog).getAllByRole("radio").map((r) => r.getAttribute("aria-label"))).toEqual(["Big number", "Gauge"]);
+      fireEvent.keyDown(within(dialog).getByLabelText("Search chart types"), { key: "Enter" });
+      expect(await screen.findByRole("button", { name: "Chart type Big number" })).toBeInTheDocument();
+      expect(screen.queryByRole("dialog", { name: "Chart type" })).not.toBeInTheDocument();
+    });
+
+    it("says what didn't carry over when switching, and what still needs picking", async () => {
+      mockApi();
+      renderEditor();
+      await screen.findByLabelText("Dataset");
+      fireEvent.change(screen.getByLabelText("Add a saved metric"), { target: { value: "revenue" } });
+      pickChartType("Funnel");
+      const note = screen.getByRole("status", { name: "" });
+      expect(note).toHaveTextContent("Kept: dataset, Count.");
+      expect(note).toHaveTextContent("Not used: Revenue (a funnel uses one metric).");
+      fireEvent.click(within(note).getByRole("button", { name: "Dismiss" }));
+      expect(screen.queryByText(/Not used:/)).not.toBeInTheDocument();
+    });
+
+    it("pivot table: at most 3 row and 2 column dimensions, with a hint", async () => {
+      const extra = ["region", "segment", "city"].map((name, i) => ({ ...DATASET.columns[1]!, id: 90 + i, name, label: null }));
+      const requests = mockApi({ ...DATASET, columns: [...DATASET.columns, ...extra] });
+      renderEditor();
+      await screen.findByLabelText("Dataset");
+      pickChartType("Pivot table");
+      fireEvent.change(screen.getByLabelText("Add to Rows"), { target: { value: "region" } });
+      expect(screen.getByLabelText("Add to Rows")).toBeEnabled();
+      fireEvent.change(screen.getByLabelText("Add to Rows"), { target: { value: "segment" } });
+      expect(screen.getByLabelText("Add to Rows")).toBeDisabled();
+      expect(screen.getByLabelText("Add to Rows")).toHaveAccessibleDescription(/at most 3 row dimensions/);
+      fireEvent.change(screen.getByLabelText("Add to Columns"), { target: { value: "channel" } });
+      fireEvent.change(screen.getByLabelText("Add to Columns"), { target: { value: "order_date" } });
+      expect(screen.getByLabelText("Add to Columns")).toBeDisabled();
+      expect(screen.getByLabelText("Add to Columns")).toHaveAccessibleDescription(/at most 2 column dimensions/);
+      fireEvent.click(screen.getByRole("button", { name: "Update chart" }));
+      await waitFor(() => expect(requests.at(-1)?.viz_type).toBe("pivot_table"));
+      expect(requests.at(-1)!.query).toMatchObject({ dimensions: ["status", "region", "segment"], column_dimensions: ["channel", "order_date"], totals: true });
+    });
   });
 });

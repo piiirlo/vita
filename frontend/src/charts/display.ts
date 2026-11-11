@@ -97,7 +97,7 @@ export function unavailableOptions(state: ChartState, dataset: Dataset | null): 
   const hints: Partial<Record<CustomizeOption, string>> = {};
   const { vizType, display, query } = state;
   const several = hasSeveralSeries(state);
-  if (vizType === "table") {
+  if (vizType === "table" || vizType === "pivot_table") {
     hints.legend = "Tables have no legend";
     hints.axis_titles = "Tables have no axes";
     hints.value_labels = "Tables already show every value";
@@ -116,14 +116,24 @@ export function unavailableOptions(state: ChartState, dataset: Dataset | null): 
     hints.axis_titles = "A pie has no axes";
     hints.single_color = "Each slice needs its own color";
   }
-  if (vizType === "bar" || vizType === "line") {
+  if (vizType === "bar" || vizType === "line" || vizType === "area" || vizType === "combo") {
     if (!several) {
-      hints.stacked = "Add a series to stack bars";
+      hints.stacked = vizType === "area" ? "Add a series to stack areas" : "Add a series to stack bars";
       hints.legend = "One series: nothing to tell apart";
     } else {
       hints.single_color = "One color only works with a single series";
     }
-    if (vizType === "bar" && hasTimeAxis(state)) hints.sort = "Time bars are always in date order";
+    if ((vizType === "bar" || vizType === "combo") && hasTimeAxis(state)) hints.sort = "Time bars are always in date order";
+  }
+  if (vizType === "treemap" || vizType === "funnel") {
+    hints.axis_titles = vizType === "treemap" ? "A treemap has no axes" : "A funnel has no axes";
+    hints.legend = vizType === "treemap" ? "Boxes are labelled on the chart" : "Steps are labelled on the chart";
+    hints.single_color = vizType === "treemap" ? "Each box needs its own color" : "Each step needs its own color";
+  }
+  if (vizType === "gauge") {
+    hints.legend = "A gauge has no legend";
+    hints.axis_titles = "A gauge has its own scale";
+    hints.value_labels = "The gauge shows its value";
   }
   return hints;
 }

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import ChartTypePicker from "./ChartTypePicker.tsx";
 import type {
   Aggregate,
   ChartFilter,
@@ -16,8 +17,13 @@ import type {
 } from "../api.ts";
 import {
   GRAINS,
-  VIZ_TYPES,
+  PIVOT_MAX_COLUMN_DIMENSIONS,
+  PIVOT_MAX_ROW_DIMENSIONS,
+  adaptToViz,
   columnLabel,
+  missingFor,
+  switchReport,
+  type SwitchReport,
   groupableColumns,
   metricLabel,
   metricName,
@@ -84,6 +90,10 @@ export default function ChartControls({ state, dataset, datasets, onDataset, onV
   const grain = query.time?.grain ?? null;
   const dims = groupableColumns(dataset);
   const nonTimeDims = dims.filter((c) => c.name !== (grain ? query.time?.column : null));
+  const categories = dims.filter((c) => !c.is_temporal);
+  // What carried over the last chart type switch (kept / dropped); the to-do list is live.
+  const [report, setReport] = useState<{ viz: VizType; report: SwitchReport } | null>(null);
+  const todo = missingFor(state, dataset);
 
   return (
     <div className="chart-controls">
@@ -98,22 +108,14 @@ export default function ChartControls({ state, dataset, datasets, onDataset, onV
             ))}
           </select>
         </label>
-        <div className="control">
-          <span>Chart type</span>
-          <div className="viz-picker" role="radiogroup" aria-label="Chart type">
-            {VIZ_TYPES.map((v) => (
-              <button
-                key={v.value}
-                role="radio"
-                aria-checked={vizType === v.value}
-                className={vizType === v.value ? "active" : ""}
-                onClick={() => onVizType(v.value)}
-              >
-                {v.label}
-              </button>
-            ))}
-          </div>
-        </div>
+        <ChartTypePicker
+          value={vizType}
+          onChange={(viz) => {
+            setReport({ viz, report: switchReport(state, adaptToViz(state, viz, dataset), dataset) });
+            onVizType(viz);
+          }}
+        />
+        <SwitchNote report={report?.viz === vizType ? report.report : null} todo={todo} onDismiss={() => setReport(null)} />
       </section>
 
       {vizType === "table" && (
@@ -161,7 +163,7 @@ export default function ChartControls({ state, dataset, datasets, onDataset, onV
         </section>
       )}
 
-      {vizType === "bar" && (
+      {(vizType === "bar" || vizType === "combo") && (
         <section>
           <label className="control">
             <span>X axis</span>
@@ -187,8 +189,9 @@ export default function ChartControls({ state, dataset, datasets, onDataset, onV
                 ))}
             </select>
           </label>
-          <SeriesSelect query={query} dataset={dataset} columns={nonTimeDims} onQuery={onQuery} />
+          {vizType === "bar" && <SeriesSelect query={query} dataset={dataset} columns={nonTimeDims} onQuery={onQuery} />}
           <MetricList title="Metrics" dataset={dataset} metrics={query.metrics} onChange={(metrics) => onQuery({ metrics })} />
+          {vizType === "combo" && <p className="control-hint">Bars or line and left or right axis per metric are in Customize.</p>}
         </section>
       )}
 
@@ -226,10 +229,77 @@ export default function ChartControls({ state, dataset, datasets, onDataset, onV
         </section>
       )}
 
-      {vizType === "line" && (
+      {(vizType === "line" || vizType === "area") && (
         <section>
           <SeriesSelect query={query} dataset={dataset} columns={nonTimeDims} onQuery={onQuery} />
           <MetricList title="Metrics" dataset={dataset} metrics={query.metrics} onChange={(metrics) => onQuery({ metrics })} />
+        </section>
+      )}
+
+      {vizType === "treemap" && (
+        <section>
+          <DimensionSelect label="Boxes" value={query.dimensions[0] ?? ""} columns={categories} dataset={dataset}
+            onChange={(name) => onQuery({ dimensions: name ? [name, ...query.dimensions.slice(1).filter((d) => d !== name)] : [] })} />
+          <DimensionSelect label="Inside each box" optional value={query.dimensions[1] ?? ""} dataset={dataset}
+            columns={categories.filter((c) => c.name !== query.dimensions[0])}
+            onChange={(name) => onQuery({ dimensions: [query.dimensions[0] ?? "", ...(name ? [name] : [])].filter(Boolean) })} />
+          <MetricList title="Metric" single dataset={dataset} metrics={query.metrics} onChange={(metrics) => onQuery({ metrics })} />
+          <label className="control">
+            <span>Top boxes</span>
+            <NumberInput
+              value={query.series_limit ?? 0}
+              min={0}
+              max={100}
+              title="Keep the N biggest outer boxes and group the rest into Other (0 = every box)"
+              onChange={(n) => onQuery({ series_limit: n > 0 ? n : null })}
+            />
+          </label>
+          <p className="control-hint">The rest is grouped into “Other”. Colors, names and labels are in Customize.</p>
+        </section>
+      )}
+
+      {vizType === "funnel" && (
+        <section>
+          <DimensionSelect label="Steps" value={query.dimensions[0] ?? ""} columns={categories} dataset={dataset}
+            onChange={(name) => onQuery({ dimensions: name ? [name] : [] })} />
+          <MetricList title="Metric" single dataset={dataset} metrics={query.metrics} onChange={(metrics) => onQuery({ metrics })} />
+          <p className="control-hint">Largest step first; pick your own step order in Customize.</p>
+        </section>
+      )}
+
+      {vizType === "gauge" && (
+        <section>
+          <MetricList title="Metric" single dataset={dataset} metrics={query.metrics} onChange={(metrics) => onQuery({ metrics })} />
+          <p className="control-hint">Min, max, target and color bands are in Customize.</p>
+        </section>
+      )}
+
+      {vizType === "pivot_table" && (
+        <section>
+          <ColumnList
+            title="Rows"
+            columns={dims.filter((c) => !(query.column_dimensions ?? []).includes(c.name))}
+            selected={query.dimensions}
+            dataset={dataset}
+            max={PIVOT_MAX_ROW_DIMENSIONS}
+            fullHint={`A pivot table has at most ${PIVOT_MAX_ROW_DIMENSIONS} row dimensions: remove one, or move it to the columns.`}
+            onChange={(dimensions) => onQuery({ dimensions })}
+          />
+          <ColumnList
+            title="Columns"
+            columns={dims.filter((c) => !query.dimensions.includes(c.name))}
+            selected={query.column_dimensions ?? []}
+            dataset={dataset}
+            max={PIVOT_MAX_COLUMN_DIMENSIONS}
+            fullHint={`A pivot table has at most ${PIVOT_MAX_COLUMN_DIMENSIONS} column dimensions: remove one, or move it to the rows.`}
+            onChange={(column_dimensions) => onQuery({ column_dimensions })}
+          />
+          <MetricList title="Metrics" dataset={dataset} metrics={query.metrics} onChange={(metrics) => onQuery({ metrics })} />
+          <label className="checkbox">
+            <input type="checkbox" checked={Boolean(query.totals)} onChange={(e) => onQuery({ totals: e.target.checked })} />
+            Totals and subtotals
+          </label>
+          <p className="control-hint">Totals are computed by the database, so averages and distinct counts add up correctly. Heat colors are in Customize.</p>
         </section>
       )}
 
@@ -240,7 +310,7 @@ export default function ChartControls({ state, dataset, datasets, onDataset, onV
       </section>
 
       <section>
-        {vizType !== "big_number" && vizType !== "pie" && (
+        {ORDERABLE.has(vizType) && (
           <label className="control">
             <span>Order by</span>
             <div className="inline-controls">
@@ -272,7 +342,7 @@ export default function ChartControls({ state, dataset, datasets, onDataset, onV
           </label>
         )}
         <div className="inline-controls">
-          {vizType !== "big_number" && vizType !== "pie" && (
+          {!NO_ROW_LIMIT.has(vizType) && (
             <label className="control">
               <span>Row limit</span>
               <NumberInput value={query.row_limit} min={1} max={10000} onChange={(row_limit) => onQuery({ row_limit })} />
@@ -312,7 +382,74 @@ export default function ChartControls({ state, dataset, datasets, onDataset, onV
   );
 }
 
+/** Chart types the user can order (the others have their own order). */
+const ORDERABLE = new Set<VizType>(["table", "bar", "line", "area", "combo"]);
+/** One number or a fixed number of slices / steps: no row limit to set. */
+const NO_ROW_LIMIT = new Set<VizType>(["big_number", "gauge", "pie", "funnel"]);
+
 // ---------- helpers ----------
+
+/** After a chart type switch: what carried over and what didn't; and what still needs setting. */
+function SwitchNote({ report, todo, onDismiss }: { report: SwitchReport | null; todo: string[]; onDismiss(): void }) {
+  const dropped = report?.dropped ?? [];
+  if (dropped.length === 0 && todo.length === 0) return null;
+  return (
+    <div className="switch-note" role="status">
+      {report && dropped.length > 0 && (
+        <>
+          <p>
+            <strong>Kept:</strong> {report.kept.join(", ")}.
+          </p>
+          <p>
+            <strong>Not used:</strong> {dropped.join("; ")}.
+          </p>
+        </>
+      )}
+      {todo.length > 0 && (
+        <ul className="switch-todo" aria-label="Still to set">
+          {todo.map((t) => (
+            <li key={t}>{t}</li>
+          ))}
+        </ul>
+      )}
+      {report && dropped.length > 0 && (
+        <button type="button" className="link-button small" onClick={onDismiss}>
+          Dismiss
+        </button>
+      )}
+    </div>
+  );
+}
+
+function DimensionSelect({
+  label,
+  value,
+  columns,
+  dataset,
+  optional,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  columns: DatasetColumn[];
+  dataset: Dataset;
+  optional?: boolean;
+  onChange(name: string): void;
+}) {
+  return (
+    <label className="control">
+      <span>{label}</span>
+      <select aria-label={label} value={value} onChange={(e) => onChange(e.target.value)}>
+        {optional ? <option value="">None</option> : !value && <option value="">Pick…</option>}
+        {columns.map((c) => (
+          <option key={c.name} value={c.name}>
+            {columnLabel(c.name, dataset)}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
 
 function timeWith(query: ChartQuery, dataset: Dataset, patch: { grain?: Grain | null; column?: string | null }) {
   const column = patch.column ?? query.time?.column ?? dataset.main_time_column ?? temporalColumns(dataset)[0]?.name ?? null;
@@ -364,15 +501,22 @@ function ColumnList({
   columns,
   selected,
   dataset,
+  max,
+  fullHint,
   onChange,
 }: {
   title: string;
   columns: DatasetColumn[];
   selected: string[];
   dataset: Dataset;
+  /** At most this many (then the add select is disabled and `fullHint` says why). */
+  max?: number;
+  fullHint?: string;
   onChange(names: string[]): void;
 }) {
   const available = columns.filter((c) => !selected.includes(c.name));
+  const full = max !== undefined && selected.length >= max;
+  const hintId = `full-${title.replace(/\W+/g, "-").toLowerCase()}`;
   return (
     <div className="control">
       <span>{title}</span>
@@ -387,7 +531,13 @@ function ColumnList({
         ))}
       </ul>
       {available.length > 0 && (
-        <select aria-label={`Add to ${title}`} value="" onChange={(e) => e.target.value && onChange([...selected, e.target.value])}>
+        <select
+          aria-label={`Add to ${title}`}
+          value=""
+          disabled={full}
+          aria-describedby={full ? hintId : undefined}
+          onChange={(e) => e.target.value && onChange([...selected, e.target.value])}
+        >
           <option value="">+ Add column…</option>
           {available.map((c) => (
             <option key={c.name} value={c.name}>
@@ -395,6 +545,11 @@ function ColumnList({
             </option>
           ))}
         </select>
+      )}
+      {full && fullHint && (
+        <p id={hintId} className="control-hint" role="note">
+          {fullHint}
+        </p>
       )}
     </div>
   );
@@ -484,9 +639,13 @@ function TimeSection({ state, dataset, onQuery }: { state: ChartState; dataset: 
   const time = query.time ?? { column: dataset.main_time_column ?? temporal[0]!.name, grain: null, range: { kind: "none" } };
   const set = (patch: Partial<NonNullable<ChartQuery["time"]>>) => onQuery({ time: { ...time, ...patch } });
   const raw = vizType === "table" && display.mode === "raw";
-  const grainRequired = vizType === "line" || (vizType === "big_number" && display.show_trend);
+  const grainRequired = vizType === "line" || vizType === "area" || (vizType === "big_number" && display.show_trend);
+  const noGrain = ["pie", "treemap", "funnel", "gauge", "pivot_table"].includes(vizType);
   const grainShown =
-    !raw && vizType !== "pie" && !(vizType === "big_number" && !display.show_trend) && !(vizType === "bar" && !time.grain);
+    !raw &&
+    !noGrain &&
+    !(vizType === "big_number" && !display.show_trend) &&
+    !((vizType === "bar" || vizType === "combo") && !time.grain);
 
   return (
     <section>

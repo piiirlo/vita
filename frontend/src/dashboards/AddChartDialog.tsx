@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { listCharts, type SavedChart } from "../api.ts";
-import { VIZ_TYPES } from "../charts/model.ts";
+import { vizLabel } from "../charts/vizTypes.ts";
 import { errorText } from "../datasets/format.ts";
 import { Modal, ModalActions } from "../components/ui/dialog.tsx";
 
@@ -46,7 +46,7 @@ export default function AddChartDialog({ onPick, onClose }: Props) {
         {charts?.map((c) => (
           <button key={c.id} className="pick-item" onClick={() => onPick(c)}>
             <span>{c.name}</span>
-            <span className="tag">{VIZ_TYPES.find((v) => v.value === c.viz_type)?.label ?? c.viz_type}</span>
+            <span className="tag">{vizLabel(c.viz_type)}</span>
             <span className="muted small">{c.dataset_name}</span>
           </button>
         ))}

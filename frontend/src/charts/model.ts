@@ -12,6 +12,7 @@ import type {
 } from "../api.ts";
 import type { FormatSpec } from "./display.ts";
 import { categoryLabel } from "./format.ts";
+import { vizLabel } from "./vizTypes.ts";
 
 export type DisplayOptions = {
   /** Table: grouped rows (default) or raw records. (Changes the query.) */
@@ -44,6 +45,33 @@ export type DisplayOptions = {
   /** A ring with the total in the middle. (Changes the query: one more request for the total.) */
   donut?: boolean;
 
+  // ---- area ----
+  /** Not stacked (default), stacked, or 100% stacked (shares of each period, in the browser). */
+  stack?: "none" | "stacked" | "percent";
+
+  // ---- combo ----
+  /** Per metric name: drawn as bars or a line, on the left or right axis. Default: the first
+   * metric is bars on the left, the others lines on the left. */
+  combo?: Record<string, ComboSeries>;
+
+  // ---- funnel ----
+  /** Steps by value (largest first, default) or in the order of `funnel_steps`. */
+  funnel_order?: "value" | "custom";
+  /** Step values (as text) in the chosen order; steps not listed follow by value. */
+  funnel_steps?: string[];
+
+  // ---- gauge ----
+  gauge_min?: number | null;
+  /** Empty: a round number above the value (and target). */
+  gauge_max?: number | null;
+  gauge_target?: number | null;
+  /** Colored bands, each up to a value, ascending. The rest of the arc stays neutral. */
+  gauge_bands?: GaugeBand[];
+
+  // ---- pivot table ----
+  /** Metric names whose cells get a heat scale (lighter = lower). */
+  heat?: string[];
+
   // ---- big number ----
   subtitle?: string;
   font_size?: "auto" | "s" | "m" | "l";
@@ -62,6 +90,10 @@ export type DisplayOptions = {
   cache_ttl?: number | null;
 };
 
+export type ComboSeries = { type: "bar" | "line"; axis: "left" | "right" };
+export type GaugeTone = "danger" | "warning" | "success";
+export type GaugeBand = { to: number; tone: GaugeTone };
+
 export type ChartState = { vizType: VizType; query: ChartQuery; display: DisplayOptions };
 
 /** Top slices of a new pie (the rest is grouped into "Other"). */
@@ -69,13 +101,16 @@ export const PIE_DEFAULT_SLICES = 6;
 /** More slices than this are hard to read. */
 export const PIE_MAX_READABLE = 7;
 
-export const VIZ_TYPES: { value: VizType; label: string }[] = [
-  { value: "table", label: "Table" },
-  { value: "big_number", label: "Big number" },
-  { value: "bar", label: "Bar" },
-  { value: "line", label: "Line" },
-  { value: "pie", label: "Pie" },
-];
+/** Treemap: the biggest outer boxes kept (the rest is one "Other" box). */
+export const TREEMAP_DEFAULT_TOP = 10;
+/** Funnels: at most this many steps (rows). */
+export const FUNNEL_MAX_STEPS = 30;
+/** Pivot tables: dimensions per side (the backend checks the same) and columns shown. */
+export const PIVOT_MAX_ROW_DIMENSIONS = 3;
+export const PIVOT_MAX_COLUMN_DIMENSIONS = 2;
+export const PIVOT_MAX_COLUMNS = 50;
+/** Pivot rows include every subtotal level: a bigger default row limit. */
+export const PIVOT_ROW_LIMIT = 10_000;
 
 export const GRAINS: { value: Grain; label: string }[] = [
   { value: "day", label: "Day" },
@@ -164,6 +199,16 @@ export function adaptToViz(state: ChartState, viz: VizType, dataset: Dataset): C
   const grain = query.time?.grain ?? null;
   if (query.metrics.length === 0 && viz !== "table") query.metrics = ["count"];
   if (viz !== "table") query.columns = [];
+  const firstCategory = () => groupableColumns(dataset).find((c) => !c.is_temporal)?.name ?? null;
+  // Leaving a pivot table: its column dimensions become plain dimensions (a table keeps them).
+  if (viz !== "pivot_table") {
+    const across = query.column_dimensions ?? [];
+    if (across.length && viz === "table") query.dimensions = [...query.dimensions, ...across.filter((d) => !query.dimensions.includes(d))];
+    delete query.column_dimensions;
+    delete query.totals;
+  }
+  // Leaving a pivot's big row limit for a chart type that draws everything.
+  if (state.vizType === "pivot_table" && viz !== "pivot_table" && viz !== "table" && query.row_limit === PIVOT_ROW_LIMIT) query.row_limit = 1000;
 
   switch (viz) {
     case "table":
@@ -187,9 +232,68 @@ export function adaptToViz(state: ChartState, viz: VizType, dataset: Dataset): C
       }
       break;
     case "line":
+    case "area":
       if (!query.series && query.dimensions.length > 0) query.series = query.dimensions[0] ?? null;
       query = withGrain({ ...query, dimensions: [] }, dataset, grain ?? "month");
       break;
+    case "combo":
+      // Like bar (time or one dimension on x), without a series: the metrics are the series.
+      query.series = null;
+      if (query.dimensions.length > 0) {
+        query = withGrain({ ...query, dimensions: query.dimensions.slice(0, 1) }, dataset, null);
+        if (!query.time?.column) query.time = null;
+      } else if (!grain) {
+        const first = firstCategory();
+        if (dataset.main_time_column) query = withGrain(query, dataset, "month");
+        else if (first) query.dimensions = [first];
+      }
+      break;
+    case "treemap": {
+      const levels = [...query.dimensions, ...(query.series ? [query.series] : [])].filter((d) => !temporalColumns(dataset).some((c) => c.name === d));
+      const first = firstCategory();
+      query = {
+        ...query,
+        metrics: query.metrics.slice(0, 1),
+        dimensions: levels.length ? levels.slice(0, 2) : first ? [first] : [],
+        series: null,
+        order_by: null,
+      };
+      if (query.time) query.time = { ...query.time, grain: null };
+      if (state.vizType !== "treemap" && state.vizType !== "pie") query.series_limit = TREEMAP_DEFAULT_TOP;
+      break;
+    }
+    case "funnel": {
+      const step = query.dimensions[0] ?? query.series ?? firstCategory();
+      query = { ...query, metrics: query.metrics.slice(0, 1), dimensions: step ? [step] : [], series: null, order_by: null };
+      if (query.time) query.time = { ...query.time, grain: null };
+      query.row_limit = Math.min(query.row_limit, FUNNEL_MAX_STEPS);
+      break;
+    }
+    case "gauge":
+      query = { ...query, metrics: query.metrics.slice(0, 1), dimensions: [], series: null, order_by: null };
+      if (query.time) query.time = { ...query.time, grain: null };
+      break;
+    case "pivot_table": {
+      const rows = [...query.dimensions, ...(query.series ? [query.series] : [])];
+      const across = (query.column_dimensions ?? []).filter((d) => !rows.includes(d));
+      query = {
+        ...query,
+        dimensions: rows.slice(0, PIVOT_MAX_ROW_DIMENSIONS),
+        column_dimensions: across.slice(0, PIVOT_MAX_COLUMN_DIMENSIONS),
+        series: null,
+        order_by: null,
+      };
+      if (query.dimensions.length === 0 && query.column_dimensions!.length === 0) {
+        const first = firstCategory();
+        if (first) query.dimensions = [first];
+      }
+      if (query.time) query.time = { ...query.time, grain: null };
+      if (state.vizType !== "pivot_table") {
+        query.totals = true;
+        query.row_limit = Math.max(query.row_limit, PIVOT_ROW_LIMIT);
+      }
+      break;
+    }
     case "pie": {
       // One dimension (the slices) and one metric; no series, no time grain.
       const slice = query.dimensions[0] ?? query.series ?? groupableColumns(dataset).find((c) => !c.is_temporal)?.name ?? null;
@@ -219,9 +323,31 @@ export function outputNames(query: ChartQuery, viz: VizType, display: DisplayOpt
 
 /** What to send to /api/chart-data. A big number with a trend needs two queries: the total
  * (no grain; COUNT DISTINCT / AVG can't be summed from buckets) and the trend line. */
-export function chartRequests(state: ChartState): { main: ChartQuery; trend: ChartQuery | null; total?: ChartQuery | null } {
+export function chartRequests(state: ChartState): {
+  main: ChartQuery;
+  trend: ChartQuery | null;
+  total?: ChartQuery | null;
+  /** The chart type the total is asked as (default big_number: one number). */
+  totalViz?: VizType;
+} {
   const { vizType, display } = state;
-  const query = { ...state.query, filters: completeFilters(state.query.filters) };
+  const query: ChartQuery = { ...state.query, filters: completeFilters(state.query.filters) };
+  if (vizType !== "pivot_table") {
+    delete query.column_dimensions;
+    delete query.totals;
+  }
+  if (vizType === "treemap") {
+    const main = { ...query, columns: [], series: null, order_by: null, time: noGrain(query) };
+    // Two levels: each outer box's true value (an average isn't the sum of its parts).
+    const total = query.dimensions.length === 2 ? { ...main, dimensions: query.dimensions.slice(0, 1) } : null;
+    return { main, trend: null, total, totalViz: "treemap" };
+  }
+  if (vizType === "funnel" || vizType === "gauge") {
+    return { main: { ...query, columns: [], series: null, order_by: null, time: noGrain(query) }, trend: null };
+  }
+  if (vizType === "pivot_table") {
+    return { main: { ...query, columns: [], series: null, order_by: null, time: noGrain(query) }, trend: null };
+  }
   if (vizType === "pie") {
     const main = { ...query, columns: [], series: null, order_by: null, time: noGrain(query) };
     // A donut shows the true total in the middle: the metric over everything (one more query;
@@ -274,4 +400,84 @@ export function dimensionLabel(value: unknown, column: string | null, dataset: D
     if (label) return label;
   }
   return categoryLabel(value, grain);
+}
+
+// ---------- switching chart type: what carried over ----------
+
+export type SwitchReport = {
+  /** What the new chart kept: "dataset", metric labels, "2 filters", the time range. */
+  kept: string[];
+  /** What it couldn't use, with why. */
+  dropped: string[];
+  /** What still needs picking before it can draw. */
+  todo: string[];
+};
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+/** What still needs to be set for a chart to draw (empty: ready). */
+export function missingFor(state: ChartState, dataset: Dataset): string[] {
+  const { vizType, query } = state;
+  const grain = query.time?.grain ?? null;
+  const todo: string[] = [];
+  if (vizType !== "table" && query.metrics.length === 0) todo.push("Pick a metric");
+  switch (vizType) {
+    case "bar":
+    case "combo":
+      if (!grain && query.dimensions.length === 0) todo.push("Pick the x axis (a dimension or time)");
+      if (vizType === "combo" && query.metrics.length < 2) todo.push("Add a second metric to show bars and lines together");
+      break;
+    case "line":
+    case "area":
+      if (temporalColumns(dataset).length === 0) todo.push("This dataset has no time column: mark one as temporal");
+      break;
+    case "pie":
+      if (query.dimensions.length === 0) todo.push("Pick the slices (a dimension)");
+      break;
+    case "treemap":
+      if (query.dimensions.length === 0) todo.push("Pick the boxes (a dimension)");
+      break;
+    case "funnel":
+      if (query.dimensions.length === 0) todo.push("Pick the steps (a dimension)");
+      break;
+    case "pivot_table":
+      if (query.dimensions.length === 0 && (query.column_dimensions ?? []).length === 0) todo.push("Add a row or column dimension");
+      break;
+  }
+  return todo;
+}
+
+/** Compare a chart before and after a type switch (shown under the chart type picker). */
+export function switchReport(before: ChartState, after: ChartState, dataset: Dataset): SwitchReport {
+  const kept = ["dataset"];
+  const dropped: string[] = [];
+  const name = vizLabel(after.vizType).toLowerCase();
+  const b = before.query;
+  const a = after.query;
+
+  const afterMetrics = new Set(a.metrics.map(metricName));
+  const keptMetrics = b.metrics.filter((m) => afterMetrics.has(metricName(m)));
+  if (keptMetrics.length) kept.push(...keptMetrics.map((m) => metricLabel(m, dataset)));
+  const lostMetrics = b.metrics.filter((m) => !afterMetrics.has(metricName(m)));
+  if (lostMetrics.length && a.metrics.length) {
+    dropped.push(`${lostMetrics.map((m) => metricLabel(m, dataset)).join(", ")} (a ${name} uses one metric)`);
+  }
+
+  const groupsAfter = new Set([...a.dimensions, ...(a.column_dimensions ?? []), ...(a.series ? [a.series] : [])]);
+  const groupsBefore = [...b.dimensions, ...(b.column_dimensions ?? []), ...(b.series ? [b.series] : [])];
+  const lostGroups = groupsBefore.filter((g) => !groupsAfter.has(g));
+  if (lostGroups.length) dropped.push(`${lostGroups.map((g) => columnLabel(g, dataset)).join(", ")} (not used by a ${name})`);
+  if (b.columns.length && !a.columns.length) dropped.push(`${plural(b.columns.length, "raw column")} (only tables list raw records)`);
+
+  const filters = completeFilters(b.filters).length;
+  if (filters) kept.push(plural(filters, "filter"));
+  const range = b.time?.range.kind ?? "none";
+  if (range !== "none") {
+    if ((a.time?.range.kind ?? "none") === range) kept.push(range === "custom" ? "custom time range" : range.replace(/_/g, " "));
+    else dropped.push("time range");
+  }
+  const grainBefore = b.time?.grain ?? null;
+  const grainAfter = a.time?.grain ?? null;
+  if (grainBefore && !grainAfter) dropped.push(`time grain (a ${name} has none; the time range still filters)`);
+  return { kept, dropped, todo: missingFor(after, dataset) };
 }

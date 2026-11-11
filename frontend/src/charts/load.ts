@@ -9,7 +9,7 @@ export type ChartData = {
   trend: ChartDataResult | null;
   /** Big number "vs previous period": the same metric over the period before the range. */
   previous: ChartDataResult | null;
-  /** Donut: the metric over everything (its center label). */
+  /** Donut: the metric over everything (its center label). Treemap: each outer box's value. */
   total?: ChartDataResult | null;
 };
 
@@ -43,7 +43,7 @@ export async function loadChartData(
     fetchChartData(state.vizType, requests.main, signal, options),
     requests.trend ? fetchChartData("line", requests.trend, signal, options) : Promise.resolve(null),
     // A failing donut total only loses the center label.
-    requests.total ? fetchChartData("big_number", requests.total, signal, options).catch(() => null) : Promise.resolve(null),
+    requests.total ? fetchChartData(requests.totalViz ?? "big_number", requests.total, signal, options).catch(() => null) : Promise.resolve(null),
   ]);
   const query = previousQuery(state, requests.main, main, today);
   // A failing comparison only loses the comparison, never the chart.

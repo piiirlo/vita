@@ -27,9 +27,12 @@ One part at a time, in order:
 9. **Visual redesign ("Observatory")** — tokens, shell, every page; no feature changes *(done)*
 10. **Fixes from real usage** — Customize tab, pie/donut, chart-data cache, value labels,
     schema diagram, 24-column grid with 8 resize handles, unsaved-chart warning *(done)*
+11. **More chart types** (15 in two rounds) — round 1: chart type gallery, area, combo,
+    treemap, funnel, gauge, pivot table *(round 1 done)*; round 2: heatmap (time parts),
+    scatter / bubble, histogram, world map
 
 **Out of scope for v1:** dashboard filters, multi-user permissions, alerts, scheduled
-reports, more chart types than table / big number / bar / line / pie.
+reports, chart types beyond the 15 of Part 11.
 
 ## Working rules
 - Work on one part at a time. Don't start the next part unless asked.
@@ -93,15 +96,27 @@ This folder may contain the Apache Superset source code. It is **read-only refer
     can't LIMIT inside IN). GROUP BY repeats expressions (Postgres would read an alias as the
     raw column); ORDER BY uses output names with explicit NULLS-lowest ordering (otherwise
     sqlglot emulates with CASE on MySQL). SQL gets `LIMIT row_limit + 1` so `truncated` is exact.
-    Pie (`build_pie`): one dimension + one metric, no grain; `series_limit` = top N slices, the
-    rest is one row with `__other` = 1 computed in SQL (LEFT JOIN on the top N), so "Other" is
-    right for AVG / COUNT DISTINCT too. Chart-data responses carry `range_start`/`range_end`
-    (the range filtered on, days inclusive).
+    Pie and treemap (`build_top_n`): one metric, no grain, one dimension (treemap: one or two
+    levels); `series_limit` = top N outer values, the rest is one row with `__other` = 1 (and
+    every level NULL) computed in SQL (LEFT JOIN on the top N), so "Other" is right for AVG /
+    COUNT DISTINCT too. Area = line, combo = bar's x axis without a series, funnel = one
+    dimension + one metric, gauge = one total: all through `build`; `_check_shape` has the
+    rules per type. Pivot tables (`build_pivot`): `dimensions` = rows, `column_dimensions` =
+    columns (at most 3 / 2), metrics; with `totals` every (row prefix × column prefix) level
+    is grouped **in SQL** (Postgres `GROUPING SETS`, one scan; MySQL has none: `UNION ALL`, one
+    branch per level), each row tagged `__row_level` / `__col_level` (how many dims are
+    grouped) so a real NULL is never a total. The browser only lays it out. Chart-data responses carry `range_start`/`range_end`
+    (the range filtered on, days inclusive). An ungrouped total over a time range gets a hidden
+    last column `__first_time` = MIN(time column) (`rows_probe`); the API strips it and returns
+    **no rows** when it is NULL, so "no data in the range" (big number shows "-" + the hint)
+    never looks like a real total of 0.
     `cache.py`: chart-data cache in the metadata DB (`chart_cache`), key = sha256(connection id
     + its `updated_at`, final SQL, row limit), so a changed chart/dataset/connection never gets
     a stale result. Request `cache_ttl` (seconds, 0 = off, null = 10 min) and `refresh` (skip
     it); response `cached_at`. Writes drop expired entries and enforce the size cap
-    (`VITA_CACHE_MAX_MB`, oldest first); results over 5 MB aren't cached. **Never** use it for
+    (`VITA_CACHE_MAX_MB`, oldest first); results over 5 MB aren't cached. The insert commits
+    first; cleanup runs behind `pg_try_advisory_xact_lock` (one at a time, others skip it:
+    parallel cleanups deadlocked), and a failed cache write never fails the request. **Never** use it for
     SQL Lab.
     Query model: `app/schemas/charts.py`. API: `app/api/charts.py` (`POST /api/chart-data`,
     not logged; `/api/charts` CRUD, params = {query, display}). Charts → datasets FK RESTRICT.
@@ -149,8 +164,24 @@ This folder may contain the Apache Superset source code. It is **read-only refer
     total without grain and the trend line), `options.ts` (pivot rows into series, ECharts
     options), `format.ts` (numeral.js formats like "0,0.00" / "0.0%", bucket labels by grain,
     NULL → "(empty)"; numbers may arrive as strings). `EChart.tsx` imports only the ECharts
-    parts it uses (bundled, no CDN; bar, line, pie + title for the donut center) and resizes
-    with its container at most once per animation frame; page tests mock it.
+    parts it uses (bundled, no CDN; bar, line, pie, treemap, funnel, gauge, title for the donut
+    center, mark areas) and resizes with its container at most once per animation frame; page
+    tests mock it. Canvas can't read CSS variables: ChartView resolves the series palette and
+    `DrawContext.tokens` (text, border, danger / warning (ochre) / success, accent, surface)
+    with `cssVar`, so charts never hold literal colors.
+    Chart types: 11 so far. Names in `vizTypes.ts` (tiny: the charts list and "Add chart"
+    are in the main bundle); the gallery (`ChartTypePicker.tsx` + `VizThumb.tsx` static SVGs
+    in theme colors, groups / descriptions / search in `vizGallery.ts`) is editor-only.
+    Never import `model.ts` from a main-bundle page. `adaptToViz` keeps what fits;
+    `switchReport` says what carried over and what didn't, `missingFor` what still needs
+    setting (shown under the picker). Area and combo go through `cartesianLayout` (area:
+    not stacked / stacked / 100% via `shares`, incomplete periods as a shaded band; combo:
+    `comboSeries` bar/line + left/right axis per metric). Treemap / funnel / gauge options in
+    `moreCharts.ts` (treemap outer boxes show their true value from a second query, like the
+    donut total: `chartRequests` → `total` + `totalViz`; labels pick a readable token color
+    with `readableOn`; funnel labels sit beside the steps). Pivot layout is pure
+    (`pivotTable.ts`: header rows, groups, SQL totals, collapse, 50-column cap, heat levels
+    `--heat-1..5`) + `PivotTable.tsx`. Gauge and big number show "-" + the hint with no rows.
     Side panel tabs: **Data** (`ChartControls.tsx`: what to query, debounced auto-update, cache
     setting) and **Customize** (`CustomizePanel.tsx`: the look, stored in `display`).
     `display.ts`: per-metric `FormatSpec` (chart format beats the metric's own; works for
@@ -174,6 +205,7 @@ This folder may contain the Apache Superset source code. It is **read-only refer
     Refresh all, auto-refresh, Retry) passes `refresh`. `DashboardGrid.tsx` wraps
     react-grid-layout v2 (page tests mock it; `DashboardGrid.test.tsx` drives the real one):
     24 columns, resize from all 8 handles (`RESIZE_HANDLES`), minimum size per chart type
+    (gauge 4×8, pivot 8×10, treemap / funnel 6×12, ...)
     (`minTileSize`); handles are hidden outside edit mode. Text tiles
     are markdown rendered by `markdown.ts` (marked + DOMPurify — always sanitize). Pure helpers
     in `layout.ts`. Narrow screens stack tiles (view mode). The router is a data router
@@ -206,7 +238,8 @@ This folder may contain the Apache Superset source code. It is **read-only refer
   - Contrast: `npm run check:contrast` (`scripts/contrast.mjs`) checks every text/background
     token pair in both themes; add new pairs there when you add tokens. It also checks the
     10 chart series colors (`--series-1..10`): 3:1 on cards and CIEDE2000 ≥ 15 between any
-    two (≥ 18 for neighbors). The first three stay orange / olive / dark olive.
+    two (≥ 18 for neighbors). The first three stay orange / olive / dark olive. Pivot heat
+    cells (`--heat-1..5`, an olive tint) keep `--text` at 4.5:1+.
   - Lint: `npm run lint` (ESLint flat config `eslint.config.js`, type-aware, max 0 warnings).
   - Tests: Vitest + Testing Library (`*.test.ts(x)` next to the code, setup in
     `src/test/setup.ts`). Monaco is mocked with a textarea in page tests.
@@ -263,7 +296,7 @@ Calm, earthy, instrument-like; **one** loud signal color. Mockups: `design/*.dc.
   live in `App.css` (organized by page); new components prefer Tailwind utilities.
 - **Lazy chunks**: SQL Lab, chart editor, dashboard page, dataset editor, the schema diagram
   and the command palette are lazy-loaded; keep heavy libraries (Monaco, ECharts, TanStack,
-  cmdk, Motion, dagre) out of the main bundle.
+  cmdk, Motion, dagre, chart code) out of the main bundle.
 
 ## Testing notes
 - Backend tests run against a separate `vita_test` database (created and migrated

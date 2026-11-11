@@ -12,8 +12,13 @@ import { hasTimeRange } from "./emptyRange.ts";
 import { useTimeExtent } from "./extentCache.ts";
 import { categoryLabel, formatBucket, toNumber } from "./format.ts";
 import { metricLabel, PIE_MAX_READABLE, type ChartState } from "./model.ts";
-import { cartesianLayout, pieOption, sparklineOption, type DrawContext } from "./options.ts";
+import { funnelOption, gaugeOption, gaugeTargetText, nonAdditive, treemapOption } from "./moreCharts.ts";
+import { cartesianLayout, pieOption, sparklineOption, type DrawContext, type DrawToken } from "./options.ts";
+import PivotTable from "./PivotTable.tsx";
 import TableChart from "./TableChart.tsx";
+
+/** Bar-like charts with a category or time x axis. */
+const CARTESIAN = new Set(["bar", "line", "area", "combo"]);
 
 /** How long the size must stay still before labels are laid out again. */
 const RESIZE_SETTLE_MS = 150;
@@ -60,10 +65,28 @@ function useWidth(): [RefObject<HTMLDivElement | null>, number] {
 }
 
 /** Real colors for the canvas, re-read when the theme changes. */
-function useDrawColors(): Pick<DrawContext, "colors" | "labelColor"> {
+function useDrawColors(): Pick<DrawContext, "colors" | "labelColor" | "tokens"> {
   const { resolved } = useTheme();
   return useMemo(
-    () => ({ colors: seriesColors(), labelColor: cssVar("--text-muted") }),
+    () => ({
+      colors: seriesColors(),
+      labelColor: cssVar("--text-muted"),
+      tokens: Object.fromEntries(
+        (
+          [
+            ["text", "--text"],
+            ["muted", "--text-muted"],
+            ["border", "--border-strong"],
+            ["band", "--hover"],
+            ["danger", "--danger"],
+            ["warning", "--series-5"], // ochre: an amber band
+            ["success", "--success"],
+            ["accent", "--accent"],
+            ["surface", "--surface"],
+          ] as [DrawToken, string][]
+        ).map(([k, v]) => [k, cssVar(v)]),
+      ),
+    }),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the tokens change with the theme
     [resolved],
   );
@@ -86,7 +109,7 @@ export default function ChartView({
   const drawColors = useDrawColors();
   // Incomplete first / last periods need to know where the data is.
   const timeColumn = query.time?.column ?? null;
-  const needsExtent = ((vizType === "bar" || vizType === "line") && hasTimeAxis(state)) || (vizType === "big_number" && trend !== null);
+  const needsExtent = (CARTESIAN.has(vizType) && hasTimeAxis(state)) || (vizType === "big_number" && trend !== null);
   const extent = useTimeExtent(dataset?.id ?? null, timeColumn, needsExtent && result.rows.length > 0);
   const coverage: Coverage = useMemo(
     () => ({
@@ -100,7 +123,7 @@ export default function ChartView({
 
   const layout = useMemo(
     () =>
-      vizType === "bar" || vizType === "line"
+      CARTESIAN.has(vizType)
         ? cartesianLayout(state, result, dataset, { ...drawColors, width, coverage })
         : null,
     [state, result, dataset, drawColors, width, coverage, vizType],
@@ -108,7 +131,9 @@ export default function ChartView({
 
   let body: ReactNode;
   if (result.rows.length === 0) {
-    body =
+    // No rows (the API also returns none for a total whose time range had no rows, so a real
+    // 0 and "no data" never look the same).
+    const empty =
       dataset && hasTimeRange(result.range_start, result.range_end) ? (
         <EmptyRange
           datasetId={dataset.id}
@@ -120,12 +145,21 @@ export default function ChartView({
       ) : (
         <p className="chart-empty">No data</p>
       );
+    body = vizType === "big_number" || vizType === "gauge" ? <EmptyBigNumber state={state} dataset={dataset} message={empty} /> : empty;
   } else if (vizType === "table") {
     body = <TableChart state={state} result={result} dataset={dataset} />;
   } else if (vizType === "pie") {
     body = <PieView state={state} result={result} total={total} dataset={dataset} drawColors={drawColors} showHints={showHints} />;
   } else if (vizType === "big_number") {
     body = <BigNumber state={state} result={result} trend={trend} previous={previous} dataset={dataset} coverage={coverage} drawColors={drawColors} />;
+  } else if (vizType === "pivot_table") {
+    body = <PivotTable state={state} result={result} dataset={dataset} />;
+  } else if (vizType === "treemap") {
+    body = <TreemapView state={state} result={result} total={total} dataset={dataset} drawColors={drawColors} showHints={showHints} />;
+  } else if (vizType === "funnel") {
+    body = <FunnelView state={state} result={result} dataset={dataset} drawColors={drawColors} />;
+  } else if (vizType === "gauge") {
+    body = <GaugeView state={state} result={result} dataset={dataset} drawColors={drawColors} />;
   } else {
     const plan = layout!.labels;
     // Dates run in order, so skipping some date labels hides nothing; category labels are
@@ -133,7 +167,7 @@ export default function ChartView({
     const notice = hasTimeAxis(state)
       ? null
       : plan.crowded
-        ? `Not every label fits; hover a ${vizType === "bar" ? "bar" : "point"} for its name.`
+        ? `Not every label fits; hover a ${vizType === "bar" || vizType === "combo" ? "bar" : "point"} for its name.`
         : plan.suggestHorizontal && vizType === "bar"
           ? plan.truncated
             ? "Long labels are cut; hover a bar for its full name. Horizontal bars have room for them."
@@ -143,8 +177,8 @@ export default function ChartView({
       <>
         <EChart
           option={layout!.option}
-          label={`${vizType === "bar" ? "Bar" : "Line"} chart of ${query.metrics.map((m) => metricLabel(m, dataset)).join(", ")}${
-            layout!.partial.size ? " (dotted or lighter: incomplete period)" : ""
+          label={`${CHART_NAMES[vizType] ?? "Chart"} of ${query.metrics.map((m) => metricLabel(m, dataset)).join(", ")}${
+            layout!.partial.size ? ` (${vizType === "area" ? "shaded" : "dotted or lighter"}: incomplete period)` : ""
           }`}
         />
         {notice && (
@@ -224,6 +258,79 @@ function BigNumber({
           )}
         </>
       )}
+    </div>
+  );
+}
+
+const CHART_NAMES: Partial<Record<ChartState["vizType"], string>> = { bar: "Bar chart", line: "Line chart", area: "Area chart", combo: "Combo chart" };
+
+type DrawColors = Pick<DrawContext, "colors" | "labelColor" | "tokens">;
+
+function TreemapView({
+  state,
+  result,
+  total,
+  dataset,
+  drawColors,
+  showHints,
+}: {
+  state: ChartState;
+  result: ChartDataResult;
+  total: ChartDataResult | null;
+  dataset: Dataset | null;
+  drawColors: DrawColors;
+  showHints: boolean;
+}) {
+  const option = useMemo(() => treemapOption(state, result, dataset, { ...drawColors, total }), [state, result, dataset, drawColors, total]);
+  const metric = state.query.metrics[0];
+  const hint = showHints && state.query.dimensions.length === 2 && nonAdditive(state, dataset);
+  return (
+    <>
+      <EChart option={option} label={`Treemap of ${metric ? metricLabel(metric, dataset) : ""}`} />
+      {hint && (
+        <p className="chart-notice" role="note">
+          <TriangleAlert size={14} aria-hidden />
+          <span>Box sizes add up their parts, which isn't meaningful for this metric. Hover a group for its real value, or use a sum or count.</span>
+        </p>
+      )}
+    </>
+  );
+}
+
+function FunnelView({ state, result, dataset, drawColors }: { state: ChartState; result: ChartDataResult; dataset: Dataset | null; drawColors: DrawColors }) {
+  const option = useMemo(() => funnelOption(state, result, dataset, drawColors), [state, result, dataset, drawColors]);
+  const metric = state.query.metrics[0];
+  return <EChart option={option} label={`Funnel of ${metric ? metricLabel(metric, dataset) : ""}`} />;
+}
+
+function GaugeView({ state, result, dataset, drawColors }: { state: ChartState; result: ChartDataResult; dataset: Dataset | null; drawColors: DrawColors }) {
+  const option = useMemo(() => gaugeOption(state, result, dataset, drawColors), [state, result, dataset, drawColors]);
+  const metric = state.query.metrics[0];
+  const value = result.rows[0]?.[0];
+  const format = metric ? metricFormatter(state.display, metric, dataset) : (v: unknown) => String(v);
+  const target = gaugeTargetText(state, result, dataset);
+  return (
+    <div className="gauge">
+      <EChart option={option} label={`Gauge: ${metric ? metricLabel(metric, dataset) : ""} ${format(value)}${target ? `, ${target}` : ""}`} />
+      {target && (
+        <p className="gauge-target mono" data-testid="gauge-target">
+          {target}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** A big number with no data: "-" instead of a number (never 0), then why. */
+function EmptyBigNumber({ state, dataset, message }: { state: ChartState; dataset: Dataset | null; message: ReactNode }) {
+  const metric = state.query.metrics[0];
+  return (
+    <div className={`big-number big-number-empty big-number-size-${state.display.font_size ?? "auto"}`}>
+      <div className="big-number-value is-empty" data-testid="big-number-value" aria-label="No data">
+        -
+      </div>
+      <div className="big-number-subtitle">{state.display.subtitle || (metric ? metricLabel(metric, dataset) : "")}</div>
+      {message}
     </div>
   );
 }

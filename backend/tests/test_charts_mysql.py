@@ -108,7 +108,9 @@ def dataset() -> Dataset:
 def run(details: ConnectionDetails, viz: VizType, **query: Any) -> list[list[Any]]:
     built = build_chart_query(dataset(), "mysql", viz, ChartQuery(dataset_id=1, **query),
                               today=date(2025, 1, 10))  # fmt: skip
-    return run_query(details, built.sql, limit=built.row_limit).rows
+    rows = run_query(details, built.sql, limit=built.row_limit).rows
+    # Like the API: drop the rows probe (MIN of the time column) of totals over a time range.
+    return [row[:-1] for row in rows if row[-1] is not None] if built.rows_probe else rows
 
 
 @pytest.mark.parametrize("column", ["order date", "created at"])
@@ -199,3 +201,42 @@ def test_dimensions_order_and_limit(details: ConnectionDetails) -> None:
     rows = run(details, "table", metrics=["count", {"column": "select", "aggregate": "MAX"}],
                dimensions=["status"], order_by={"by": "status", "descending": False}, row_limit=3)  # fmt: skip
     assert rows == [[None, 1, 4.0], ["100% off_x", 1, 3.0], ['it\'s "odd"', 1, 1.0]]
+
+
+# ---------- Part 11: more chart types on MySQL ----------
+
+
+def test_pivot_totals_with_union_all(details: ConnectionDetails) -> None:
+    """MySQL has no GROUPING SETS: one UNION ALL branch per level; AVG totals still right."""
+    avg = {"column": "select", "aggregate": "AVG", "label": "avg"}
+    rows = run(details, "pivot_table", metrics=[avg, "count"], dimensions=["status"],
+               column_dimensions=["order date"], totals=True, row_limit=1000)  # fmt: skip
+    got = {(r[0], r[1], r[2], r[3]): (float(r[4]), r[5]) for r in rows}
+    amounts = [r[3] for r in ROWS]
+    assert got[(None, None, 0, 0)][0] == pytest.approx(sum(amounts) / len(amounts))
+    assert got[(None, None, 0, 0)][1] == len(ROWS)
+    paid = [r[3] for r in ROWS if r[2] == "paid"]
+    assert got[("paid", None, 1, 0)][0] == pytest.approx(sum(paid) / len(paid))
+    assert got[("paid", None, 1, 0)][1] == len(paid)
+    # A real NULL status is a row of its own (level 1), not the total (level 0).
+    assert got[(None, None, 1, 0)] == (4.0, 1)
+    assert got[(None, "2025-01-01", 0, 1)] == (5.5, 1)
+    assert got[("paid", "2024-12-29", 1, 1)] == (10.0, 1)
+    assert len(got) == len(rows)
+
+
+def test_treemap_and_funnel_and_gauge(details: ConnectionDetails) -> None:
+    rows = run(details, "treemap", metrics=["total"], dimensions=["status", "order date"],
+               series_limit=1)  # fmt: skip
+    inside = [r for r in rows if r[2] == 0]
+    assert {r[0] for r in inside} == {"paid"}
+    assert sum(r[3] for r in inside) == pytest.approx(87.25)
+    [other] = [r for r in rows if r[2] == 1]
+    assert other[:3] == [None, None, 1] and other[3] == pytest.approx(5.5 + 4.0 + 3.0 + 1.0)
+
+    funnel = run(details, "funnel", metrics=["count"], dimensions=["status"])
+    assert funnel[0] == ["paid", 4]
+    assert run(details, "gauge", metrics=["total"]) == [[pytest.approx(100.75)]]
+    assert run(details, "gauge", metrics=["total"], time={"range": {"kind": "last_7_days"}}) == [
+        [8.25]
+    ]

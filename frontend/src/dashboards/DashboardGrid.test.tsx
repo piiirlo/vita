@@ -83,6 +83,12 @@ describe("DashboardGrid resizing", () => {
     expect(minTileSize(chart, "big_number")).toEqual({ w: 4, h: 8 });
     expect(minTileSize(chart, "pie")).toEqual({ w: 6, h: 12 });
     expect(minTileSize(chart, "bar")).toEqual({ w: 6, h: 10 });
+    expect(minTileSize(chart, "gauge")).toEqual({ w: 4, h: 8 });
+    expect(minTileSize(chart, "treemap")).toEqual({ w: 6, h: 12 });
+    expect(minTileSize(chart, "funnel")).toEqual({ w: 6, h: 12 });
+    expect(minTileSize(chart, "pivot_table")).toEqual({ w: 8, h: 10 });
+    expect(minTileSize(chart, "area")).toEqual({ w: 6, h: 10 });
+    expect(minTileSize(chart, "combo")).toEqual({ w: 6, h: 10 });
     expect(minTileSize({ id: "t", type: "text", text: "", x: 0, y: 0, w: 4, h: 4 }, undefined)).toEqual({ w: 3, h: 3 });
   });
 });

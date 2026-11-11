@@ -1036,3 +1036,231 @@ def test_sql_lab_is_never_cached(
         )
         assert response.status_code == 200, response.text
     assert cache_rows(session_factory) == 0
+
+
+def test_a_total_over_an_empty_range_has_no_rows(
+    client: TestClient, lines: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """COUNT would say 0 and SUM NULL: the API says "no rows", like the grouped charts do."""
+    monkeypatch.setattr(charts_api, "today", lambda: date(2040, 1, 1))
+    for metric in ["count", "revenue", {"column": "quantity", "aggregate": "AVG"}]:
+        data = chart_data(client, "big_number", lines, metrics=[metric],
+                          time={"range": {"kind": "last_30_days"}})  # fmt: skip
+        assert data["rows"] == [], metric
+        assert data["row_count"] == 0
+        assert [c["name"] for c in data["columns"]] == [data["columns"][0]["name"]]
+        assert (data["range_start"], data["range_end"]) == ("2039-12-02", "2040-01-01")
+    # A table total behaves the same.
+    table = chart_data(client, "table", lines, metrics=["count"],
+                       time={"range": {"kind": "last_30_days"}})  # fmt: skip
+    assert table["rows"] == []
+
+
+def test_a_real_zero_total_is_a_row(
+    client: TestClient, lines: int, expect: Callable[..., Any]
+) -> None:
+    """Rows in the range whose total is 0 return 0, never "no data"."""
+    rng = {"kind": "custom", "start": "2000-01-01", "end": "2100-01-01"}
+    store = [{"column": "channel", "operator": "=", "value": "store"}]
+    [[stores]] = expect("SELECT COUNT(*) FROM lines WHERE channel = 'store'")
+    assert stores > 0  # rows exist...
+    data = chart_data(client, "big_number", lines, filters=store, time={"range": rng},
+                      metrics=[{"column": "web_or_mobile", "aggregate": "COUNT"}])  # fmt: skip
+    assert data["rows"] == [[0]]  # ...but none has a web/mobile channel
+    assert [c["name"] for c in data["columns"]] == ["COUNT(web_or_mobile)"]
+    # Without a time range nothing is probed; the total is still there.
+    plain = chart_data(client, "big_number", lines, filters=store,
+                       metrics=[{"column": "web_or_mobile", "aggregate": "COUNT"}])  # fmt: skip
+    assert plain["rows"] == [[0]]
+    assert "__first_time" not in plain["sql"]
+
+
+def test_the_rows_probe_is_stripped_from_cached_results_too(
+    client: TestClient, lines: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(charts_api, "today", lambda: date(2040, 1, 1))
+    payload = {"viz_type": "big_number", "cache_ttl": 600,
+               "query": {"dataset_id": lines, "metrics": ["count"],
+                         "time": {"range": {"kind": "last_30_days"}}}}  # fmt: skip
+    first = client.post("/api/chart-data", json=payload).json()
+    second = client.post("/api/chart-data", json=payload).json()
+    assert second["cached_at"] is not None
+    assert first["rows"] == second["rows"] == []
+    assert first["columns"] == second["columns"]
+    assert len(second["columns"]) == 1
+
+
+def test_parallel_cache_writes_never_fail(
+    connection_id: int, session_factory: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The editor stores a big number's total, trend and previous period at once; their
+    cleanups once deadlocked in Postgres (HTTP 500). One cleanup at a time now."""
+    from concurrent.futures import ThreadPoolExecutor
+    from datetime import UTC, datetime, timedelta
+
+    from app.charts import cache
+
+    monkeypatch.setattr(cache, "MAX_ENTRIES", 5)  # every cleanup deletes rows
+    past = datetime.now(UTC) - timedelta(hours=1)
+    with session_factory() as db:
+        for i in range(200):  # expired entries for the cleanups to fight over
+            db.execute(
+                text(
+                    "INSERT INTO chart_cache (key, connection_id, result, size_bytes, "
+                    "created_at, expires_at) VALUES (:k, :c, '{}', 2, :t, :t)"
+                ),
+                {"k": f"old{i}", "c": connection_id, "t": past},
+            )
+        db.commit()
+
+    def writer(n: int) -> None:
+        with session_factory() as db:
+            for i in range(15):
+                cache.put(db, f"w{n}-{i}", connection_id, {"rows": [[i]]}, 600)
+
+    with ThreadPoolExecutor(8) as pool:
+        for future in [pool.submit(writer, n) for n in range(8)]:
+            future.result()  # re-raises a deadlock
+    with session_factory() as db:
+        cache.cleanup(db)
+        db.commit()
+    assert cache_rows(session_factory) <= 5
+
+
+def test_a_failed_cache_write_still_returns_the_chart(
+    client: TestClient, lines: int, monkeypatch: pytest.MonkeyPatch, session_factory: Any
+) -> None:
+    from sqlalchemy.exc import OperationalError
+
+    from app.charts import cache
+
+    def broken(*_args: Any, **_kwargs: Any) -> bool:
+        raise OperationalError("INSERT", {}, Exception("deadlock detected"))
+
+    monkeypatch.setattr(cache, "put", broken)
+    data = cached(client, lines)
+    assert data["rows"] and data["cached_at"] is None
+    assert cache_rows(session_factory) == 0
+
+
+def test_only_one_cache_cleanup_runs_at_a_time(connection_id: int, session_factory: Any) -> None:
+    """While another session cleans up (holds the lock), a write stores its entry and skips
+    the cleanup instead of deleting the same rows in parallel."""
+    from datetime import UTC, datetime, timedelta
+
+    from app.charts import cache
+
+    past = datetime.now(UTC) - timedelta(hours=1)
+    with session_factory() as db:
+        db.execute(
+            text(
+                "INSERT INTO chart_cache (key, connection_id, result, size_bytes, created_at, "
+                "expires_at) VALUES ('old', :c, '{}', 2, :t, :t)"
+            ),
+            {"c": connection_id, "t": past},
+        )
+        db.commit()
+    with session_factory() as other, session_factory() as db:
+        assert other.scalar(
+            text("SELECT pg_try_advisory_xact_lock(:id)"), {"id": cache.CLEANUP_LOCK_ID}
+        )
+        assert cache.put(db, "new", connection_id, {"rows": [[1]]}, 600)
+        keys = set(db.scalars(text("SELECT key FROM chart_cache")))
+        assert keys == {"old", "new"}  # stored; the expired one is left for the next write
+        other.rollback()  # the other cleanup is done
+        cache.put(db, "newer", connection_id, {"rows": [[2]]}, 600)
+        assert set(db.scalars(text("SELECT key FROM chart_cache"))) == {"new", "newer"}
+
+
+# ---------- Part 11: more chart types on a real database ----------
+
+AVG_QTY = {"column": "quantity", "aggregate": "AVG", "label": "avg_qty"}
+CUSTOMERS = {"column": "customer_id", "aggregate": "COUNT_DISTINCT", "label": "customers"}
+
+
+def as_float(value: Any) -> float | None:
+    return None if value is None else float(value)
+
+
+def test_pivot_totals_are_computed_in_sql(
+    client: TestClient, lines: int, expect: Callable[..., Any]
+) -> None:
+    """Subtotals and totals of AVG and COUNT DISTINCT can't be added up from the cells: each
+    level is its own grouping (GROUPING SETS on Postgres)."""
+    data = chart_data(client, "pivot_table", lines, metrics=[AVG_QTY, CUSTOMERS],
+                      dimensions=["status"], column_dimensions=["channel"], totals=True)  # fmt: skip
+    names = [c["name"] for c in data["columns"]]
+    assert names == ["status", "channel", "__row_level", "__col_level", "avg_qty", "customers"]
+    got = {(r[0], r[1], r[2], r[3]): (as_float(r[4]), r[5]) for r in data["rows"]}
+
+    def want(sql: str) -> dict[Any, tuple[float | None, int]]:
+        return {tuple(r[:-2]): (as_float(r[-2]), r[-1]) for r in expect(sql)}
+
+    agg = "AVG(quantity), COUNT(DISTINCT customer_id)"
+    cells = want(f"SELECT status, channel, 1, 1, {agg} FROM lines GROUP BY status, channel")
+    row_totals = want(f"SELECT status, NULL, 1, 0, {agg} FROM lines GROUP BY status")
+    col_totals = want(f"SELECT NULL, channel, 0, 1, {agg} FROM lines GROUP BY channel")
+    grand = want(f"SELECT NULL, NULL, 0, 0, {agg} FROM lines")
+    expected = {**cells, **row_totals, **col_totals, **grand}
+    assert got.keys() == expected.keys()
+    for key, (avg, distinct) in expected.items():
+        assert got[key][0] == pytest.approx(avg)
+        assert got[key][1] == distinct
+    # The grand total of distinct customers is less than the sum of the per-status ones.
+    assert grand[(None, None, 0, 0)][1] < sum(v[1] for v in row_totals.values())
+
+
+def test_pivot_without_totals_has_only_cells(client: TestClient, lines: int) -> None:
+    data = chart_data(client, "pivot_table", lines, metrics=["count"],
+                      dimensions=["status"], column_dimensions=["channel"])  # fmt: skip
+    assert {(r[2], r[3]) for r in data["rows"]} == {(1, 1)}
+
+
+def test_treemap_two_levels_with_other(
+    client: TestClient, lines: int, expect: Callable[..., Any]
+) -> None:
+    data = chart_data(client, "treemap", lines, metrics=["revenue"],
+                      dimensions=["status", "channel"], series_limit=2)  # fmt: skip
+    assert [c["name"] for c in data["columns"]] == ["status", "channel", "__other", "revenue"]
+    top2 = [
+        r[0]
+        for r in expect(
+            "SELECT status FROM lines GROUP BY status ORDER BY SUM(line_total) DESC, status LIMIT 2"
+        )
+    ]
+    inside = [r for r in data["rows"] if r[2] == 0]
+    assert {r[0] for r in inside} == set(top2)
+    want = {(r[0], r[1]): float(r[2]) for r in expect(
+        "SELECT status, channel, SUM(line_total) FROM lines GROUP BY status, channel")}  # fmt: skip
+    for status, channel, _, revenue in inside:
+        assert float(revenue) == pytest.approx(want[(status, channel)])
+    [other] = [r for r in data["rows"] if r[2] == 1]
+    assert other[0] is None and other[1] is None
+    rest = sum(v for (s, _), v in want.items() if s not in top2)
+    assert float(other[3]) == pytest.approx(rest)
+
+
+def test_funnel_gauge_area_combo_run(
+    client: TestClient, lines: int, expect: Callable[..., Any]
+) -> None:
+    funnel = chart_data(client, "funnel", lines, metrics=["count"], dimensions=["status"])
+    counts = [r[1] for r in funnel["rows"]]
+    assert counts == sorted(counts, reverse=True)
+    assert sum(counts) == expect("SELECT COUNT(*) FROM lines")[0][0]
+
+    gauge = chart_data(client, "gauge", lines, metrics=[AVG_QTY])
+    assert as_float(gauge["rows"][0][0]) == pytest.approx(
+        as_float(expect("SELECT AVG(quantity) FROM lines")[0][0])
+    )
+
+    month = {"grain": "month"}
+    area = chart_data(client, "area", lines, metrics=["revenue"], series="channel", time=month)
+    line = chart_data(client, "line", lines, metrics=["revenue"], series="channel", time=month)
+    assert area["rows"] == line["rows"]
+
+    combo = chart_data(client, "combo", lines, metrics=["revenue", "count"], time=month)
+    assert [c["name"] for c in combo["columns"]] == ["order_date", "revenue", "count"]
+    assert (
+        len(combo["rows"])
+        == expect("SELECT COUNT(DISTINCT DATE_TRUNC('month', order_date)) FROM lines")[0][0]
+    )

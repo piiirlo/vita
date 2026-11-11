@@ -396,3 +396,139 @@ def test_null_handling(filter_: dict[str, Any], postgres: str, mysql: str) -> No
     query = {"metrics": ["count"], "filters": [filter_]}
     assert f"WHERE {postgres} ORDER BY" in sql(query, PG)
     assert f"WHERE {mysql} ORDER BY" in sql(query, MY)
+
+
+# ---------- Part 11: more chart types (SQL on both dialects) ----------
+
+TIME_MONTH = {"column": "order_date", "grain": "month"}
+
+
+@pytest.mark.parametrize("db", [PG, MY])
+def test_area_is_a_line_with_series(db: str) -> None:
+    line = sql({"metrics": ["revenue"], "series": "status", "time": TIME_MONTH}, db, "line")
+    area = sql({"metrics": ["revenue"], "series": "status", "time": TIME_MONTH}, db, "area")
+    assert area == line
+    assert "top_series" in area
+
+
+@pytest.mark.parametrize("db", [PG, MY])
+def test_combo_metrics_on_a_time_or_dimension_axis(db: str) -> None:
+    q = '"' if db == PG else "`"
+    by_time = sql({"metrics": ["revenue", "count"], "time": TIME_MONTH}, db, "combo")
+    assert f"SUM(amount) AS {q}revenue{q}" in by_time and f"COUNT(*) AS {q}count{q}" in by_time
+    assert f"ORDER BY {q}order_date{q} ASC" in by_time
+    by_dim = sql({"metrics": ["revenue", "count"], "dimensions": ["status"]}, db, "combo")
+    assert f"GROUP BY {q}status{q}" in by_dim
+
+
+@pytest.mark.parametrize("db", [PG, MY])
+def test_funnel_steps_by_value(db: str) -> None:
+    q = '"' if db == PG else "`"
+    text = sql({"metrics": ["count"], "dimensions": ["status"], "row_limit": 50}, db, "funnel")
+    assert f"SELECT {q}status{q}, COUNT(*) AS {q}count{q}" in text
+    assert f"GROUP BY {q}status{q} ORDER BY {q}count{q} DESC" in text
+    assert text.endswith("LIMIT 51")
+
+
+@pytest.mark.parametrize("db", [PG, MY])
+def test_gauge_is_one_total_with_a_rows_probe(db: str) -> None:
+    rng = {"column": "order_date", "range": {"kind": "last_30_days"}}
+    built = build_chart_query(dataset(), db, "gauge",
+                              ChartQuery(dataset_id=1, metrics=["revenue"], time=rng), today=TODAY)  # fmt: skip
+    assert built.rows_probe
+    assert "GROUP BY" not in built.sql
+    assert "__first_time" in built.sql
+
+
+@pytest.mark.parametrize("db", [PG, MY])
+def test_treemap_two_levels_top_n_and_other(db: str) -> None:
+    q = '"' if db == PG else "`"
+    text = sql({"metrics": ["revenue"], "dimensions": ["status", "is_paid"], "series_limit": 5},
+               db, "treemap")  # fmt: skip
+    # Both levels are blanked outside the top N outer values: one "Other" box.
+    assert (
+        f"CASE WHEN {q}top_series{q}.{q}__is_top{q} = 1 THEN {q}status{q} END AS {q}status{q}"
+        in text
+    )
+    assert (
+        f"CASE WHEN {q}top_series{q}.{q}__is_top{q} = 1 THEN {q}is_paid{q} END AS {q}is_paid{q}"
+        in text
+    )
+    assert (
+        f"GROUP BY {q}status{q} ORDER BY SUM(amount) DESC" in text
+    )  # the top N, by the outer level
+    assert "LIMIT 5" in text
+    # One level without a limit: a plain GROUP BY, like a pie.
+    plain = sql(
+        {"metrics": ["revenue"], "dimensions": ["status"], "series_limit": None}, db, "treemap"
+    )
+    assert "top_series" not in plain and f"GROUP BY {q}status{q}" in plain
+
+
+def test_pivot_on_postgres_is_one_scan_with_grouping_sets() -> None:
+    text = sql({"metrics": ["revenue"], "dimensions": ["status", "select"],
+                "column_dimensions": ["is_paid"], "totals": True}, PG, "pivot_table")  # fmt: skip
+    assert text.count("FROM") == 1
+    assert (
+        'GROUPING SETS ( (), ("is_paid"), ("status"), ("status", "is_paid"), ("status", "select"), '
+        '("status", "select", "is_paid") )' in text
+    )
+    assert '( 1 - GROUPING("status") + 1 - GROUPING("select") ) AS "__row_level"' in text
+    assert '( 1 - GROUPING("is_paid") ) AS "__col_level"' in text
+
+
+def test_pivot_on_mysql_is_a_union_all_per_level() -> None:
+    text = sql({"metrics": ["revenue"], "dimensions": ["status", "select"],
+                "column_dimensions": ["is_paid"], "totals": True}, MY, "pivot_table")  # fmt: skip
+    assert "GROUPING" not in text
+    assert text.count("UNION ALL") == 5  # (2 + 1) row levels x (1 + 1) column levels
+    assert (
+        "NULL AS `status`, NULL AS `select`, NULL AS `is_paid`, 0 AS `__row_level`, 0 AS `__col_level`"
+        in text
+    )
+    assert (
+        "`status` AS `status`, NULL AS `select`, `is_paid` AS `is_paid`, 1 AS `__row_level`, 1 AS `__col_level`"
+        in text
+    )
+    assert text.endswith("LIMIT 1001")
+
+
+@pytest.mark.parametrize("db", [PG, MY])
+def test_pivot_without_totals_is_one_group_by(db: str) -> None:
+    q = '"' if db == PG else "`"
+    text = sql({"metrics": ["count"], "dimensions": ["status"], "column_dimensions": ["is_paid"]},
+               db, "pivot_table")  # fmt: skip
+    assert "GROUPING" not in text and "UNION" not in text
+    assert f"1 AS {q}__row_level{q}, 1 AS {q}__col_level{q}" in text
+    assert f"GROUP BY {q}status{q}, {q}is_paid{q}" in text
+
+
+@pytest.mark.parametrize(
+    ("viz", "query", "message"),
+    [
+        ("area", {"metrics": ["count"]}, "needs a time column and a time grain"),
+        ("area", {"metrics": ["count"], "dimensions": ["status"], "time": TIME_MONTH}, "x axis is time"),
+        ("combo", {"metrics": ["count"]}, "Pick the combo chart's x axis"),
+        ("combo", {"metrics": ["count"], "dimensions": ["status"], "series": "is_paid"},
+         "Only bar and line charts (and area charts) have a series"),
+        ("funnel", {"metrics": ["count"], "dimensions": ["status", "is_paid"]}, "exactly one dimension (the steps)"),
+        ("funnel", {"metrics": ["count", "revenue"], "dimensions": ["status"]}, "A funnel shows exactly one metric"),
+        ("gauge", {"metrics": ["count"], "dimensions": ["status"]}, "A gauge can't have dimensions"),
+        ("gauge", {"metrics": ["count"], "time": TIME_MONTH}, "A gauge has no time grain"),
+        ("treemap", {"metrics": ["count"], "dimensions": []}, "one or two dimensions"),
+        ("treemap", {"metrics": ["count"], "dimensions": ["status", "select", "is_paid"]}, "one or two dimensions"),
+        ("treemap", {"metrics": ["count"], "dimensions": ["status", "status"]}, "two different dimensions"),
+        ("pivot_table", {"metrics": ["count"]}, "at least one row or column dimension"),
+        ("pivot_table", {"metrics": ["count"], "dimensions": ["status", "select", "is_paid", "order_date"]},
+         "at most 3 row dimensions"),
+        ("pivot_table", {"metrics": ["count"], "column_dimensions": ["status", "select", "is_paid"]},
+         "at most 2 column dimensions"),
+        ("pivot_table", {"metrics": ["count"], "dimensions": ["status"], "column_dimensions": ["status"]},
+         "both a row and a column dimension"),
+        ("pivot_table", {"metrics": ["count"], "dimensions": ["status"], "time": TIME_MONTH}, "no time grain"),
+        ("bar", {"metrics": ["count"], "dimensions": ["status"], "column_dimensions": ["is_paid"]},
+         "Only pivot tables have column dimensions"),
+    ],
+)  # fmt: skip
+def test_part11_validation(viz: VizType, query: dict[str, Any], message: str) -> None:
+    assert message in error(query, viz)

@@ -1,5 +1,5 @@
-import { BarChart, LineChart, PieChart } from "echarts/charts";
-import { GridComponent, LegendComponent, TitleComponent, TooltipComponent } from "echarts/components";
+import { BarChart, FunnelChart, GaugeChart, LineChart, PieChart, TreemapChart } from "echarts/charts";
+import { GridComponent, LegendComponent, MarkAreaComponent, TitleComponent, TooltipComponent } from "echarts/components";
 import * as echarts from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
 import type { EChartsOption } from "echarts";
@@ -8,9 +8,22 @@ import { useEffect, useRef } from "react";
 import { useTheme } from "../theme/theme.ts";
 import { registerVitaTheme } from "./echartsTheme.ts";
 
-// Bundled locally and tree-shaken: only what bar / line / pie charts need (the title is the
-// donut's center label).
-echarts.use([BarChart, LineChart, PieChart, GridComponent, LegendComponent, TitleComponent, TooltipComponent, CanvasRenderer]);
+// Bundled locally and tree-shaken: only the chart types Vita draws (the title is the donut's
+// center label; mark areas shade incomplete periods of area charts).
+echarts.use([
+  BarChart,
+  LineChart,
+  PieChart,
+  TreemapChart,
+  FunnelChart,
+  GaugeChart,
+  GridComponent,
+  LegendComponent,
+  MarkAreaComponent,
+  TitleComponent,
+  TooltipComponent,
+  CanvasRenderer,
+]);
 
 type Props = {
   option: EChartsOption;

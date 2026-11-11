@@ -18,6 +18,7 @@ import {
   type VizType,
 } from "../api.ts";
 import ChartControls from "../charts/ChartControls.tsx";
+import { vizLabel } from "../charts/vizTypes.ts";
 import ChartView from "../charts/ChartView.tsx";
 import CustomizePanel from "../charts/CustomizePanel.tsx";
 import { drawState } from "../charts/display.ts";
@@ -29,7 +30,6 @@ import {
   defaultQuery,
   fromParams,
   toParams,
-  VIZ_TYPES,
   type ChartState,
   type DisplayOptions,
 } from "../charts/model.ts";
@@ -326,7 +326,7 @@ export default function ChartEditorPage() {
           : undefined;
   const shownSeriesNames = shown ? seriesNamesOf(shown.state, shown.main, dataset) : [];
   const sqls = shown ? [shown.main.sql, ...(shown.trend ? [shown.trend.sql] : [])] : [];
-  const vizLabel = VIZ_TYPES.find((v) => v.value === state.vizType)?.label ?? state.vizType;
+  const typeLabel = vizLabel(state.vizType);
 
   return (
     <div className="chart-editor">
@@ -370,7 +370,7 @@ export default function ChartEditorPage() {
           {chart ? (
             <input className="chart-name-input" aria-label="Chart name" value={name} onChange={(e) => setName(e.target.value)} />
           ) : (
-            <span className="chart-name">New {vizLabel.toLowerCase()} chart</span>
+            <span className="chart-name">New {typeLabel.toLowerCase()} chart</span>
           )}
           {dirty && <span className="dirty-dot" title="Unsaved changes" aria-label="Unsaved changes" />}
           <span className="spacer" />
@@ -466,7 +466,7 @@ export default function ChartEditorPage() {
               <button
                 onClick={() => {
                   const location: SqlLabLocationState = {
-                    openTab: { title: name || `${vizLabel} chart`, sql: sqls[0]!, connectionId: dataset.connection_id, schema: null },
+                    openTab: { title: name || `${typeLabel} chart`, sql: sqls[0]!, connectionId: dataset.connection_id, schema: null },
                   };
                   void navigate("/sql-lab", { state: location });
                 }}

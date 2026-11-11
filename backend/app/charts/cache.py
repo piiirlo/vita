@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -25,6 +25,8 @@ DEFAULT_TTL_SECONDS = 600
 MAX_TOTAL_BYTES = int(os.environ.get("VITA_CACHE_MAX_MB", "100")) * 1024 * 1024
 MAX_ENTRY_BYTES = 5 * 1024 * 1024
 MAX_ENTRIES = 2000
+# pg advisory lock id: one cleanup at a time (parallel DELETEs of the same rows deadlock).
+CLEANUP_LOCK_ID = 7_301_010
 
 
 def now() -> datetime:
@@ -77,13 +79,18 @@ def put(db: Session, key: str, connection_id: int, result: dict[str, Any], ttl: 
     }
     stmt = insert(ChartCacheEntry).values(**values)
     db.execute(stmt.on_conflict_do_update(index_elements=["key"], set_=values))
+    db.commit()
     cleanup(db)
     db.commit()
     return True
 
 
 def cleanup(db: Session) -> None:
-    """Drop expired entries, then the oldest ones while over the size / count cap."""
+    """Drop expired entries, then the oldest ones while over the size / count cap.
+    Runs in the caller's transaction, at most one at a time: a writer that finds another
+    cleanup running skips it (the next write cleans up)."""
+    if not db.scalar(text("SELECT pg_try_advisory_xact_lock(:id)"), {"id": CLEANUP_LOCK_ID}):
+        return
     db.execute(delete(ChartCacheEntry).where(ChartCacheEntry.expires_at <= now()))
     total, count = db.execute(
         select(func.coalesce(func.sum(ChartCacheEntry.size_bytes), 0), func.count())

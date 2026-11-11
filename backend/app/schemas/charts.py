@@ -11,7 +11,19 @@ from app.schemas.query import QueryResultOut
 # Longest allowed cache lifetime (a day).
 MAX_CACHE_TTL = 86_400
 
-VizType = Literal["table", "big_number", "bar", "line", "pie"]
+VizType = Literal[
+    "table",
+    "big_number",
+    "bar",
+    "line",
+    "pie",
+    "area",
+    "combo",
+    "treemap",
+    "funnel",
+    "gauge",
+    "pivot_table",
+]
 Aggregate = Literal["SUM", "AVG", "MIN", "MAX", "COUNT", "COUNT_DISTINCT"]
 Grain = Literal["day", "week", "month", "quarter", "year"]
 RangeKind = Literal[
@@ -33,6 +45,9 @@ FilterValue = Scalar | list[Scalar | None] | None
 
 DEFAULT_ROW_LIMIT = 1000
 DEFAULT_SERIES_LIMIT = 10
+# Pivot tables: at most this many row / column dimensions (every total level is a grouping).
+MAX_PIVOT_ROW_DIMENSIONS = 3
+MAX_PIVOT_COLUMN_DIMENSIONS = 2
 
 
 class AdhocMetric(BaseModel):
@@ -93,8 +108,14 @@ class OrderBy(BaseModel):
 class ChartQuery(BaseModel):
     dataset_id: int
     metrics: list[MetricRef] = Field(default_factory=list)
+    # Most charts: the grouping dimensions. Treemap: the levels (outer first). Pivot: the rows.
     dimensions: list[str] = Field(default_factory=list)
-    # Bar / line: the dimension that splits the chart into series.
+    # Pivot table: the dimensions across (columns).
+    column_dimensions: list[str] = Field(default_factory=list)
+    # Pivot table: also compute every subtotal and total level (in SQL, so AVG / COUNT
+    # DISTINCT totals are right).
+    totals: bool = False
+    # Bar / line / area: the dimension that splits the chart into series.
     series: str | None = None
     # Table "raw records" mode: these columns, no grouping (metrics must be empty).
     columns: list[str] = Field(default_factory=list)
@@ -102,7 +123,8 @@ class ChartQuery(BaseModel):
     filters: list[Filter] = Field(default_factory=list)
     order_by: OrderBy | None = None
     row_limit: int = Field(default=DEFAULT_ROW_LIMIT, ge=1, le=MAX_LIMIT)
-    # Bar / line with a series: keep only the top N series by the first metric.
+    # Bar / line / area with a series: keep only the top N series by the first metric.
+    # Pie / treemap: the top N slices (outer level), the rest is "Other".
     series_limit: int | None = Field(default=DEFAULT_SERIES_LIMIT, ge=1, le=1000)
 
 

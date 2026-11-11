@@ -2520,6 +2520,19 @@ button.small.icon {
   color: var(--ink-muted);
 }
 
+/* No data: a muted "-" (never 0) and the reason under it. */
+.big-number-value.is-empty {
+  color: var(--text-muted);
+}
+
+.dash-tile-hero .big-number-value.is-empty {
+  color: var(--ink-muted);
+}
+
+.big-number-empty .chart-empty {
+  margin: 12px auto 0;
+}
+
 .hero-meta {
   position: relative;
   padding-top: 12px;
@@ -3601,4 +3614,442 @@ button.tile-menu-item {
 /* Browse: the list view while the diagram is shown (display: grid would beat [hidden]) */
 .browser[hidden] {
   display: none;
+}
+
+/* ---------- Part 11: chart picker, new chart types ---------- */
+
+/* current chart type (opens the gallery) */
+.viz-current {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: auto;
+  padding: 8px 10px;
+  border-radius: var(--radius-control);
+  text-align: left;
+}
+
+.viz-current .viz-thumb {
+  width: 48px;
+  height: 30px;
+  flex-shrink: 0;
+}
+
+.viz-current-name {
+  flex: 1;
+  font-weight: 500;
+}
+
+.viz-current-change {
+  font-size: 12px;
+  color: var(--link);
+}
+
+/* gallery */
+/* (the dialog body is a .form, whose labels stack: keep this one a row) */
+.form .viz-search {
+  flex-direction: row;
+  font-weight: 400;
+}
+
+.viz-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  color: var(--text-muted);
+}
+
+.viz-search input {
+  flex: 1;
+}
+
+.viz-gallery {
+  display: grid;
+  gap: 18px;
+  max-height: min(64vh, 640px);
+  overflow-y: auto;
+  padding: 2px;
+}
+
+.viz-group h3 {
+  margin: 0 0 8px;
+}
+
+.viz-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.viz-card {
+  display: grid;
+  grid-template-columns: 100%;
+  grid-template-rows: auto auto auto;
+  justify-content: stretch;
+  align-content: start;
+  justify-items: start;
+  white-space: normal;
+  gap: 4px;
+  height: auto;
+  padding: 10px 12px 12px;
+  border-radius: var(--radius-control);
+  text-align: left;
+  transition:
+    border-color var(--dur) var(--ease-out),
+    transform var(--dur) var(--ease-out),
+    background-color var(--dur) var(--ease-out);
+}
+
+.viz-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-hover);
+}
+
+.viz-card.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.viz-card .viz-thumb {
+  width: 100%;
+  height: 54px;
+  margin-bottom: 4px;
+}
+
+.viz-card-name {
+  font-weight: 500;
+  font-size: 14px;
+}
+
+.viz-card-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+
+/* thumbnails: theme colors only */
+.viz-thumb .g {
+  stroke: var(--border-strong);
+  stroke-width: 1.5;
+  fill: none;
+}
+
+.viz-thumb .g-fill {
+  fill: var(--border-strong);
+}
+
+.viz-thumb .s1 {
+  fill: var(--series-1);
+}
+
+.viz-thumb .s2 {
+  fill: var(--series-2);
+}
+
+.viz-thumb .s3 {
+  fill: var(--series-3);
+}
+
+.viz-thumb .soft {
+  opacity: 0.45;
+}
+
+.viz-thumb .l1,
+.viz-thumb .l2 {
+  fill: none;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.viz-thumb .l1 {
+  stroke: var(--series-1);
+}
+
+.viz-thumb .l2 {
+  stroke: var(--series-2);
+}
+
+.viz-thumb .thick,
+.viz-thumb .track {
+  stroke-width: 6;
+  fill: none;
+}
+
+.viz-thumb .track {
+  stroke: var(--border-strong);
+}
+
+.viz-thumb .needle {
+  stroke: var(--text);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.viz-thumb .h1 {
+  opacity: 0.25;
+}
+
+.viz-thumb .h2 {
+  opacity: 0.45;
+}
+
+.viz-thumb .h3 {
+  opacity: 0.7;
+}
+
+.viz-thumb .h4 {
+  opacity: 0.95;
+}
+
+/* after switching chart type: what carried over, what still needs setting */
+.switch-note {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--warning-border);
+  background: var(--warning-bg);
+  border-radius: var(--radius-control);
+  font-size: 12px;
+  line-height: 1.45;
+  animation: v-fade-in var(--dur-slow) var(--ease-out) both;
+}
+
+.switch-note p {
+  margin: 0 0 4px;
+}
+
+.switch-todo {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+
+.segmented.segmented-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+/* combo: bars or line, left or right, per metric */
+.combo-series,
+.gauge-bands {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.combo-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 4px;
+}
+
+.combo-row select {
+  width: 100%;
+}
+
+.combo-row > div,
+.combo-name {
+  font-size: 13px;
+}
+
+/* funnel: step order */
+.step-order {
+  margin: 0;
+  padding-left: 22px;
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.step-order li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.step-order li > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* gauge */
+.gauge-range .control {
+  flex: 1;
+  min-width: 0;
+}
+
+.gauge-range input {
+  width: 100%;
+}
+
+.band-row {
+  display: grid;
+  grid-template-columns: auto 1fr 1.4fr auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.band-row input,
+.band-row select {
+  min-width: 0;
+}
+
+.gauge {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.gauge > .echart {
+  flex: 1;
+  min-height: 0;
+}
+
+.gauge-target {
+  margin: 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.dash-tile-hero .gauge-target {
+  color: var(--ink-muted);
+}
+
+/* pivot table */
+.pivot {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.pivot-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+}
+
+.pivot-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+  min-width: 100%;
+}
+
+.pivot-table th,
+.pivot-table td {
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.pivot-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.pivot-table thead tr:nth-child(2) th {
+  top: 30px;
+}
+
+.pivot-table thead tr:nth-child(3) th {
+  top: 60px;
+}
+
+.pivot-table .pivot-h-corner {
+  left: 0;
+  z-index: 2;
+  text-align: left;
+}
+
+.pivot-table .pivot-h-total,
+.pivot-table .pivot-h-subtotal {
+  color: var(--text);
+}
+
+.pivot-label {
+  position: sticky;
+  left: 0;
+  background: var(--surface);
+  text-align: left;
+  font-weight: 400;
+}
+
+.pivot-table td {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.pivot-row-group th,
+.pivot-row-group td,
+.pivot-row-total th,
+.pivot-row-total td,
+.pivot-table td.pivot-cell-subtotal,
+.pivot-table td.pivot-cell-total {
+  font-weight: 600;
+}
+
+.pivot-row-total th,
+.pivot-row-total td {
+  border-top: 1px solid var(--border-strong);
+  background: var(--surface-sunken);
+}
+
+.pivot-row-total .pivot-label {
+  background: var(--surface-sunken);
+}
+
+.pivot-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+}
+
+.pivot-table td.heat-1 {
+  background: var(--heat-1);
+}
+
+.pivot-table td.heat-2 {
+  background: var(--heat-2);
+}
+
+.pivot-table td.heat-3 {
+  background: var(--heat-3);
+}
+
+.pivot-table td.heat-4 {
+  background: var(--heat-4);
+}
+
+.pivot-table td.heat-5 {
+  background: var(--heat-5);
 }

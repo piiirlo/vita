@@ -1,9 +1,10 @@
-/** Result rows -> ECharts options for bar, line and the big-number trend. Pure functions. */
+/** Result rows -> ECharts options for bar, line, area, combo, pie and the big-number trend.
+ * Pure functions. */
 import type { EChartsOption, SeriesOption } from "echarts";
 import type { ChartDataResult, Dataset, MetricRef } from "../api.ts";
 import { hasTimeAxis, incompleteBuckets, metricFormatter, planLabels, type Coverage, type LabelPlan } from "./display.ts";
 import { categoryLabel, toNumber } from "./format.ts";
-import { dimensionLabel, metricLabel, metricName, type ChartState, type DisplayOptions } from "./model.ts";
+import { dimensionLabel, metricLabel, metricName, type ChartState, type ComboSeries, type DisplayOptions } from "./model.ts";
 
 export type PivotSeries = {
   /** Legend name, e.g. "Revenue" or "web · Revenue" (before renames). */
@@ -115,7 +116,12 @@ export type DrawContext = {
   width?: number;
   /** Time range and data extent, to mark incomplete first / last periods. */
   coverage?: Coverage;
+  /** Other resolved token colors (canvas can't read CSS variables). */
+  tokens?: Partial<Record<DrawToken, string>>;
 };
+
+/** Token colors a chart may need besides the series palette. */
+export type DrawToken = "text" | "muted" | "border" | "band" | "danger" | "warning" | "success" | "accent" | "surface";
 
 type TooltipItem = {
   axisValueLabel?: string;
@@ -126,11 +132,18 @@ type TooltipItem = {
   marker: string;
   seriesName: string;
   value: unknown;
+  /** 100% stacked: the item is { value: share, raw: the real value }. */
+  data?: unknown;
 };
 
 const PARTIAL_ID = "partial:";
 
-function tooltipFormatter(formatters: ((v: unknown) => string)[], partial: Set<number>, titles?: string[]) {
+function tooltipFormatter(
+  formatters: ((v: unknown) => string)[],
+  partial: Set<number>,
+  titles?: string[],
+  rawFormatters?: ((v: unknown) => string)[],
+) {
   return (params: unknown): string => {
     const items = (Array.isArray(params) ? params : [params]) as TooltipItem[];
     const first = items[0];
@@ -140,7 +153,9 @@ function tooltipFormatter(formatters: ((v: unknown) => string)[], partial: Set<n
       .filter((i) => i.value !== null && i.value !== undefined && !i.seriesId?.startsWith(PARTIAL_ID))
       .map((i) => {
         const format = formatters[i.seriesIndex] ?? ((v: unknown) => String(v));
-        return `${i.marker}${escapeHtml(i.seriesName)}: <b>${escapeHtml(format(i.value))}</b>`;
+        const raw = rawFormatters?.[i.seriesIndex] && typeof i.data === "object" && i.data !== null ? (i.data as { raw?: unknown }).raw : undefined;
+        const extra = raw === undefined ? "" : ` (${escapeHtml(rawFormatters![i.seriesIndex]!(raw))})`;
+        return `${i.marker}${escapeHtml(i.seriesName)}: <b>${escapeHtml(format(i.value))}</b>${extra}`;
       });
     return [escapeHtml(title) + note, ...lines].join("<br/>");
   };
@@ -158,6 +173,17 @@ const PARTIAL_OPACITY = 0.45;
 
 export type CartesianLayout = { option: EChartsOption; labels: LabelPlan; seriesNames: string[]; partial: Set<number> };
 
+/** Combo: how a metric is drawn (default: the first one bars, the others lines; left axis). */
+export function comboSeries(display: DisplayOptions, name: string, index: number): ComboSeries {
+  return display.combo?.[name] ?? { type: index === 0 ? "bar" : "line", axis: "left" };
+}
+
+/** 100% stacked: each value as a share (0-100) of its period's total across the series. */
+export function shares(series: (number | null)[][]): (number | null)[][] {
+  const totals = (series[0] ?? []).map((_, ci) => series.reduce((sum, values) => sum + Math.abs(values[ci] ?? 0), 0));
+  return series.map((values) => values.map((v, ci) => (v === null ? null : totals[ci] ? (Math.abs(v) / totals[ci]) * 100 : 0)));
+}
+
 /** The ECharts option for a bar / line chart, plus what the page shows around it. */
 export function cartesianLayout(state: ChartState, result: ChartDataResult, dataset: Dataset | null, ctx: DrawContext = {}): CartesianLayout {
   const { query, display, vizType } = state;
@@ -165,7 +191,7 @@ export function cartesianLayout(state: ChartState, result: ChartDataResult, data
   const timeAxis = hasTimeAxis(state);
   const xColumn = timeAxis ? query.time!.column! : (query.dimensions[0] ?? "");
   let pivoted = pivot(result, xColumn, query.series, query.metrics, dataset);
-  if (vizType === "bar" && !timeAxis && query.metrics[0]) {
+  if ((vizType === "bar" || vizType === "combo") && !timeAxis && query.metrics[0]) {
     pivoted = sortCategories(pivoted, display.sort ?? "value", query.metrics[0]);
   }
   const ordered = sortSeries(pivoted.series, display.series_sort);
@@ -188,48 +214,72 @@ export function cartesianLayout(state: ChartState, result: ChartDataResult, data
     },
   };
 
-  const firstMetric = query.metrics[0];
-  const axisFormat = firstMetric ? metricFormatter(display, firstMetric, dataset) : (v: unknown) => String(v);
-  // Say what is measured: with one metric the value axis is titled with its label (several
+  const area = vizType === "area";
+  const percent = area && display.stack === "percent";
+  const stacked = (vizType === "bar" && Boolean(display.stacked)) || (area && (display.stack === "stacked" || percent));
+  // Combo: bars or a line per metric, on the left or right axis.
+  const combo = vizType === "combo";
+  const kinds = ordered.map((sr) =>
+    combo ? comboSeries(display, metricName(sr.metric), query.metrics.findIndex((m) => metricName(m) === metricName(sr.metric))) : null,
+  );
+  const kindOf = (i: number): "bar" | "line" => (vizType === "bar" ? "bar" : (kinds[i]?.type ?? "line"));
+  const axisOf = (i: number): 0 | 1 => (kinds[i]?.axis === "right" ? 1 : 0);
+  const twoAxes = kinds.some((k) => k?.axis === "right");
+
+  // Say what is measured: an axis showing one metric is titled with its label (several
   // metrics are told apart by the legend instead).
-  const axisTitle =
-    display.axis_titles !== false && query.metrics.length === 1 ? metricLabel(query.metrics[0]!, dataset) : undefined;
-  const valueAxis = {
-    type: "value" as const,
-    axisLabel: { formatter: (v: number) => axisFormat(v) },
-    ...(axisTitle === undefined
-      ? {}
-      : horizontal
-        ? { name: axisTitle, nameLocation: "middle" as const, nameGap: 28 }
-        : { name: axisTitle, nameLocation: "end" as const, nameTextStyle: { align: "left" as const } }),
+  const valueAxisFor = (side: 0 | 1) => {
+    const onSide = combo ? query.metrics.filter((m, mi) => (comboSeries(display, metricName(m), mi).axis === "right" ? 1 : 0) === side) : query.metrics;
+    const first = onSide[0];
+    const format = percent ? (v: unknown) => `${String(v)}%` : first ? metricFormatter(display, first, dataset) : (v: unknown) => String(v);
+    const title = display.axis_titles !== false && onSide.length === 1 && !percent ? metricLabel(onSide[0]!, dataset) : undefined;
+    return {
+      type: "value" as const,
+      ...(percent ? { max: 100 } : {}),
+      ...(side === 1 ? { position: "right" as const, splitLine: { show: false } } : {}),
+      axisLabel: { formatter: (v: number) => format(v) },
+      ...(title === undefined
+        ? {}
+        : horizontal
+          ? { name: title, nameLocation: "middle" as const, nameGap: 28 }
+          : { name: title, nameLocation: "end" as const, nameTextStyle: { align: side === 1 ? ("right" as const) : ("left" as const) } }),
+    };
   };
+  const valueAxis = valueAxisFor(0);
+  const axisTitle = "name" in valueAxis ? valueAxis.name : undefined;
 
   const several = ordered.length > 1;
   const palette = ctx.colors?.filter(Boolean) ?? [];
   const single = !several && display.color ? ctx.colors?.[display.color - 1] : undefined;
   const colorOf = (i: number): string | undefined => single ?? (palette.length ? palette[i % palette.length] : undefined);
-  const formatters = ordered.map((s) => metricFormatter(display, s.metric, dataset));
+  const realFormatters = ordered.map((s) => metricFormatter(display, s.metric, dataset));
+  const formatters = percent ? ordered.map(() => (v: unknown) => `${(toNumber(v) ?? 0).toFixed(1)}%`) : realFormatters;
   const names = ordered.map((s) => seriesLabel(s.name, display));
+  const shareValues = percent ? shares(ordered.map((s) => s.values)) : null;
 
   const valueLabel = (i: number) =>
     display.value_labels
       ? {
           show: true,
-          position: vizType === "bar" ? (display.stacked ? ("inside" as const) : horizontal ? ("right" as const) : ("top" as const)) : ("top" as const),
+          position:
+            kindOf(i) === "bar" ? (stacked ? ("inside" as const) : horizontal ? ("right" as const) : ("top" as const)) : ("top" as const),
           formatter: (p: { value: unknown }) => formatters[i]!(p.value),
           fontSize: 11,
-          ...(ctx.labelColor && !(vizType === "bar" && display.stacked) ? { color: ctx.labelColor } : {}),
+          ...(ctx.labelColor && !(kindOf(i) === "bar" && stacked) ? { color: ctx.labelColor } : {}),
         }
       : undefined;
 
   const series: SeriesOption[] = [];
   // The formatter of each pushed series (twins included), by series index.
   const seriesFormatters: ((v: unknown) => string)[] = [];
+  const seriesRawFormatters: ((v: unknown) => string)[] = [];
   ordered.forEach((s, i) => {
     const color = colorOf(i);
-    if (vizType === "bar") {
+    const yAxisIndex = twoAxes ? axisOf(i) : undefined;
+    if (kindOf(i) === "bar") {
       series.push({
         type: "bar",
+        ...(yAxisIndex !== undefined ? { yAxisIndex } : {}),
         name: names[i],
         data: s.values.map((v, ci) =>
           partial.has(ci)
@@ -239,13 +289,37 @@ export function cartesianLayout(state: ChartState, result: ChartDataResult, data
               }
             : v,
         ),
-        stack: display.stacked ? "total" : undefined,
+        stack: vizType === "bar" && display.stacked ? "total" : undefined,
         barMaxWidth: BAR_MAX_WIDTH,
         emphasis: { focus: "series" },
         label: valueLabel(i),
         ...(color ? { itemStyle: { color } } : {}),
       });
       seriesFormatters.push(formatters[i]!);
+      seriesRawFormatters.push(realFormatters[i]!);
+      return;
+    }
+    if (area) {
+      // Area: the incomplete periods get a shaded band (markArea below), not a dotted twin:
+      // a twin can't be stacked.
+      const values = shareValues ? shareValues[i]! : s.values;
+      const band = incompleteBand(partial, labels, ctx.tokens?.band, ctx.labelColor);
+      series.push({
+        type: "line",
+        name: names[i],
+        data: shareValues ? values.map((v, ci) => ({ value: v, raw: s.values[ci] ?? null })) : values,
+        stack: stacked ? "total" : undefined,
+        areaStyle: { opacity: stacked ? 0.55 : 0.22 },
+        showSymbol: Boolean(display.show_points),
+        symbolSize: 6,
+        connectNulls: false,
+        emphasis: { focus: "series" },
+        label: valueLabel(i),
+        ...(color ? { itemStyle: { color }, lineStyle: { color, width: 1.5 } } : { lineStyle: { width: 1.5 } }),
+        ...(i === 0 && partial.size ? { markArea: band } : {}),
+      });
+      seriesFormatters.push(formatters[i]!);
+      seriesRawFormatters.push(realFormatters[i]!);
       return;
     }
     // Line: incomplete first / last segments are drawn dotted by a twin series (same name, so
@@ -254,6 +328,7 @@ export function cartesianLayout(state: ChartState, result: ChartDataResult, data
     const solid = s.values.map((v, ci) => ((partial.has(0) && ci === 0) || (partial.has(last) && ci === last) ? null : v));
     series.push({
       type: "line",
+      ...(yAxisIndex !== undefined ? { yAxisIndex } : {}),
       name: names[i],
       data: partial.size && s.values.length > 1 ? solid : s.values,
       showSymbol: Boolean(display.show_points),
@@ -264,6 +339,7 @@ export function cartesianLayout(state: ChartState, result: ChartDataResult, data
       ...(color ? { itemStyle: { color }, lineStyle: { color } } : {}),
     });
     seriesFormatters.push(formatters[i]!);
+    seriesRawFormatters.push(realFormatters[i]!);
     if (partial.size && s.values.length > 1) {
       const dotted = s.values.map((v, ci) => {
         const nearFirst = partial.has(0) && ci <= 1;
@@ -272,6 +348,7 @@ export function cartesianLayout(state: ChartState, result: ChartDataResult, data
       });
       series.push({
         type: "line",
+        ...(yAxisIndex !== undefined ? { yAxisIndex } : {}),
         id: `${PARTIAL_ID}${i}`,
         name: names[i],
         data: dotted,
@@ -287,6 +364,7 @@ export function cartesianLayout(state: ChartState, result: ChartDataResult, data
         z: 1,
       });
       seriesFormatters.push(formatters[i]!);
+      seriesRawFormatters.push(realFormatters[i]!);
     }
   });
 
@@ -306,20 +384,35 @@ export function cartesianLayout(state: ChartState, result: ChartDataResult, data
       // Room for the legend and/or the axis title.
       top: showLegend && legendPosition === "top" ? 48 : axisTitle && !horizontal ? 36 : 24,
       bottom: (showLegend && legendPosition === "bottom" ? 36 : GRID.bottom) + (axisTitle && horizontal ? 20 : 0),
-      right: showLegend && legendPosition === "right" ? 160 : GRID.right,
+      right: showLegend && legendPosition === "right" ? 160 : twoAxes ? 16 : GRID.right,
     },
     legend,
     tooltip: {
       trigger: "axis",
-      axisPointer: { type: vizType === "bar" ? "shadow" : "line" },
+      axisPointer: { type: vizType === "bar" || vizType === "combo" ? "shadow" : "line" },
       // The full category name, even when the axis label is cut.
-      formatter: tooltipFormatter(seriesFormatters, partial, labels),
+      formatter: tooltipFormatter(seriesFormatters, partial, labels, percent ? seriesRawFormatters : undefined),
     },
-    xAxis: horizontal ? valueAxis : categoryAxis,
-    yAxis: horizontal ? { ...categoryAxis, inverse: true } : valueAxis,
+    xAxis: horizontal ? valueAxis : area ? { ...categoryAxis, boundaryGap: false } : categoryAxis,
+    yAxis: horizontal ? { ...categoryAxis, inverse: true } : twoAxes ? [valueAxis, valueAxisFor(1)] : valueAxis,
     series,
   };
   return { option, labels: plan, seriesNames: ordered.map((s) => s.name), partial };
+}
+
+/** Incomplete first / last periods of an area chart: a light band with a dashed edge over the
+ * segment that runs into the incomplete point (areas have no gap around points, so a band
+ * from a label to itself would have no width). */
+function incompleteBand(partial: Set<number>, labels: string[], fill?: string, edge?: string) {
+  return {
+    silent: true,
+    itemStyle: { ...(fill ? { color: fill } : { opacity: 0.08 }), borderType: "dashed" as const, borderWidth: 1, ...(edge ? { borderColor: edge } : {}) },
+    label: { show: false },
+    data: [...partial].map((ci) => {
+      const other = ci === 0 ? Math.min(1, labels.length - 1) : ci - 1;
+      return [{ xAxis: labels[Math.min(ci, other)] }, { xAxis: labels[Math.max(ci, other)] }];
+    }) as [{ xAxis: string }, { xAxis: string }][],
+  };
 }
 
 export function cartesianOption(state: ChartState, result: ChartDataResult, dataset: Dataset | null, ctx: DrawContext = {}): EChartsOption {
@@ -376,7 +469,14 @@ export function sparklineOption(state: ChartState, trend: ChartDataResult, datas
 /** The original names of a bar / line result's series (what Customize can rename). */
 export function seriesNamesOf(state: ChartState, result: ChartDataResult, dataset: Dataset | null): string[] {
   if (state.vizType === "pie") return pieSlices(state, result, dataset).map((s) => s.original);
-  if (state.vizType !== "bar" && state.vizType !== "line") return [];
+  if (state.vizType === "treemap" || state.vizType === "funnel") {
+    const dim = state.query.dimensions[0] ?? "";
+    const di = result.columns.findIndex((c) => c.name === dim);
+    const oi = result.columns.findIndex((c) => c.name === OTHER_COLUMN);
+    const names = result.rows.map((row) => (oi >= 0 && toNumber(row[oi]) === 1 ? OTHER_LABEL : dimensionLabel(row[di], dim, dataset)));
+    return [...new Set(names)];
+  }
+  if (!["bar", "line", "area", "combo"].includes(state.vizType)) return [];
   const xColumn = hasTimeAxis(state) ? state.query.time!.column! : (state.query.dimensions[0] ?? "");
   return pivot(result, xColumn, state.query.series, state.query.metrics, dataset).series.map((s) => s.name);
 }

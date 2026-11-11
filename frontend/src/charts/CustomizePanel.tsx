@@ -1,7 +1,17 @@
 import { useId, type ReactNode } from "react";
 import type { ChartQuery, Dataset, MetricRef } from "../api.ts";
 import { FORMAT_PRESETS, formatWithSpec, unavailableOptions, type CustomizeOption, type FormatPreset, type FormatSpec } from "./display.ts";
-import { metricFormat, metricLabel, metricName, temporalColumns, type ChartState, type DisplayOptions } from "./model.ts";
+import {
+  metricFormat,
+  metricLabel,
+  metricName,
+  temporalColumns,
+  type ChartState,
+  type DisplayOptions,
+  type GaugeBand,
+  type GaugeTone,
+} from "./model.ts";
+import { comboSeries } from "./options.ts";
 
 type Props = {
   state: ChartState;
@@ -20,7 +30,9 @@ const SERIES_COLOR_NAMES = ["orange", "olive", "dark olive", "slate blue", "ochr
 export default function CustomizePanel({ state, dataset, seriesNames, onDisplay, onQuery }: Props) {
   const { vizType, display, query } = state;
   const hints = unavailableOptions(state, dataset);
-  const cartesian = vizType === "bar" || vizType === "line";
+  const cartesian = vizType === "bar" || vizType === "line" || vizType === "area" || vizType === "combo";
+  // Funnels show their numbers unless turned off.
+  const valueLabelsOn = vizType === "funnel" ? display.value_labels !== false : Boolean(display.value_labels);
   const metrics = vizType === "table" && display.mode === "raw" ? [] : query.metrics;
 
   return (
@@ -34,7 +46,7 @@ export default function CustomizePanel({ state, dataset, seriesNames, onDisplay,
             onChange={(e) => onDisplay({ title: e.target.value || undefined })}
           />
         </label>
-        {vizType === "big_number" && (
+        {(vizType === "big_number" || vizType === "gauge") && (
           <label className="control">
             <span>Subtitle</span>
             <input
@@ -87,19 +99,104 @@ export default function CustomizePanel({ state, dataset, seriesNames, onDisplay,
         </section>
       )}
 
+      {vizType === "treemap" && (
+        <section>
+          <h3 className="control-heading">Treemap</h3>
+          <SeriesNames names={seriesNames} display={display} onDisplay={onDisplay} title="Box names" />
+          {seriesNames.length === 0 && <p className="control-hint">Run the chart to rename its boxes.</p>}
+        </section>
+      )}
+
+      {vizType === "funnel" && <FunnelSection state={state} seriesNames={seriesNames} onDisplay={onDisplay} />}
+
+      {vizType === "gauge" && <GaugeSection display={display} onDisplay={onDisplay} />}
+
+      {vizType === "pivot_table" && (
+        <section>
+          <h3 className="control-heading">Heat colors</h3>
+          <p className="control-hint">Cells get darker as the value grows (totals stay plain).</p>
+          {query.metrics.map((m) => {
+            const name = metricName(m);
+            const on = (display.heat ?? []).includes(name);
+            return (
+              <Check
+                key={name}
+                label={metricLabel(m, dataset)}
+                checked={on}
+                onChange={(checked) => {
+                  const heat = (display.heat ?? []).filter((h) => h !== name);
+                  onDisplay({ heat: checked ? [...heat, name] : heat.length ? heat : undefined });
+                }}
+              />
+            );
+          })}
+        </section>
+      )}
+
       {cartesian && (
         <section>
-          <h3 className="control-heading">{vizType === "bar" ? "Bars" : "Lines"}</h3>
+          <h3 className="control-heading">{{ bar: "Bars", line: "Lines", area: "Areas", combo: "Bars and lines" }[vizType as "bar"]}</h3>
+          {vizType === "area" && (
+            <div className="control">
+              <span>Stacking</span>
+              <div className="segmented segmented-3" role="radiogroup" aria-label="Stacking">
+                {(
+                  [
+                    ["none", "Not stacked"],
+                    ["stacked", "Stacked"],
+                    ["percent", "100%"],
+                  ] as const
+                ).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    role="radio"
+                    aria-checked={(display.stack ?? "none") === value}
+                    className={(display.stack ?? "none") === value ? "active" : ""}
+                    disabled={value !== "none" && Boolean(hints.stacked)}
+                    title={value !== "none" ? hints.stacked : undefined}
+                    onClick={() => onDisplay({ stack: value === "none" ? undefined : value })}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {hints.stacked && <p className="control-hint">{hints.stacked}</p>}
+            </div>
+          )}
+          {vizType === "combo" && (
+            <fieldset className="combo-series">
+              <legend className="control-heading-small">Each metric</legend>
+              {query.metrics.map((m, i) => {
+                const name = metricName(m);
+                const current = comboSeries(display, name, i);
+                const set = (patch: Partial<typeof current>) => onDisplay({ combo: { ...display.combo, [name]: { ...current, ...patch } } });
+                return (
+                  <div key={name} className="combo-row">
+                    <span className="combo-name">{metricLabel(m, dataset)}</span>
+                    <select aria-label={`Draw ${metricLabel(m, dataset)} as`} value={current.type} onChange={(e) => set({ type: e.target.value as "bar" | "line" })}>
+                      <option value="bar">Bars</option>
+                      <option value="line">Line</option>
+                    </select>
+                    <select aria-label={`Axis of ${metricLabel(m, dataset)}`} value={current.axis} onChange={(e) => set({ axis: e.target.value as "left" | "right" })}>
+                      <option value="left">Left axis</option>
+                      <option value="right">Right axis</option>
+                    </select>
+                  </div>
+                );
+              })}
+            </fieldset>
+          )}
           {vizType === "bar" && (
             <div className="checkbox-row">
               <Check label="Stacked" checked={Boolean(display.stacked)} hint={hints.stacked} onChange={(stacked) => onDisplay({ stacked })} />
               <Check label="Horizontal" checked={Boolean(display.horizontal)} onChange={(horizontal) => onDisplay({ horizontal })} />
             </div>
           )}
-          {vizType === "line" && (
+          {(vizType === "line" || vizType === "area" || vizType === "combo") && (
             <Check label="Show points" checked={Boolean(display.show_points)} onChange={(show_points) => onDisplay({ show_points })} />
           )}
-          {vizType === "bar" && (
+          {(vizType === "bar" || vizType === "combo") && (
             <Field label="Sort bars" hint={hints.sort}>
               {(props) => (
                 <select
@@ -141,7 +238,7 @@ export default function CustomizePanel({ state, dataset, seriesNames, onDisplay,
         />
         <Check
           label="Value labels"
-          checked={Boolean(display.value_labels) && !hints.value_labels}
+          checked={valueLabelsOn && !hints.value_labels}
           hint={hints.value_labels}
           onChange={(value_labels) => onDisplay({ value_labels })}
         />
@@ -161,6 +258,143 @@ export default function CustomizePanel({ state, dataset, seriesNames, onDisplay,
         </Field>
       </section>
     </div>
+  );
+}
+
+// ---------- funnel ----------
+
+function FunnelSection({ state, seriesNames, onDisplay }: { state: ChartState; seriesNames: string[]; onDisplay(p: Partial<DisplayOptions>): void }) {
+  const { display } = state;
+  const custom = display.funnel_order === "custom";
+  // The chosen order first (steps still in the data), then the others as loaded.
+  const listed = (display.funnel_steps ?? []).filter((n) => seriesNames.includes(n));
+  const order = [...listed, ...seriesNames.filter((n) => !listed.includes(n))];
+  const move = (i: number, by: -1 | 1) => {
+    const next = [...order];
+    const [item] = next.splice(i, 1);
+    next.splice(i + by, 0, item!);
+    onDisplay({ funnel_order: "custom", funnel_steps: next });
+  };
+  return (
+    <section>
+      <h3 className="control-heading">Funnel</h3>
+      <div className="control">
+        <span>Step order</span>
+        <div className="segmented" role="radiogroup" aria-label="Step order">
+          {(
+            [
+              ["value", "Largest first"],
+              ["custom", "My order"],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              role="radio"
+              aria-checked={(display.funnel_order ?? "value") === value}
+              className={(display.funnel_order ?? "value") === value ? "active" : ""}
+              onClick={() => onDisplay(value === "custom" ? { funnel_order: "custom", funnel_steps: order } : { funnel_order: undefined })}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+      {custom && (
+        <ol className="step-order" aria-label="Steps in order">
+          {order.map((name, i) => (
+            <li key={name}>
+              <span className="mono">{display.series_labels?.[name] || name}</span>
+              <button type="button" className="small" aria-label={`Move ${name} up`} disabled={i === 0} onClick={() => move(i, -1)}>
+                ↑
+              </button>
+              <button type="button" className="small" aria-label={`Move ${name} down`} disabled={i === order.length - 1} onClick={() => move(i, 1)}>
+                ↓
+              </button>
+            </li>
+          ))}
+        </ol>
+      )}
+      {seriesNames.length === 0 && <p className="control-hint">Run the chart to see and order its steps.</p>}
+      <SeriesNames names={seriesNames} display={display} onDisplay={onDisplay} title="Step names" />
+    </section>
+  );
+}
+
+// ---------- gauge ----------
+
+const TONES: { value: GaugeTone; label: string }[] = [
+  { value: "danger", label: "Red" },
+  { value: "warning", label: "Amber" },
+  { value: "success", label: "Green" },
+];
+
+function GaugeSection({ display, onDisplay }: { display: DisplayOptions; onDisplay(p: Partial<DisplayOptions>): void }) {
+  const bands = display.gauge_bands ?? [];
+  const setBands = (next: GaugeBand[]) => onDisplay({ gauge_bands: next.length ? next : undefined });
+  return (
+    <section>
+      <h3 className="control-heading">Gauge</h3>
+      <div className="inline-controls gauge-range">
+        <NumberField label="Min" value={display.gauge_min} placeholder="0" onChange={(gauge_min) => onDisplay({ gauge_min })} />
+        <NumberField label="Max" value={display.gauge_max} placeholder="Auto" onChange={(gauge_max) => onDisplay({ gauge_max })} />
+        <NumberField label="Target" value={display.gauge_target} placeholder="None" onChange={(gauge_target) => onDisplay({ gauge_target })} />
+      </div>
+      <fieldset className="gauge-bands">
+        <legend className="control-heading-small">Color bands</legend>
+        {bands.length === 0 && <p className="control-hint">No bands: the arc fills up to the value.</p>}
+        {bands.map((band, i) => (
+          <div key={i} className="band-row">
+            <span className="muted small">up to</span>
+            <input
+              type="number"
+              aria-label={`Band ${i + 1} up to`}
+              value={Number.isFinite(band.to) ? band.to : ""}
+              onChange={(e) => setBands(bands.map((b, j) => (j === i ? { ...b, to: Number(e.target.value) } : b)))}
+            />
+            <select aria-label={`Band ${i + 1} color`} value={band.tone} onChange={(e) => setBands(bands.map((b, j) => (j === i ? { ...b, tone: e.target.value as GaugeTone } : b)))}>
+              {TONES.map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+            <button type="button" className="small" aria-label={`Remove band ${i + 1}`} onClick={() => setBands(bands.filter((_, j) => j !== i))}>
+              ×
+            </button>
+          </div>
+        ))}
+        <button
+          type="button"
+          className="small"
+          onClick={() => {
+            const last = bands[bands.length - 1];
+            const tone = TONES[Math.min(bands.length, TONES.length - 1)]!.value;
+            setBands([...bands, { to: last ? last.to * 2 || 100 : (display.gauge_max ?? 100) / 2, tone }]);
+          }}
+        >
+          + Add band
+        </button>
+      </fieldset>
+    </section>
+  );
+}
+
+function NumberField({ label, value, placeholder, onChange }: { label: string; value: number | null | undefined; placeholder: string; onChange(v: number | null): void }) {
+  return (
+    <label className="control">
+      <span>{label}</span>
+      <input
+        type="number"
+        aria-label={`Gauge ${label.toLowerCase()}`}
+        value={value ?? ""}
+        placeholder={placeholder}
+        onChange={(e) => {
+          const n = e.target.value === "" ? null : Number(e.target.value);
+          onChange(n === null || Number.isFinite(n) ? n : null);
+        }}
+      />
+    </label>
   );
 }
 
