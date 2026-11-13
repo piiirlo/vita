@@ -31,6 +31,7 @@
   /* status colors on --surface-ink (big number: conditional color, change vs previous period) */
   --ink-danger: #ff8f84;
   --ink-success: #c3d47a;
+  --ink-warning: #ffc36b;
 
   /* lines */
   --border: rgba(27, 32, 16, 0.1);
@@ -141,6 +142,7 @@
   --ink-border: rgba(243, 246, 244, 0.1);
   --ink-danger: #ff8f84;
   --ink-success: #c3d47a;
+  --ink-warning: #ffc36b;
 
   --border: rgba(243, 246, 244, 0.08);
   --border-strong: rgba(243, 246, 244, 0.16);

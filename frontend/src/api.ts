@@ -190,13 +190,17 @@ export type QueryResult = {
   duration_ms: number;
 };
 
-/** Throws ApiError; for failed queries `detail` is {kind, message, line, column}. */
-/** Body of `detail` when POST /api/query answers 400. */
+/** Body of `detail` when a query fails (400): POST /api/query, chart data, dataset preview,
+ * metric validation. `title` / `hint` are plain language (null: not recognized, show
+ * `message`); `raw` is the database's own error (shown under "Details"). */
 export type QueryErrorDetail = {
   kind: string;
   message: string;
   line: number | null;
   column: number | null;
+  title?: string | null;
+  hint?: string | null;
+  raw?: string | null;
 };
 
 export function isQueryErrorDetail(value: unknown): value is QueryErrorDetail {
@@ -312,6 +316,14 @@ export type DatasetColumn = {
   generic_type_override: GenericType | null;
   effective_type: GenericType;
   is_temporal: boolean;
+  /** How a time column becomes a date: null (a date / datetime), a year number (2006),
+   * text dates read in `text_date_format`, or "pending" (not checked yet). */
+  time_kind?: TimeKind | null;
+  text_date_format?: DateOrder | null;
+  /** An identifier (row_id, postal_code...): not offered for SUM / AVG. */
+  is_identifier?: boolean;
+  /** Whole numbers between 1900 and 2100: the Columns tab suggests "use as time". */
+  looks_like_years?: boolean;
   is_dimension: boolean;
   is_hidden: boolean;
   /** The last sync didn't find this column. */
@@ -321,13 +333,22 @@ export type DatasetColumn = {
   value_labels?: Record<string, string> | null;
 };
 
+export type TimeKind = "year_number" | "text_date" | "pending";
+
 export type ColumnSettings = Pick<
   DatasetColumn,
   "id" | "label" | "generic_type_override" | "is_temporal" | "is_dimension" | "is_hidden" | "description"
 > & {
   /** Left out: unchanged. {} clears them. */
   value_labels?: Record<string, string>;
+  /** A text column marked temporal: the order of its dates (null: guess, or keep). */
+  text_date_format?: DateOrder | null;
+  /** Left out: unchanged. */
+  is_identifier?: boolean;
 };
+
+/** Something Vita changed on its own (e.g. a column unmarked as time), shown on the dataset page. */
+export type DatasetNote = { id: string; message: string; created_at: string };
 
 export type DatasetMetric = {
   id: number;
@@ -387,6 +408,7 @@ export type Dataset = DatasetListItem & {
   metrics: DatasetMetric[];
   warnings: string[];
   sqllab_sql: string;
+  notes?: DatasetNote[];
 };
 
 export type DatasetCreateInput =
@@ -425,6 +447,9 @@ export function listDatasets(q?: string) {
 }
 
 export const getDataset = (id: number) => request<Dataset>(`/api/datasets/${id}`);
+
+export const dismissDatasetNote = (datasetId: number, noteId: string) =>
+  request<void>(`/api/datasets/${datasetId}/notes/${encodeURIComponent(noteId)}`, { method: "DELETE" });
 
 /** Throws ApiError; when the SQL or table fails, `detail` is a QueryErrorDetail. */
 export const createDataset = (input: DatasetCreateInput) =>
@@ -488,6 +513,8 @@ export type VizType =
   | "world_map";
 export type Aggregate = "SUM" | "AVG" | "MIN" | "MAX" | "COUNT" | "COUNT_DISTINCT";
 export type Grain = "day" | "week" | "month" | "quarter" | "year";
+/** A chart's time axis: a grain's buckets, or "raw" = every time value as it is. */
+export type AxisGrain = Grain | "raw";
 export type RangeKind =
   | "none"
   | "last_7_days"
@@ -512,8 +539,14 @@ export type FilterOperator =
   | "LIKE";
 
 export type AdhocMetric = { column: string; aggregate: Aggregate; label?: string | null };
-/** A saved metric of the dataset (by name), or an ad-hoc one. */
-export type MetricRef = string | AdhocMetric;
+/** Custom SQL written in the chart editor, e.g. SUM(amount) / NULLIF(SUM(quantity), 0): the
+ * same checks as a saved metric's expression. Its label is its output name. */
+export type SqlMetric = { sql: string; label: string; number_format?: string | null };
+/** A saved metric of the dataset (by name), an ad-hoc one, or custom SQL. */
+export type MetricRef = string | AdhocMetric | SqlMetric;
+
+export const isSqlMetric = (ref: MetricRef): ref is SqlMetric => typeof ref !== "string" && "sql" in ref;
+export const isAdhocMetric = (ref: MetricRef): ref is AdhocMetric => typeof ref !== "string" && "column" in ref;
 export type FilterScalar = string | number | boolean | null;
 
 export type ChartFilter = {
@@ -539,7 +572,7 @@ export type ChartQuery = {
   columns: string[];
   time: {
     column: string | null;
-    grain: Grain | null;
+    grain: AxisGrain | null;
     range: { kind: RangeKind; start?: string | null; end?: string | null };
   } | null;
   filters: ChartFilter[];
@@ -576,6 +609,8 @@ export type SavedChart = {
   params: ChartParams;
   created_at: string;
   updated_at: string;
+  /** The dashboards showing this chart (one chart's responses; empty in lists). */
+  dashboards?: { id: number; name: string }[];
 };
 
 export type ChartInput = {
@@ -734,6 +769,11 @@ export type UploadColumnPreview = {
   locked: boolean;
   /** Replace / append: matched, "new" (replace adds it), "extra" (append has no place for it). */
   status: "matched" | "new" | "extra" | null;
+  /** Values like "N/A" / "null" that become empty (non-text columns). */
+  null_words?: number;
+  /** Whole numbers all between 1900 and 2100: "name" = the name says year too (a time column),
+   * "values" = only the values (suggested later in the Columns tab). */
+  years?: "name" | "values" | null;
 };
 
 export type UploadProblemKind =
@@ -783,7 +823,8 @@ export type UploadJob = {
   table_name: string | null;
   dataset_id: number | null;
   error: string | null;
-  bad_values: { column: string; count: number; examples: { row: number; value: string }[] }[];
+  /** kind "misfit": didn't fit the type; "null_word": "N/A", "null"... read as empty. */
+  bad_values: { column: string; count: number; examples: { row: number; value: string }[]; kind?: "misfit" | "null_word" }[];
   created_at: string;
   finished_at: string | null;
 };

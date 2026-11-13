@@ -11,6 +11,7 @@ import {
   type MetricValidation,
 } from "../api.ts";
 import ConfirmDialog from "../components/ConfirmDialog.tsx";
+import { QueryErrorBody } from "../components/QueryErrorAlert.tsx";
 import { cellText } from "../sqllab/results.ts";
 import { errorText, NUMBER_FORMATS } from "./format.ts";
 
@@ -249,9 +250,16 @@ export default function MetricsTab({ datasetId, metrics, onChanged }: Props) {
 function ValidationMessage({ result }: { result: MetricValidation }) {
   if (!result.ok) {
     return (
-      <span className="text-error" role="status">
-        ✗ {result.error?.message ?? "The expression failed."}
-      </span>
+      <div className="text-error" role="status">
+        {result.error ? (
+          <>
+            <span aria-hidden>✗ </span>
+            <QueryErrorBody error={result.error} />
+          </>
+        ) : (
+          "✗ The expression failed."
+        )}
+      </div>
     );
   }
   return (

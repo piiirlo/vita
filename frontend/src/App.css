@@ -1539,6 +1539,29 @@ button.small.icon {
   padding-right: 24px;
 }
 
+/* how a time column is read ("year (number)", a text date's format), the identifier switch
+   and the "looks like years" suggestion, under / next to the type and temporal cells */
+.columns-table .time-kind {
+  display: flex;
+  width: fit-content;
+  margin-top: 6px;
+}
+.columns-table select.time-kind {
+  width: 100%;
+}
+.columns-table .identifier-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  color: var(--text-muted);
+}
+.columns-table .years-suggestion {
+  display: block;
+  margin: 6px auto 0;
+  white-space: nowrap;
+}
+
 .columns-table .row-missing td {
   background: var(--warning-bg);
 }
@@ -1743,6 +1766,244 @@ button.small.icon {
 
 /* ---- chart editor side panel (Customize) ---- */
 
+/* ---------- Data panel: sections in the order people think (Part 13) ---------- */
+
+/* each section is a card; "Sort & limit" is a <details> card, folded by default */
+.chart-controls details.editor-section {
+  padding: 14px 14px 16px;
+  margin: 0 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface);
+}
+.chart-controls details.editor-section[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.chart-controls details.editor-section > summary,
+.chart-controls details.more-options > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+  border-radius: 8px;
+}
+.chart-controls details.editor-section > summary::-webkit-details-marker,
+.chart-controls details.more-options > summary::-webkit-details-marker {
+  display: none;
+}
+.chart-controls details.editor-section > summary::before,
+.chart-controls details.more-options > summary::before {
+  content: "›";
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  transition: transform var(--dur-fast, 150ms) var(--ease-out);
+}
+.chart-controls details[open] > summary::before {
+  transform: rotate(90deg);
+}
+.chart-controls details > summary:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.chart-controls details.more-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.chart-controls details.more-options > summary {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.chart-controls details.more-options[open] > summary {
+  margin-bottom: 4px;
+}
+
+.chart-controls .section-title {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--text);
+}
+.chart-controls .section-hint {
+  margin: -6px 0 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* a column dragged over a section: dashed accent outline (and the glow), not color alone */
+.chart-controls .editor-section {
+  transition: border-color var(--dur-fast, 150ms) var(--ease-out), box-shadow var(--dur-fast, 150ms) var(--ease-out);
+}
+.chart-controls .editor-section.is-drop-target {
+  border-style: dashed;
+  border-color: var(--accent-text);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.chart-controls .drop-notice {
+  margin: 0 6px 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  border-radius: 12px;
+  border: 1px solid var(--warning-border);
+  background: var(--warning-bg);
+  color: var(--text);
+}
+
+/* the dataset's columns: search, type icons, drag handles */
+.column-palette-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.column-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  height: 36px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  color: var(--text-muted);
+}
+.column-search:focus-within {
+  border-color: var(--focus-ring);
+}
+.chart-controls .column-search input[type="search"] {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  outline: none;
+}
+.column-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 208px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.column-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 4px 0 8px;
+  border-radius: 10px;
+  font-size: 13px;
+  cursor: grab;
+  user-select: none;
+}
+.column-item:hover {
+  background: var(--hover);
+}
+.column-item:active {
+  cursor: grabbing;
+}
+.column-icon {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+.column-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.column-type {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.column-none {
+  padding: 6px 8px;
+}
+
+/* Simple / Custom SQL metrics */
+.chart-controls .metric-mode {
+  align-self: flex-start;
+}
+.chip-badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-strong);
+  color: var(--text-muted);
+  margin-right: 2px;
+}
+.chip .chip-action {
+  width: auto;
+  padding: 0 8px;
+  font-size: 12px;
+  color: var(--link);
+  border-radius: var(--radius-pill);
+}
+.sql-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.sql-metric-expression {
+  position: relative;
+}
+.chart-controls .sql-metric textarea {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  resize: vertical;
+}
+.sql-completions {
+  position: absolute;
+  z-index: 5;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin: 4px 0 0;
+  padding: 4px;
+  list-style: none;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--surface-raised);
+  box-shadow: 0 18px 40px -20px var(--shadow);
+  max-height: 220px;
+  overflow-y: auto;
+}
+.sql-completions li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.sql-completions li.is-active,
+.sql-completions li:hover {
+  background: var(--hover);
+}
+.sql-completions li.is-active {
+  outline: 1px solid var(--accent-text);
+}
+
 .chart-controls .control-heading {
   margin: 0;
   font-family: var(--font-mono);
@@ -1833,6 +2094,87 @@ button.small.icon {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text-muted);
+}
+
+.series-color-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.series-color-name .mono {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.swatch.swatch-small {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  border: 1px solid var(--border-strong);
+}
+
+/* conditional color rules: when / threshold / color (/ metric) / remove */
+.color-rules,
+.series-colors,
+.heat-colors {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  min-width: 0;
+}
+.rule-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.chart-controls .rule-row select,
+.chart-controls .rule-row input {
+  flex: 1 1 88px;
+  min-width: 0;
+}
+.chart-controls .rule-row button {
+  flex: none;
+}
+button[aria-pressed="true"] {
+  border-color: var(--accent-text);
+  background: var(--accent-soft);
+}
+
+/* Save chart: "Add to a dashboard" */
+.dashboard-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+.dashboard-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.dashboard-picker label.dashboard-choice {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  font-size: 14px;
+}
+.dashboard-choice:hover {
+  background: var(--hover);
+}
+.dashboard-choice input {
+  accent-color: var(--accent);
 }
 
 .swatches {
@@ -2173,15 +2515,21 @@ button.small.icon {
   font-size: clamp(48px, 9vw, 96px);
 }
 
-/* conditional color: color + arrow + words (never color alone) */
-.big-number-value.is-below,
-.big-number-value.is-below .big-number-frac {
+/* conditional color: the rule's tone + arrow + words (never color alone) */
+.big-number-value.is-danger,
+.big-number-value.is-danger .big-number-frac {
   color: var(--danger);
 }
 
-.big-number-value.is-above,
-.big-number-value.is-above .big-number-frac {
+.big-number-value.is-success,
+.big-number-value.is-success .big-number-frac {
   color: var(--success);
+}
+
+.big-number-value.is-warning,
+.big-number-value.is-warning .big-number-frac,
+.big-number-status.is-warning {
+  color: var(--warning-text);
 }
 
 .big-number-status,
@@ -2195,14 +2543,52 @@ button.small.icon {
   color: var(--text-muted);
 }
 
-.big-number-status.is-below,
+.big-number-status.is-danger,
 .big-number-change.is-down {
   color: var(--danger);
 }
 
-.big-number-status.is-above,
+.big-number-status.is-success,
 .big-number-change.is-up {
   color: var(--success);
+}
+
+/* Customize > Position: where the number sits in its card (centered by default). The
+   subtitle, status, comparison and trend line follow it. */
+.big-number.big-number-h-left {
+  margin-left: 0;
+  margin-right: auto;
+  text-align: left;
+}
+.big-number.big-number-h-right {
+  margin-left: auto;
+  margin-right: 0;
+  text-align: right;
+}
+.big-number.big-number-v-top {
+  margin-top: 0;
+  margin-bottom: auto;
+}
+.big-number.big-number-v-bottom {
+  margin-top: auto;
+  margin-bottom: 0;
+}
+.big-number-h-left .big-number-change {
+  justify-content: flex-start;
+}
+.big-number-h-right .big-number-change {
+  justify-content: flex-end;
+}
+
+/* table and pivot cells colored by a rule: tone + ▲ / ▼ */
+.cell-rule.cell-success {
+  color: var(--success);
+}
+.cell-rule.cell-danger {
+  color: var(--danger);
+}
+.cell-rule.cell-warning {
+  color: var(--warning-text);
 }
 
 .big-number-change {
@@ -2451,18 +2837,24 @@ button.small.icon {
   font-size: clamp(24px, 26cqmin, 140px);
 }
 
-.dash-tile-hero .big-number-value.is-below,
-.dash-tile-hero .big-number-value.is-below .big-number-frac,
-.dash-tile-hero .big-number-status.is-below,
+.dash-tile-hero .big-number-value.is-danger,
+.dash-tile-hero .big-number-value.is-danger .big-number-frac,
+.dash-tile-hero .big-number-status.is-danger,
 .dash-tile-hero .big-number-change.is-down {
   color: var(--ink-danger);
 }
 
-.dash-tile-hero .big-number-value.is-above,
-.dash-tile-hero .big-number-value.is-above .big-number-frac,
-.dash-tile-hero .big-number-status.is-above,
+.dash-tile-hero .big-number-value.is-success,
+.dash-tile-hero .big-number-value.is-success .big-number-frac,
+.dash-tile-hero .big-number-status.is-success,
 .dash-tile-hero .big-number-change.is-up {
   color: var(--ink-success);
+}
+
+.dash-tile-hero .big-number-value.is-warning,
+.dash-tile-hero .big-number-value.is-warning .big-number-frac,
+.dash-tile-hero .big-number-status.is-warning {
+  color: var(--ink-warning);
 }
 
 .dash-tile-hero .big-number-change,
@@ -2511,10 +2903,7 @@ button.small.icon {
   padding: 0 24px 20px;
 }
 
-.dash-tile-hero .big-number {
-  margin: auto 0;
-  text-align: left;
-}
+/* (Position: the same classes as in the editor; centered by default.) */
 
 .dash-tile-hero .big-number-value {
   color: var(--ink-text);
@@ -4425,6 +4814,36 @@ button.tile-menu-item {
   text-transform: uppercase;
   color: var(--text-muted);
   font-weight: 400;
+}
+
+/* a date column's format ("Day first: DD-MM-YYYY", a select to change it) and notes
+   ("12 N/A → empty", "years: a time column") under the type */
+.upload-table .col-format,
+.upload-table .col-note {
+  display: block;
+  margin-top: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.upload-table select.col-format {
+  height: 26px;
+  padding: 0 22px 0 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background-color: var(--surface);
+  color: var(--text);
+}
+.upload-table select.col-format.needs-answer {
+  border-color: var(--accent-text);
+  border-style: dashed;
+}
+/* dates as they will be imported: mono, so "9 Nov 2013" columns line up */
+.upload-table td.cell-date {
+  font-family: var(--font-mono);
+  font-size: 12px;
 }
 
 .upload-table .row-number {

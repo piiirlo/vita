@@ -33,6 +33,11 @@ class QueryErrorOut(BaseModel):
     message: str
     line: int | None = None
     column: int | None = None
+    # Plain language for the UI (None: not recognized, show `message`), and the database's
+    # own error text (shown under "Details").
+    title: str | None = None
+    hint: str | None = None
+    raw: str | None = None
 
 
 class QueryHistoryItem(BaseModel):

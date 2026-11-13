@@ -212,7 +212,8 @@ describe("Chart editor", () => {
     openSideTab("Data");
 
     pickChartType("Line");
-    expect(screen.queryByLabelText("X axis")).not.toBeInTheDocument();
+    // Line charts: time on the x axis by default (a dimension is possible too).
+    expect(screen.getByLabelText("X axis")).toHaveValue("__time__");
     expect(screen.getByLabelText("Time grain")).toHaveValue("month");
     openSideTab("Customize");
     expect(screen.getByText("Show points")).toBeInTheDocument();
@@ -476,8 +477,11 @@ describe("Chart editor", () => {
       expect(change).toHaveAttribute("title", expect.stringContaining("Sep 10, 2026 – Oct 10, 2026"));
       expect(requests.at(-1)!.query.time).toMatchObject({ range: { kind: "custom", start: "2026-09-10", end: "2026-10-10" } });
 
-      // Conditional color: color + arrow + words.
-      fireEvent.change(screen.getByLabelText("Color when below"), { target: { value: "5000" } });
+      // Conditional color (a rule: below 5,000 in red): color + arrow + words.
+      fireEvent.click(screen.getByRole("button", { name: "+ Add rule" }));
+      expect(screen.getByLabelText("Rule 1: when the value is")).toHaveValue("below");
+      expect(screen.getByLabelText("Rule 1: color")).toHaveValue("danger");
+      fireEvent.change(screen.getByLabelText("Rule 1: threshold"), { target: { value: "5000" } });
       expect(await screen.findByTestId("big-number-status")).toHaveTextContent("Below $5,000.00");
       expect(screen.getByTestId("big-number-value")).toHaveClass("is-below");
     });
@@ -602,5 +606,48 @@ describe("Chart editor", () => {
       await waitFor(() => expect(requests.at(-1)?.viz_type).toBe("histogram"));
       expect(requests.at(-1)!.query).toMatchObject({ bins: { column: "line_total", width: 25 }, dimensions: [], metrics: ["count"] });
     });
+  });
+});
+
+describe("Chart editor: Part 13", () => {
+  it("doesn't offer identifiers for sum or average", async () => {
+    const extra = [{ ...DATASET.columns[3]!, id: 70, name: "row_id", label: "Row ID", is_identifier: true }];
+    mockApi({ ...DATASET, columns: [...DATASET.columns, ...extra] });
+    renderEditor();
+    await screen.findByLabelText("Dataset");
+    const columnOptions = () => within(screen.getByLabelText("Metric column")).getAllByRole("option").map((o) => o.textContent);
+    expect(columnOptions()).not.toContain("Row ID");
+    fireEvent.change(screen.getByLabelText("Aggregate"), { target: { value: "COUNT_DISTINCT" } });
+    expect(columnOptions()).toContain("Row ID");
+  });
+
+  it("checks the time column before running: a year number has no months", async () => {
+    const year = { ...DATASET.columns[3]!, id: 71, name: "year", label: "Year", is_temporal: true, time_kind: "year_number" as const };
+    const requests = mockApi({ ...DATASET, main_time_column: "year", columns: [year, ...DATASET.columns.slice(1)] });
+    renderEditor();
+    await screen.findByLabelText("Dataset");
+    pickChartType("Line");
+    const grain = screen.getByLabelText("Time grain");
+    expect(grain).toHaveValue("year");
+    expect(within(grain).getByRole("option", { name: /^Month/ })).toBeDisabled();
+    expect(screen.getByText(/This column only has years/)).toBeInTheDocument();
+    // No "raw values" for a year number: it is the same as years.
+    expect(within(grain).queryByRole("option", { name: "None (raw values)" })).not.toBeInTheDocument();
+    // The chart runs by year; a month grain would be stopped before any query.
+    await waitFor(() =>
+      expect(requests.some((r) => r.viz_type === "line" && (r.query.time as { grain: string }).grain === "year")).toBe(true),
+    );
+    expect(requests.some((r) => (r.query.time as { grain?: string } | null)?.grain === "month")).toBe(false);
+  });
+
+  it("offers raw values and a dimension on the x axis of a line chart", async () => {
+    mockApi();
+    renderEditor();
+    await screen.findByLabelText("Dataset");
+    pickChartType("Line");
+    expect(within(screen.getByLabelText("Time grain")).getByRole("option", { name: "None (raw values)" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("X axis"), { target: { value: "status" } });
+    expect(screen.queryByLabelText("Time grain")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("X axis")).toHaveValue("status");
   });
 });

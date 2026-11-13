@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_vali
 from app.schemas.query import QueryErrorOut, QueryResultOut
 
 GenericType = Literal["number", "string", "datetime", "date", "boolean", "other"]
+DateOrder = Literal["ymd", "dmy", "mdy"]
 DatasetKind = Literal["table", "sql"]
 
 
@@ -29,6 +30,12 @@ class DatasetColumnOut(BaseModel):
     generic_type_override: GenericType | None
     effective_type: GenericType  # override or detected
     is_temporal: bool
+    # How a time column becomes a date: None (a date / datetime), "year_number",
+    # "text_date" (read as text_date_format), "pending" (not checked yet).
+    time_kind: Literal["year_number", "text_date", "pending"] | None = None
+    text_date_format: DateOrder | None = None
+    is_identifier: bool = False  # not offered for SUM / AVG
+    looks_like_years: bool = False  # suggest "use as time"
     is_dimension: bool
     is_hidden: bool
     is_missing: bool
@@ -43,6 +50,9 @@ class ColumnSettings(BaseModel):
     label: str | None = Field(default=None, max_length=255)
     generic_type_override: GenericType | None = None
     is_temporal: bool
+    # A text column marked temporal: the order of its dates (None: guess, or keep).
+    text_date_format: DateOrder | None = None
+    is_identifier: bool | None = None  # None: unchanged
     is_dimension: bool
     is_hidden: bool
     description: str | None = None
@@ -164,8 +174,17 @@ class UploadSource(BaseModel):
     history: list[UploadEvent]  # newest first
 
 
+class DatasetNote(BaseModel):
+    """Something Vita changed on its own (e.g. a column unmarked as time)."""
+
+    id: str
+    message: str
+    created_at: str
+
+
 class DatasetOut(DatasetListItem):
     upload_source: UploadSource | None = None
+    notes: list[DatasetNote] = Field(default_factory=list)
     db_type: str
     sql: str | None
     main_time_column: str | None

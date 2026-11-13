@@ -86,6 +86,8 @@ const PAIRS = [
   ["hero: decimals (large) on ink", "--accent", ["--surface-ink"], LARGE],
   ["hero: below-target value / change on ink", "--ink-danger", ["--surface-ink"], NORMAL],
   ["hero: above-target value / change on ink", "--ink-success", ["--surface-ink"], NORMAL],
+  ["hero: warning-rule value on ink", "--ink-warning", ["--surface-ink"], NORMAL],
+  ["warning-rule value / table cell on card", "--warning-text", ["--bg", "--surface"], NORMAL],
   ["big number: below-target value / change on card", "--danger", ["--bg", "--surface"], NORMAL],
   ["big number: above-target value / change on card", "--success", ["--bg", "--surface"], NORMAL],
   ["danger text on card", "--danger", ["--bg", "--surface"], NORMAL],

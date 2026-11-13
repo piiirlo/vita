@@ -203,6 +203,7 @@ def test_bad_values_become_null_and_are_reported(client: TestClient, uploads_db:
             "column": "amount",
             "count": 2,
             "examples": [{"row": 40, "value": "oops"}, {"row": 41, "value": "12abc"}],
+            "kind": "misfit",
         }
     ]
     assert job["row_count"] == 41
@@ -754,3 +755,123 @@ def test_startup_repairs_tables_restored_from_a_backup(
         assert owner == (uploads_db.writer,)
         conn.execute("DROP TABLE uploads.restored")  # the writer owns it now
         conn.commit()
+
+
+# ---------- Part 13: real-usage layouts ----------
+
+VIDEO_GAMES = [
+    # Rank, Name, Platform, Year, Genre, Publisher, NA, EU, JP, Other, Global
+    (1, "Wii Sports", "Wii", "2006", "Sports", "Nintendo", 41.49, 29.02, 3.77, 8.46, 82.74),
+    (2, "Super Mario Bros.", "NES", "1985", "Platform", "Nintendo", 29.08, 3.58, 6.81, 0.77, 40.24),
+    (3, "Mario Kart Wii", "Wii", "2008", "Racing", "Nintendo", 15.85, 12.88, 3.79, 3.31, 35.82),
+    (4, "Wii Sports Resort", "Wii", "2009", "Sports", "Nintendo", 15.75, 11.01, 3.28, 2.96, 33.0),
+    (5, "Pokemon Red/Pokemon Blue", "GB", "1996", "Role-Playing", "Nintendo", 11.27, 8.89, 10.22, 1.0, 31.37),
+    (6, "Tetris", "GB", "1989", "Puzzle", "Nintendo", 23.2, 2.26, 4.22, 0.58, 30.26),
+    (7, "New Super Mario Bros.", "DS", "2006", "Platform", "Nintendo", 11.38, 9.23, 6.5, 2.9, 30.01),
+    (8, "Wii Play", "Wii", "2006", "Misc", "Nintendo", 14.03, 9.2, 2.93, 2.85, 29.02),
+    (9, "Madden NFL 2004", "PS2", "N/A", "Sports", "Electronic Arts", 4.26, 0.26, 0.01, 0.71, 5.23),
+    (10, "Duck Hunt", "NES", "1984", "Shooter", "Nintendo", 26.93, 0.63, 0.28, 0.47, 28.31),
+    (11, "FIFA Soccer 2004", "PS2", "N/A", "Sports", "Electronic Arts", 0.59, 2.36, 0.04, 0.51, 3.49),
+    (12, "Nintendogs", "DS", "2005", "Simulation", "Nintendo", 9.07, 11.0, 1.93, 2.75, 24.76),
+]  # fmt: skip
+VIDEO_GAMES_HEADER = (
+    "Rank,Name,Platform,Year,Genre,Publisher,NA_Sales,EU_Sales,JP_Sales,Other_Sales,Global_Sales"
+)
+
+
+def video_games_csv() -> str:
+    lines = [VIDEO_GAMES_HEADER]
+    for row in VIDEO_GAMES:
+        lines.append(",".join(str(v) for v in row))
+    return "\n".join(lines) + "\n"
+
+
+def test_video_games_year_becomes_a_time_column_and_charts_by_year(
+    client: TestClient, uploads_db: Any
+) -> None:
+    preview = preview_of(client, video_games_csv(), "vgsales.csv")
+    columns = {c["name"]: c for c in preview["columns"]}
+    year = columns["year"]
+    assert (year["type"], year["years"], year["null_words"]) == ("integer", "name", 2)
+    assert year["misfits"] == 0  # "N/A" is empty, not a bad value
+    assert columns["rank"]["type"] == "integer"  # a rank is a number (an identifier)
+
+    job = do_import(client, preview)
+    assert job["status"] == "done", job
+    assert {"column": "year", "count": 2, "kind": "null_word",
+            "examples": [{"row": 9, "value": "N/A"}, {"row": 11, "value": "N/A"}]} in job["bad_values"]  # fmt: skip
+
+    dataset = client.get(f"/api/datasets/{job['dataset_id']}").json()
+    by_name = {c["name"]: c for c in dataset["columns"]}
+    assert by_name["year"]["time_kind"] == "year_number" and by_name["year"]["is_temporal"]
+    assert dataset["main_time_column"] == "year"
+    assert by_name["rank"]["is_identifier"]
+    assert not by_name["na_sales"]["is_identifier"]
+
+    regions = ["na_sales", "eu_sales", "jp_sales", "other_sales"]
+    response = client.post("/api/chart-data", json={"viz_type": "line", "query": {
+        "dataset_id": job["dataset_id"], "time": {"grain": "year"},
+        "metrics": [{"column": r, "aggregate": "SUM"} for r in regions]}})  # fmt: skip
+    assert response.status_code == 200, response.text
+    sums: dict[str | None, list[Decimal]] = {}
+    for row in VIDEO_GAMES:
+        key = None if row[3] == "N/A" else f"{row[3]}-01-01"
+        acc = sums.setdefault(key, [Decimal(0)] * 4)
+        for i in range(4):
+            acc[i] += Decimal(str(row[6 + i]))
+    expected = [[k, *v] for k, v in sorted(sums.items(), key=lambda kv: kv[0] or "")]
+    got = [[r[0], *(Decimal(str(v)) for v in r[1:])] for r in response.json()["rows"]]
+    assert got == expected  # rows without a year are the empty bucket, first
+
+
+SUPERSTORE = (
+    "Row ID,Order ID,Order Date,Ship Date,Customer Name,Postal Code,Sales\n"
+    "1,CA-2013-152156,9/11/2013,12/11/2013,Claire Gute,42420,261.96\n"
+    "2,CA-2013-152156,9/11/2013,12-11-2013,Claire Gute,42420,731.94\n"
+    "3,CA-2013-138688,13-06-2013,17-06-2013,Darrin Van Huff,90036,14.62\n"
+    "4,US-2012-108966,11/10/2012,18/10/2012,Sean O'Donnell,33311,957.5775\n"
+    "5,US-2012-108966,11-10-2012,18/10/2012,Sean O'Donnell,33311,22.368\n"
+    "6,CA-2011-115812,9/6/2011,14-06-2011,Brosina Hoffman,90032,48.86\n"
+    "7,CA-2011-115812,25/06/2011,30/06/2011,Brosina Hoffman,02134,7.28\n"
+)
+
+
+def test_superstore_dates_are_day_first_and_postal_codes_stay_text(
+    client: TestClient, uploads_db: bootstrap.UploadsServer
+) -> None:
+    preview = preview_of(client, SUPERSTORE, "superstore.csv")
+    columns = {c["name"]: c for c in preview["columns"]}
+    for name in ("order_date", "ship_date"):
+        col = columns[name]
+        assert (col["type"], col["date_order"], col["date_ambiguous"], col["misfits"]) == (
+            "date",
+            "dmy",
+            False,
+            0,
+        ), col
+    assert columns["postal_code"]["type"] == "text"  # always text (02134 keeps its zero)
+    assert columns["row_id"]["type"] == "integer"  # plain numbers: sorted numerically
+    assert columns["order_id"]["type"] == "text"  # CA-2013-152156
+    assert not any(p["blocking"] for p in preview["problems"])
+
+    job = do_import(client, preview)
+    assert job["status"] == "done", job
+    assert job["bad_values"] == []
+    with reader(uploads_db) as conn:
+        rows = conn.execute(
+            sql.SQL("SELECT order_date, postal_code FROM {} ORDER BY row_id").format(
+                sql.Identifier(bootstrap.SCHEMA, job["table_name"])
+            )
+        ).fetchall()
+    assert [r[1] for r in rows][-1] == "02134"  # leading zero kept
+    assert rows[0][0].isoformat() == "2013-11-09"  # 9/11/2013, day first
+    assert rows[2][0].isoformat() == "2013-06-13"
+
+    dataset = client.get(f"/api/datasets/{job['dataset_id']}").json()
+    assert dataset["main_time_column"] == "order_date"
+    by_name = {c["name"]: c for c in dataset["columns"]}
+    assert by_name["row_id"]["is_identifier"]  # a number, but not offered for sum / average
+    assert not by_name["sales"]["is_identifier"]
+    monthly = client.post("/api/chart-data", json={"viz_type": "bar", "query": {
+        "dataset_id": job["dataset_id"], "metrics": ["count"], "time": {"grain": "year"}}})  # fmt: skip
+    assert monthly.json()["rows"] == [["2011-01-01", 2], ["2012-01-01", 2], ["2013-01-01", 3]]

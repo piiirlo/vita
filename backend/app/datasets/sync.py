@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 
 from app.browsing import read_columns
 from app.datasets.sql import DatasetSource, select_sql
+from app.datasets.timecols import NumberStats, is_identifier_name, is_year_name, number_stats
 from app.engines import ConnectionDetails, create_engine_for
 from app.models import Dataset, DatasetColumn
 from app.query import DEFAULT_TIMEOUT_SECONDS, QueryError, run_query
@@ -84,15 +85,48 @@ def _declared_types(details: ConnectionDetails, schema: str, table: str) -> dict
         engine.dispose()
 
 
-def merge_columns(dataset: Dataset, detected: list[DetectedColumn]) -> SyncResult:
+def detect_number_stats(
+    details: ConnectionDetails, source: DatasetSource, detected: list[DetectedColumn]
+) -> dict[str, NumberStats]:
+    """Year detection needs the number columns' values (one aggregate query). Best effort:
+    without them, columns are just not detected as years."""
+    names = [c.name for c in detected if c.generic_type == "number"]
+    try:
+        return number_stats(details, source, names)
+    except QueryError:
+        log.warning("Couldn't read number column stats", exc_info=True)
+        return {}
+
+
+def _time_kind_after_type_change(col: DatasetColumn) -> None:
+    """A temporal column whose type changed: dates need no conversion; anything else is
+    checked again lazily ("pending")."""
+    if not col.is_temporal:
+        return
+    if col.effective_type in TEMPORAL_TYPES:
+        col.time_kind = None
+        col.text_date_format = None
+    elif col.time_kind is None:
+        col.time_kind = "pending"
+
+
+def merge_columns(
+    dataset: Dataset,
+    detected: list[DetectedColumn],
+    stats: dict[str, NumberStats] | None = None,
+) -> SyncResult:
     """Update dataset.columns from what the database reports.
 
-    - new columns are added with guessed settings
+    - new columns are added with guessed settings: dates are temporal; number columns with
+      identifier-like names are identifiers; with `stats`, whole numbers all in 1900-2100
+      are a year time column when the name says "year", else only suggested
     - existing columns keep the user's settings; only raw/generic type and position change
+      (and the "looks like years" suggestion is refreshed)
     - columns that disappeared are marked is_missing (settings kept, in case they return)
     - main_time_column is cleared if its column is gone, and guessed if exactly one
-      temporal column exists and none is set
+      temporal column exists and none is set (a real date column first)
     """
+    stats = stats or {}
     result = SyncResult()
     existing = {c.name: c for c in dataset.columns}
     seen: set[str] = set()
@@ -100,14 +134,22 @@ def merge_columns(dataset: Dataset, detected: list[DetectedColumn]) -> SyncResul
     for position, found in enumerate(detected):
         seen.add(found.name)
         col = existing.get(found.name)
+        found_stats = stats.get(found.name)
+        years = found_stats is not None and found_stats.auto_years()
         if col is None:
+            year_column = years and is_year_name(found.name)
             col = DatasetColumn(
                 name=found.name,
                 generic_type=found.generic_type,
-                is_temporal=found.generic_type in TEMPORAL_TYPES,
+                is_temporal=found.generic_type in TEMPORAL_TYPES or year_column,
+                time_kind="year_number" if year_column else None,
                 is_dimension=found.generic_type in {"string", "boolean"},
                 is_hidden=False,
                 is_missing=False,
+                is_identifier=found.generic_type == "number"
+                and is_identifier_name(found.name)
+                and not year_column,
+                looks_like_years=years and not year_column,
             )
             dataset.columns.append(col)
             result.added.append(found.name)
@@ -117,9 +159,14 @@ def merge_columns(dataset: Dataset, detected: list[DetectedColumn]) -> SyncResul
             elif col.generic_type != found.generic_type:
                 result.type_changed.append(found.name)
             col.is_missing = False
+            if found_stats is not None:
+                col.looks_like_years = years and not col.is_temporal
         col.position = position
         col.raw_type = found.raw_type
+        changed = col.generic_type != found.generic_type
         col.generic_type = found.generic_type
+        if changed:
+            _time_kind_after_type_change(col)
 
     for offset, col in enumerate(c for c in dataset.columns if c.name not in seen):
         if not col.is_missing:
@@ -127,11 +174,15 @@ def merge_columns(dataset: Dataset, detected: list[DetectedColumn]) -> SyncResul
         col.is_missing = True
         col.position = len(detected) + offset
 
-    temporal = [c.name for c in dataset.columns if c.is_temporal and not c.is_missing]
-    if dataset.main_time_column not in temporal:
+    temporal = [c for c in dataset.columns if c.is_temporal and not c.is_missing]
+    if dataset.main_time_column not in {c.name for c in temporal}:
         dataset.main_time_column = None
-    if dataset.main_time_column is None and len(temporal) == 1:
-        dataset.main_time_column = temporal[0]
+    if dataset.main_time_column is None and temporal:
+        dates = [c.name for c in temporal if c.time_kind is None]
+        if len(dates) == 1:
+            dataset.main_time_column = dates[0]
+        elif not dates and len(temporal) == 1:
+            dataset.main_time_column = temporal[0].name
 
     dataset.columns.sort(key=lambda c: c.position)
     return result

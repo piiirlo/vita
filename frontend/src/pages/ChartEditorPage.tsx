@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import {
-  ApiError,
+  addChartToDashboard,
   createChart,
+  createDashboard,
   getChart,
   getDashboard,
   getDataset,
-  isQueryErrorDetail,
   listDatasets,
   updateChart,
   type ChartDataResult,
@@ -25,18 +25,21 @@ import { drawState } from "../charts/display.ts";
 import { dataKey, loadChartData } from "../charts/load.ts";
 import { seriesNamesOf } from "../charts/options.ts";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs.tsx";
+import { QueryErrorBody } from "../components/QueryErrorAlert.tsx";
+import { queryErrorSummary, toQueryError } from "../components/queryError.ts";
 import {
   adaptToViz,
   defaultQuery,
   fromParams,
+  timeColumnProblem,
   toParams,
   type ChartState,
   type DisplayOptions,
 } from "../charts/model.ts";
-import AddToDashboardDialog from "../dashboards/AddToDashboardDialog.tsx";
+import { addChartTile } from "../dashboards/layout.ts";
+import SaveChartDialog, { type DashboardTarget } from "../charts/SaveChartDialog.tsx";
 import type { SqlLabLocationState } from "../datasets/sqlLabLink.ts";
 import ResultsPane, { type RunState } from "../sqllab/ResultsPane.tsx";
-import SaveDialog from "../sqllab/SaveDialog.tsx";
 import { usePageTitle } from "../components/usePageTitle.ts";
 import { toast } from "../components/toast.ts";
 import EmptyState from "../components/EmptyState.tsx";
@@ -64,10 +67,7 @@ type Results =
 type Tab = "chart" | "data" | "sql";
 type SideTab = "data" | "customize";
 
-function asError(err: unknown): QueryErrorDetail {
-  if (err instanceof ApiError && isQueryErrorDetail(err.detail)) return err.detail;
-  return { kind: "other", message: err instanceof Error ? err.message : String(err), line: null, column: null };
-}
+const asError = toQueryError;
 
 /** What "unsaved changes" compares. */
 const snapshot = (name: string, state: ChartState | null) =>
@@ -172,6 +172,13 @@ export default function ChartEditorPage() {
   const run = useCallback(async (refresh = false) => {
     if (!state) return;
     controller.current?.abort();
+    // The time column is checked before anything runs (year numbers have no months...).
+    const problem = dataset ? timeColumnProblem(state, dataset) : null;
+    if (problem) {
+      controller.current = null;
+      setResults({ status: "error", error: problem });
+      return;
+    }
     const current = new AbortController();
     controller.current = current;
     setResults((prev) => ({
@@ -190,7 +197,7 @@ export default function ChartEditorPage() {
     } catch (err) {
       if (controller.current === current && !current.signal.aborted) setResults({ status: "error", error: asError(err) });
     }
-  }, [state]);
+  }, [state, dataset]);
 
   // Auto-update (debounced) whenever the query changes.
   const runRef = useRef(run);
@@ -229,7 +236,24 @@ export default function ChartEditorPage() {
 
   // ---------- saving ----------
 
-  async function saveAs(newName: string, description: string) {
+  /** Put a saved chart on a dashboard (an existing one: the first free spot; or a new one). */
+  async function place(target: NonNullable<DashboardTarget>, chartId: number): Promise<{ id: number; name: string }> {
+    if (target.kind === "existing") return addChartToDashboard(target.id, chartId);
+    return createDashboard({ name: target.name, description: null, layout: addChartTile([], chartId), refresh_interval: "off" });
+  }
+
+  function savedToast(chartName: string, dashboard: { id: number; name: string } | null, extra = "") {
+    if (!dashboard) {
+      toast.success(`Saved "${chartName}".${extra}`);
+      return;
+    }
+    toast.success(`Saved "${chartName}" and added it to ${dashboard.name}.`, {
+      label: "Open dashboard",
+      onClick: () => void navigate(`/dashboards/${dashboard.id}`),
+    });
+  }
+
+  async function saveAs(newName: string, description: string, target: DashboardTarget = null) {
     if (!state) return;
     const created = await createChart({
       name: newName,
@@ -241,8 +265,17 @@ export default function ChartEditorPage() {
     setChart(created);
     setName(created.name);
     setSavedSnapshot(snapshot(created.name, state));
-    toast.success(`Saved "${created.name}".`);
     dirtyRef.current = false; // saved: navigating on is fine (before the re-render says so)
+    let dashboard: { id: number; name: string } | null = null;
+    if (target) {
+      try {
+        dashboard = await place(target, created.id);
+        setChart({ ...created, dashboards: [{ id: dashboard.id, name: dashboard.name }] });
+      } catch (err) {
+        toast.error(`Saved "${created.name}", but couldn't add it to the dashboard: ${queryErrorSummary(asError(err))}`);
+      }
+    }
+    savedToast(created.name, dashboard);
     if (leaveAfterSaveAs) {
       setLeaveAfterSaveAs(false);
       blocker.proceed?.();
@@ -268,11 +301,13 @@ export default function ChartEditorPage() {
       setChart(updated);
       setName(updated.name);
       setSavedSnapshot(snapshot(updated.name, state));
-      toast.success(`Saved "${updated.name}".`);
+      // Dashboards show the chart itself: they all get the update.
+      const on = updated.dashboards?.length ?? 0;
+      savedToast(updated.name, null, on ? ` ${on === 1 ? "1 dashboard shows" : `${on} dashboards show`} the update.` : "");
       dirtyRef.current = false;
       return true;
     } catch (err) {
-      toast.error(`Couldn't save: ${asError(err).message}`);
+      toast.error(`Couldn't save: ${queryErrorSummary(asError(err))}`);
       return false;
     }
   }
@@ -347,6 +382,7 @@ export default function ChartEditorPage() {
               onVizType={setViz}
               onQuery={patchQuery}
               onDisplay={patchDisplay}
+              onMetricSaved={(metric) => setDataset((d) => (d ? { ...d, metrics: [...d.metrics, metric] } : d))}
             />
           </TabsContent>
           <TabsContent value="customize">
@@ -418,7 +454,7 @@ export default function ChartEditorPage() {
           <div className="chart-canvas">
             {results.status === "error" && (
               <div className="alert alert-error chart-error" role="alert">
-                {results.error.message}
+                <QueryErrorBody error={results.error} />
               </div>
             )}
             {results.status === "loading" && (
@@ -479,12 +515,32 @@ export default function ChartEditorPage() {
       </section>
 
       {addToDashboard && chart && (
-        <AddToDashboardDialog chartId={chart.id} chartName={chart.name} onClose={() => setAddToDashboard(false)} />
+        <SaveChartDialog
+          title={`Add “${chart.name}” to a dashboard`}
+          askName={false}
+          requireDashboard
+          onDashboards={chart.dashboards}
+          submitLabel={dirty ? "Save and add" : "Add"}
+          onSave={async (_name, _description, target) => {
+            if (!target) return;
+            // Unsaved changes are saved first, so the dashboard shows what you see.
+            if (dirty && !(await save())) throw new Error("The chart couldn't be saved.");
+            const dashboard = await place(target, chart.id);
+            setAddToDashboard(false);
+            setChart((c) => (c ? { ...c, dashboards: [...(c.dashboards ?? []), { id: dashboard.id, name: dashboard.name }] } : c));
+            toast.success(`Added "${chart.name}" to ${dashboard.name}.`, {
+              label: "Open dashboard",
+              onClick: () => void navigate(`/dashboards/${dashboard.id}`),
+            });
+          }}
+          onCancel={() => setAddToDashboard(false)}
+        />
       )}
 
       {saveDialog && (
-        <SaveDialog
+        <SaveChartDialog
           title={chart ? "Save chart as new" : "Save chart"}
+          askName
           initialName={chart ? `${chart.name} (copy)` : ""}
           initialDescription={chart?.description ?? ""}
           onSave={saveAs}

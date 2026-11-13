@@ -31,6 +31,8 @@ VizType = Literal[
 Aggregate = Literal["SUM", "AVG", "MIN", "MAX", "COUNT", "COUNT_DISTINCT"]
 Grain = Literal["day", "week", "month", "quarter", "year"]
 GRAINS: tuple[str, ...] = ("day", "week", "month", "quarter", "year")
+# A chart's time axis: a grain bucket, or "raw" = every distinct time value (no bucketing).
+AxisGrain = Literal["day", "week", "month", "quarter", "year", "raw"]
 RangeKind = Literal[
     "none",
     "last_7_days",
@@ -71,8 +73,25 @@ class AdhocMetric(BaseModel):
         return self.label or f"{self.aggregate}({self.column})"
 
 
-# A saved metric of the dataset (by name) or an ad-hoc one.
-MetricRef = str | AdhocMetric
+class SqlMetric(BaseModel):
+    """A custom SQL metric written in the chart editor, e.g.
+    {"sql": "SUM(amount) / NULLIF(SUM(quantity), 0)", "label": "Price per unit"}. The same
+    checks as a saved metric's expression (one expression, no clauses, no writes)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    sql: str = Field(min_length=1, max_length=10_000)
+    label: str = Field(min_length=1, max_length=255)
+    # numeral.js-style, like a saved metric's (the frontend formats with it).
+    number_format: str | None = Field(default=None, max_length=50)
+
+    @property
+    def name(self) -> str:
+        return self.label
+
+
+# A saved metric of the dataset (by name), an ad-hoc one or a custom SQL one.
+MetricRef = str | AdhocMetric | SqlMetric
 
 
 class TimeRange(BaseModel):
@@ -96,7 +115,7 @@ class TimeRange(BaseModel):
 class TimeSpec(BaseModel):
     # Defaults to the dataset's main time column.
     column: str | None = None
-    grain: Grain | None = None
+    grain: AxisGrain | None = None
     range: TimeRange = Field(default_factory=TimeRange)
 
 
@@ -185,6 +204,11 @@ class ChartIn(BaseModel):
     params: ChartParams  # params.query.dataset_id is the chart's dataset
 
 
+class ChartDashboardRef(BaseModel):
+    id: int
+    name: str
+
+
 class ChartOut(BaseModel):
     id: int
     name: str
@@ -195,3 +219,5 @@ class ChartOut(BaseModel):
     params: ChartParams
     created_at: datetime
     updated_at: datetime
+    # The dashboards showing this chart (single-chart responses only; lists leave it empty).
+    dashboards: list[ChartDashboardRef] = Field(default_factory=list)

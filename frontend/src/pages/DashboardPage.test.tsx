@@ -306,3 +306,24 @@ describe("Dashboard page", () => {
     expect(bodies.slice(before).every((b) => b.cache_ttl === 0)).toBe(true);
   });
 });
+
+describe("Dashboard: Tidy up (Part 13)", () => {
+  it("pulls every tile up on demand, and the saved layout has no gaps", async () => {
+    const { puts } = mockApi();
+    // A gap: nothing between the title (rows 0-2) and the table (from row 10).
+    const gapped = LAYOUT.filter((t) => t.id !== "c1" && t.id !== "c2").map((t) => (t.id === "c3" ? { ...t, y: 10 } : t));
+    const original = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      if (String(input) === "/api/dashboards/1" && (init?.method ?? "GET") === "GET") return json({ ...DASHBOARD, layout: gapped });
+      return original(input, init);
+    });
+    renderDashboard();
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    fireEvent.click(screen.getByRole("button", { name: "Tidy up" }));
+    expect(screen.getByLabelText("Unsaved changes")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(puts[0]!.layout.find((t) => t.id === "c3")).toMatchObject({ x: 0, y: 2, w: 12, h: 8 });
+    expect(puts[0]!.layout.find((t) => t.id === "t1")).toMatchObject({ x: 0, y: 0 });
+  });
+});

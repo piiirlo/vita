@@ -1,6 +1,7 @@
 /** Chart editor state, what each chart type needs, and the requests to send. Pure functions. */
 import type {
   AdhocMetric,
+  AxisGrain,
   ChartFilter,
   ChartParams,
   ChartQuery,
@@ -8,9 +9,12 @@ import type {
   DatasetColumn,
   Grain,
   MetricRef,
+  QueryErrorDetail,
   VizType,
 } from "../api.ts";
 import type { FormatSpec } from "./display.ts";
+import type { ColorRule } from "./colorRules.ts";
+import { isSqlMetric } from "../api.ts";
 import { categoryLabel } from "./format.ts";
 import { vizLabel } from "./vizTypes.ts";
 import { PART_LABELS, isGrain, partValueLabel, splitDim } from "./dimensions.ts";
@@ -40,6 +44,11 @@ export type DisplayOptions = {
   color?: number | null;
   /** Legend names: original series name -> shown name (e.g. "1" -> "Lethbridge"). */
   series_labels?: Record<string, string>;
+  /** Colors picked by hand: original series (or slice) name -> palette index 1-10. */
+  series_colors?: Record<string, number>;
+  /** Conditional colors: values above / below a threshold in a tone (every chart type with
+   * single values; see colorRules.ts). */
+  color_rules?: ColorRule[];
   show_points?: boolean;
 
   // ---- pie ----
@@ -76,7 +85,11 @@ export type DisplayOptions = {
   // ---- big number ----
   subtitle?: string;
   font_size?: "auto" | "s" | "m" | "l";
-  /** Conditional color: below -> danger, above -> success (either may be empty). */
+  /** Where the number sits in its card (centered by default); subtitle, comparison and trend
+   * follow it. */
+  align?: "left" | "center" | "right";
+  valign?: "top" | "middle" | "bottom";
+  /** Older conditional color (read as color rules): below -> danger, above -> success. */
   color_below?: number | null;
   color_above?: number | null;
   /** +/- % against the period before the time range. (Changes the query: one more request.) */
@@ -124,10 +137,69 @@ export const GRAINS: { value: Grain; label: string }[] = [
   { value: "year", label: "Year" },
 ];
 
+/** Line and area charts can also show every time value as it is (no buckets). */
+export const RAW_GRAIN = { value: "raw" as const, label: "None (raw values)" };
+/** Shown next to grains a column can't use. */
+export const YEARS_ONLY_HINT = "This column only has years";
+
+/** The grains a time column supports: a year number (2006) only has years. */
+export function grainAllowed(column: DatasetColumn | undefined, grain: AxisGrain): boolean {
+  if (column?.time_kind === "year_number") return grain === "year";
+  return true;
+}
+
+/** A sensible default grain for a time column (month; a year number: year). */
+export function defaultGrain(column: DatasetColumn | undefined): AxisGrain {
+  return column?.time_kind === "year_number" ? "year" : "month";
+}
+
+function timeColumnOf(query: ChartQuery, dataset: Dataset): DatasetColumn | undefined {
+  const name = query.time?.column ?? dataset.main_time_column;
+  return name ? dataset.columns.find((c) => c.name === name) : undefined;
+}
+
+/** Checked before any query runs: the time column (and "column@part" dimensions) must be a
+ * usable time column that supports the grain. A problem as an error to show, else null. */
+export function timeColumnProblem(state: ChartState, dataset: Dataset): QueryErrorDetail | null {
+  const { query } = state;
+  const problem = (title: string, hint: string): QueryErrorDetail => ({ kind: "invalid", message: title, title, hint, line: null, column: null });
+  const check = (col: DatasetColumn | undefined, name: string, grain: string | null): QueryErrorDetail | null => {
+    if (!col || col.is_missing) return problem(`“${name}” isn't a column of this dataset anymore`, "Pick another time column.");
+    const label = col.label || col.name;
+    if (!col.is_temporal) return problem(`“${label}” isn't a time column`, "Pick another time column, or mark it as time in the dataset's Columns tab.");
+    if (col.time_kind === "pending") {
+      return problem(
+        `“${label}” hasn't been checked as a time column yet`,
+        "It was marked as time before Vita supported number and text time columns. Open the dataset page to check it.",
+      );
+    }
+    if (grain && col.time_kind === "year_number" && grain !== "year" && grain !== "raw") {
+      return problem(`“${label}” only has years`, `${YEARS_ONLY_HINT}: use the Year grain.`);
+    }
+    return null;
+  };
+  const time = query.time;
+  if (time && (time.grain || time.range.kind !== "none")) {
+    const name = time.column ?? dataset.main_time_column;
+    if (!name) return problem("Pick a time column", "This dataset has no main time column.");
+    const found = check(timeColumnOf(query, dataset), name, time.grain);
+    if (found) return found;
+  }
+  for (const ref of [...query.dimensions, ...(query.column_dimensions ?? []), ...(query.series ? [query.series] : [])]) {
+    const { column, part } = splitDim(ref, dataset);
+    if (!part) continue;
+    const found = check(dataset.columns.find((c) => c.name === column), column, part);
+    if (found) return found;
+  }
+  return null;
+}
+
 // ---------- names and labels ----------
 
 export function metricName(ref: MetricRef): string {
-  return typeof ref === "string" ? ref : ref.label || `${ref.aggregate}(${ref.column})`;
+  if (typeof ref === "string") return ref;
+  if (isSqlMetric(ref)) return ref.label;
+  return ref.label || `${ref.aggregate}(${ref.column})`;
 }
 
 const AGGREGATE_LABELS: Record<AdhocMetric["aggregate"], string> = {
@@ -152,12 +224,14 @@ export function metricLabel(ref: MetricRef, dataset: Dataset | null): string {
     const saved = dataset?.metrics.find((m) => m.name === ref);
     return saved?.label || ref;
   }
+  if (isSqlMetric(ref)) return ref.label;
   if (ref.label) return ref.label;
   return `${AGGREGATE_LABELS[ref.aggregate]} ${columnLabel(ref.column, dataset)}`;
 }
 
 /** The saved metric's number format (ad-hoc metrics have none). */
 export function metricFormat(ref: MetricRef, dataset: Dataset | null): string | null {
+  if (isSqlMetric(ref)) return ref.number_format || null;
   if (typeof ref !== "string") return null;
   return dataset?.metrics.find((m) => m.name === ref)?.number_format ?? null;
 }
@@ -194,9 +268,13 @@ export function defaultQuery(dataset: Dataset): ChartQuery {
   };
 }
 
-function withGrain(query: ChartQuery, dataset: Dataset, grain: Grain | null): ChartQuery {
+/** `grain` "default": the time column's default grain (month; year for a year number). A
+ * grain the column can't use becomes its default too. */
+function withGrain(query: ChartQuery, dataset: Dataset, grain: AxisGrain | "default" | null): ChartQuery {
   const column = query.time?.column ?? dataset.main_time_column ?? temporalColumns(dataset)[0]?.name ?? null;
-  return { ...query, time: { column, grain, range: query.time?.range ?? { kind: "none" } } };
+  const col = column ? dataset.columns.find((c) => c.name === column) : undefined;
+  const fitted = grain === "default" || (grain && !grainAllowed(col, grain)) ? defaultGrain(col) : grain;
+  return { ...query, time: { column, grain: fitted, range: query.time?.range ?? { kind: "none" } } };
 }
 
 /** Make a query fit a chart type, keeping as much of the user's choices as possible. */
@@ -235,14 +313,20 @@ export function adaptToViz(state: ChartState, viz: VizType, dataset: Dataset): C
         if (!query.time?.column) query.time = null;
       } else if (!grain) {
         const firstDimension = groupableColumns(dataset).find((c) => !c.is_temporal);
-        if (dataset.main_time_column) query = withGrain(query, dataset, "month");
+        if (dataset.main_time_column) query = withGrain(query, dataset, "default");
         else if (firstDimension) query.dimensions = [firstDimension.name];
       }
       break;
     case "line":
     case "area":
+      // No time column: a dimension on the x axis (ordered categories).
+      if (temporalColumns(dataset).length === 0) {
+        const first = query.dimensions[0] ?? firstCategory();
+        query = { ...query, dimensions: first ? [first] : [], time: null };
+        break;
+      }
       if (!query.series && query.dimensions.length > 0) query.series = query.dimensions[0] ?? null;
-      query = withGrain({ ...query, dimensions: [] }, dataset, grain ?? "month");
+      query = withGrain({ ...query, dimensions: [] }, dataset, grain ?? "default");
       break;
     case "combo":
       // Like bar (time or one dimension on x), without a series: the metrics are the series.
@@ -252,7 +336,7 @@ export function adaptToViz(state: ChartState, viz: VizType, dataset: Dataset): C
         if (!query.time?.column) query.time = null;
       } else if (!grain) {
         const first = firstCategory();
-        if (dataset.main_time_column) query = withGrain(query, dataset, "month");
+        if (dataset.main_time_column) query = withGrain(query, dataset, "default");
         else if (first) query.dimensions = [first];
       }
       break;
@@ -489,7 +573,9 @@ export function missingFor(state: ChartState, dataset: Dataset): string[] {
       break;
     case "line":
     case "area":
-      if (temporalColumns(dataset).length === 0) todo.push("This dataset has no time column: mark one as temporal");
+      if (!grain && query.dimensions.length === 0) {
+        todo.push(temporalColumns(dataset).length ? "Pick the x axis (time or a dimension)" : "Pick the x axis (a dimension), or mark a time column in the dataset");
+      }
       break;
     case "pie":
       if (query.dimensions.length === 0) todo.push("Pick the slices (a dimension)");

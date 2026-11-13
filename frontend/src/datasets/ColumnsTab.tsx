@@ -1,6 +1,6 @@
 import { useState } from "react";
-import type { ColumnSettings, DatasetColumn, GenericType } from "../api.ts";
-import { GENERIC_TYPES } from "./format.ts";
+import type { ColumnSettings, DatasetColumn, DateOrder, GenericType } from "../api.ts";
+import { DATE_FORMAT_LABELS, GENERIC_TYPES } from "./format.ts";
 import ValueLabelsDialog from "./ValueLabelsDialog.tsx";
 
 type Props = {
@@ -109,17 +109,41 @@ export default function ColumnsTab({
                         </option>
                       ))}
                     </select>
+                    <TimeKindLine col={col} settings={s} effective={effective} onChange={(patch) => onChange(col.id, patch)} />
+                    {effective === "number" && (
+                      <label className="identifier-check small" title="Identifiers (row_id, postal_code...) aren't offered for sum or average">
+                        <input
+                          type="checkbox"
+                          checked={s.is_identifier ?? false}
+                          aria-label={`${col.name} is an identifier`}
+                          onChange={(e) => onChange(col.id, { is_identifier: e.target.checked })}
+                        />
+                        identifier
+                      </label>
+                    )}
                   </td>
                   <td className="center">
                     <input
                       type="checkbox"
                       aria-label={`${col.name} is temporal`}
                       checked={s.is_temporal}
+                      disabled={!s.is_temporal && !canBeTime(effective)}
+                      title={canBeTime(effective) ? undefined : TIME_TYPES_HINT}
                       onChange={(e) => {
                         onChange(col.id, { is_temporal: e.target.checked });
                         if (!e.target.checked && mainTimeColumn === col.name) onMainTimeColumn(null);
                       }}
                     />
+                    {col.looks_like_years && !s.is_temporal && effective === "number" && (
+                      <button
+                        type="button"
+                        className="small years-suggestion"
+                        onClick={() => onChange(col.id, { is_temporal: true })}
+                        title="Its values are all whole numbers between 1900 and 2100"
+                      >
+                        Looks like years, use as time?
+                      </button>
+                    )}
                   </td>
                   <td className="center">
                     <input
@@ -198,4 +222,52 @@ export default function ColumnsTab({
       )}
     </div>
   );
+}
+
+/** Time columns are dates and datetimes, numbers of years and text dates. */
+const canBeTime = (type: GenericType) => type !== "boolean" && type !== "other";
+const TIME_TYPES_HINT = "Time columns are dates, datetimes, years (whole numbers like 2024) or text dates";
+
+/** How a time column is read, under its type: "year (number)", a text date's format (to
+ * pick), or "not checked yet". Settings are the draft (saved on "Save"). */
+function TimeKindLine({
+  col,
+  settings,
+  effective,
+  onChange,
+}: {
+  col: DatasetColumn;
+  settings: ColumnSettings;
+  effective: GenericType;
+  onChange(patch: Partial<ColumnSettings>): void;
+}) {
+  if (!settings.is_temporal || effective === "date" || effective === "datetime") return null;
+  const savedAsIs = col.is_temporal && col.effective_type === effective;
+  if (effective === "number") {
+    if (savedAsIs && col.time_kind === "pending") return <span className="tag tag-warning time-kind">not checked yet</span>;
+    return (
+      <span className="tag time-kind" title="Whole numbers like 2006, read as January 1st of that year">
+        year (number)
+      </span>
+    );
+  }
+  if (effective === "string") {
+    const current = settings.text_date_format ?? (savedAsIs ? (col.text_date_format ?? null) : null);
+    return (
+      <select
+        className="cell-input time-kind"
+        aria-label={`Date format of ${col.name}`}
+        value={current ?? ""}
+        onChange={(e) => onChange({ text_date_format: (e.target.value || null) as DateOrder | null })}
+      >
+        {!current && <option value="">Text date: detect the format</option>}
+        {(Object.keys(DATE_FORMAT_LABELS) as DateOrder[]).map((o) => (
+          <option key={o} value={o}>
+            {DATE_FORMAT_LABELS[o]}
+          </option>
+        ))}
+      </select>
+    );
+  }
+  return null;
 }

@@ -3,6 +3,7 @@ import type { ChartDataResult, Dataset } from "../api.ts";
 import { categoryLabel, formatNumber, toNumber } from "./format.ts";
 import { metricFormatter } from "./display.ts";
 import { metricName, outputLabel, type ChartState } from "./model.ts";
+import { cellRule, ruleMarker } from "./colorRules.ts";
 
 type Sort = { index: number; desc: boolean } | null;
 
@@ -46,6 +47,7 @@ export default function TableChart({
           name: c.name,
           label: outputLabel(c.name, query, dataset),
           numeric: Boolean(metric) || c.type === "number",
+          metric: metric ? metricName(metric) : null,
           format: (value: unknown) =>
             formatMetric
               ? formatMetric(value)
@@ -91,11 +93,20 @@ export default function TableChart({
         <tbody>
           {rows.map((row, r) => (
             <tr key={r}>
-              {columns.map((c, i) => (
-                <td key={c.name} className={`${c.numeric ? "num" : ""}${row[i] === null ? " muted" : ""}`}>
-                  {c.format(row[i])}
-                </td>
-              ))}
+              {columns.map((c, i) => {
+                // Conditional colors: the tone's text color + ▲ / ▼ (not color alone).
+                const rule = c.metric ? cellRule(state, c.metric, row[i]) : null;
+                return (
+                  <td
+                    key={c.name}
+                    className={`${c.numeric ? "num" : ""}${row[i] === null ? " muted" : ""}${rule ? ` cell-rule cell-${rule.tone}` : ""}`}
+                  >
+                    {rule && <span aria-hidden>{ruleMarker(rule)} </span>}
+                    {c.format(row[i])}
+                    {rule && <span className="sr-only"> ({rule.when === "above" ? "above" : "below"} {rule.value})</span>}
+                  </td>
+                );
+              })}
             </tr>
           ))}
         </tbody>

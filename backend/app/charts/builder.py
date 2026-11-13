@@ -26,6 +26,7 @@ from app.charts.timerange import aligned_bounds
 from app.datasets.checks import parse_metric_expression
 from app.datasets.sql import column as sql_column
 from app.datasets.sql import dialect_for, from_clause, quoted, source_of
+from app.datasets.timecols import allowed_grains, time_value
 from app.models import Dataset, DatasetColumn
 from app.query import QueryError
 from app.schemas.charts import (
@@ -34,9 +35,10 @@ from app.schemas.charts import (
     MAX_PIVOT_COLUMN_DIMENSIONS,
     MAX_PIVOT_ROW_DIMENSIONS,
     AdhocMetric,
+    AxisGrain,
     ChartQuery,
-    Grain,
     MetricRef,
+    SqlMetric,
     VizType,
 )
 
@@ -154,12 +156,33 @@ class _Builder:
         if not col.is_temporal:
             _invalid(f'"{name}" is not a time column, so it has no "{part}".')
         if part in GRAINS:
-            return Dim(ref, time_bucket(sql_column(col.name), part, self.db_type), col)  # type: ignore[arg-type]
+            self.check_grain(col, part)
+            value = time_value(col, self.db_type)
+            return Dim(ref, time_bucket(value, part, self.db_type), col)  # type: ignore[arg-type]
         if part in TIME_PARTS:
-            if part == "hour_of_day" and col.effective_type == "date":
+            if col.time_kind == "year_number":
+                _invalid(f'"{name}" only has years, so it has no "{part}".')
+            if part == "hour_of_day" and (
+                col.effective_type == "date" or col.time_kind is not None
+            ):
                 _invalid(f'"{name}" is a date without a time, so it has no hour.')
-            return Dim(ref, time_part(sql_column(col.name), part, self.db_type), col)
+            return Dim(ref, time_part(time_value(col, self.db_type), part, self.db_type), col)
         _invalid(f'Unknown time part "{part}" ({role}).')
+
+    def check_grain(self, col: DatasetColumn, grain: str) -> None:
+        allowed = allowed_grains(col)
+        if allowed is not None and grain not in allowed:
+            _invalid(
+                f'"{col.name}" only has years (it is a year number), so it can\'t be grouped '
+                f"by {grain}. Use the Year grain."
+            )
+
+    def time_axis(self, col: DatasetColumn, grain: AxisGrain) -> exp.Expr:
+        """The x axis of a time chart: the grain's bucket, or every time value ("raw")."""
+        value = time_value(col, self.db_type)
+        if grain == "raw":
+            return value
+        return time_bucket(value, grain, self.db_type)
 
     def metric(self, ref: MetricRef) -> tuple[str, exp.Expr]:
         if isinstance(ref, str):
@@ -167,6 +190,9 @@ class _Builder:
             if saved is None:
                 _invalid(f"Unknown metric \"{ref}\". It isn't one of this dataset's metrics.")
             return saved.name, parse_metric_expression(saved.expression, self.db_type)
+        if isinstance(ref, SqlMetric):
+            # Custom SQL: the same checks as a saved metric's expression.
+            return ref.name, parse_metric_expression(ref.sql, self.db_type)
         return ref.name, self.adhoc_metric(ref)
 
     def adhoc_metric(self, ref: AdhocMetric) -> exp.Expr:
@@ -226,8 +252,7 @@ class _Builder:
                     _invalid(
                         f'"{time_col.name}" is already the time axis; don\'t also group by it.'
                     )
-                bucket = time_bucket(sql_column(time_col.name), grain, self.db_type)
-                self.add_output(time_col.name, bucket, group=True)
+                self.add_output(time_col.name, self.time_axis(time_col, grain), group=True)
             for name in query.dimensions:
                 self.add_output(name, self.dim(name, "dimension").expr, group=True)
             if query.series is not None:
@@ -248,7 +273,9 @@ class _Builder:
             and any(bound is not None for bound in self.time_bounds)
         )
         if rows_probe and time_col is not None:
-            self.add_output(ROWS_PROBE_COLUMN, exp.Min(this=sql_column(time_col.name)), group=False)
+            self.add_output(
+                ROWS_PROBE_COLUMN, exp.Min(this=time_value(time_col, self.db_type)), group=False
+            )
 
         select = exp.select(*self.selects).from_(from_clause(source_of(self.dataset), self.db_type))
         # Scatter colors points by the series: every point stays (no top-N join).
@@ -265,8 +292,12 @@ class _Builder:
             select = select.where(exp.and_(*[c.copy() for c in conditions]))
         if self.group_by:
             select = select.group_by(*self.group_by)
+        # Line / area with a dimension on the x axis: ordered categories, ascending.
         order = self.order(
-            query, time_col if grain else None, raw, by_dimensions=viz_type == "heatmap"
+            query,
+            time_col if grain else None,
+            raw,
+            by_dimensions=viz_type in ("heatmap", "line", "area"),
         )
         if order:
             select = select.order_by(*order)
@@ -601,7 +632,7 @@ class _Builder:
 
     def time_column(
         self, query: ChartQuery, raw: bool
-    ) -> tuple[DatasetColumn | None, Grain | None]:
+    ) -> tuple[DatasetColumn | None, AxisGrain | None]:
         time = query.time
         if time is None or (time.grain is None and time.range.kind == "none"):
             return None, None
@@ -613,14 +644,20 @@ class _Builder:
         col = self.column(name, "time column")
         if not col.is_temporal:
             _invalid(f'"{name}" is not a time column. Mark it as temporal in the dataset first.')
+        time_value(col, self.db_type)  # a column that couldn't be checked yet: a clear error
+        if time.grain is not None:
+            self.check_grain(col, time.grain)
         return col, time.grain
 
     def conditions(self, query: ChartQuery, time_col: DatasetColumn | None) -> list[exp.Expr]:
         conditions: list[exp.Expr] = []
         if time_col is not None and query.time is not None:
-            start, end = aligned_bounds(query.time.range, self.today, query.time.grain)
+            grain = query.time.grain
+            start, end = aligned_bounds(
+                query.time.range, self.today, None if grain == "raw" else grain
+            )
             self.time_bounds = (start, end)
-            ref = sql_column(time_col.name)
+            ref = time_value(time_col, self.db_type)
             if start is not None:
                 conditions.append(exp.GTE(this=ref.copy(), expression=date_literal(start)))
             if end is not None:
@@ -674,15 +711,18 @@ class _Builder:
             return [by(name, query.order_by.descending)]
         if raw:
             return []
-        if by_dimensions:
-            return [by(name, False) for name in query.dimensions]
+        if by_dimensions and query.dimensions:
+            order = [by(name, False) for name in query.dimensions]
+            if query.series is not None:
+                order.append(by(query.series, False))
+            return order
         if time_col is not None:
             order = [by(time_col.name, False)]
             if query.series is not None:
                 order.append(by(query.series, False))
             return order
         if query.metrics:
-            return [by(next(iter(self.metric_names(query))), True)]
+            return [by(self.metric_names(query)[0], True)]
         return [by(name, False) for name in self.outputs]
 
     def metric_names(self, query: ChartQuery) -> list[str]:
@@ -724,8 +764,10 @@ def _check_shape(viz_type: VizType, query: ChartQuery, raw: bool) -> None:
             _invalid(f"A {name} can't have dimensions.")
         if viz_type == "gauge" and grain is not None:
             _invalid("A gauge has no time grain; use a time range to filter.")
-    elif viz_type in ("bar", "combo"):
-        name = "bar chart" if viz_type == "bar" else "combo chart"
+    elif viz_type in ("bar", "combo", "line", "area"):
+        name = {"bar": "bar chart", "combo": "combo chart", "line": "line chart"}.get(
+            viz_type, "area chart"
+        )
         if len(query.dimensions) > 1 or (grain and query.dimensions):
             _invalid(f"A {name}'s x axis is either one dimension or a time grain, not both.")
         if not (grain or query.dimensions):
@@ -745,12 +787,6 @@ def _check_shape(viz_type: VizType, query: ChartQuery, raw: bool) -> None:
             _invalid("A treemap needs one or two dimensions (the levels).")
         if grain is not None:
             _invalid("A treemap has no time grain; use a time range to filter.")
-    elif viz_type in ("line", "area"):
-        name = "line chart" if viz_type == "line" else "area chart"
-        if grain is None:
-            _invalid(f"A {name} needs a time column and a time grain for its x axis.")
-        if query.dimensions:
-            _invalid(f"A {name}'s x axis is time; use the series to split it.")
     elif viz_type == "heatmap":
         if len(query.metrics) != 1:
             _invalid("A heatmap shows exactly one metric.")

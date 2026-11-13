@@ -177,7 +177,7 @@ def test_duplicate(client: TestClient, make_chart: Callable[..., int]) -> None:
     assert client.get(f"/api/dashboards/{source['id']}").json()["layout"] == layout
 
 
-def test_add_chart_puts_it_below_the_other_tiles(
+def test_add_chart_takes_the_first_free_spot(
     client: TestClient, make_chart: Callable[..., int]
 ) -> None:
     chart = make_chart("Total orders")
@@ -188,7 +188,12 @@ def test_add_chart_puts_it_below_the_other_tiles(
     assert response.status_code == 200, response.text
     added = response.json()["layout"][-1]
     assert added["type"] == "chart" and added["chart_id"] == chart
-    assert (added["x"], added["y"]) == (0, 8)
+    # The right half of the top is free (new tiles are 12 x 16 on the 24-column grid).
+    assert (added["x"], added["y"], added["w"], added["h"]) == (12, 0, 12, 16)
+    # Full-width tiles leave no gap: then it goes below everything.
+    full = create(client, "Full", [text_tile("t", w=24, h=3)]).json()
+    below = client.post(f"/api/dashboards/{full['id']}/charts", json={"chart_id": chart}).json()
+    assert (below["layout"][-1]["x"], below["layout"][-1]["y"]) == (0, 3)
     assert (
         client.post(
             f"/api/dashboards/{dashboard['id']}/charts", json={"chart_id": 9999}

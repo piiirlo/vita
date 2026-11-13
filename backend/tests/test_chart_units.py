@@ -297,8 +297,8 @@ def test_time_range_in_sql() -> None:
         ("bar", {"metrics": ["count"], "dimensions": ["status", "select"]}, "either one dimension"),
         ("bar", {"dimensions": ["status"]}, "at least one metric"),
         ("bar", {"metrics": ["count"], "dimensions": ["status"], "series": "status"}, "both a dimension and the series"),
-        ("line", {"metrics": ["count"]}, "needs a time column and a time grain"),
-        ("line", {"metrics": ["count"], "time": {"grain": "day"}, "dimensions": ["status"]}, "x axis is time"),
+        ("line", {"metrics": ["count"]}, "Pick the line chart's x axis"),
+        ("line", {"metrics": ["count"], "time": {"grain": "day"}, "dimensions": ["status"]}, "either one dimension"),
         ("table", {"metrics": ["count"], "filters": [{"column": "status", "operator": ">", "value": "a"}]},
          "The > operator doesn't work"),
         ("table", {"metrics": ["count"], "filters": [{"column": "amount", "operator": "LIKE", "value": "1"}]},
@@ -506,8 +506,8 @@ def test_pivot_without_totals_is_one_group_by(db: str) -> None:
 @pytest.mark.parametrize(
     ("viz", "query", "message"),
     [
-        ("area", {"metrics": ["count"]}, "needs a time column and a time grain"),
-        ("area", {"metrics": ["count"], "dimensions": ["status"], "time": TIME_MONTH}, "x axis is time"),
+        ("area", {"metrics": ["count"]}, "Pick the area chart's x axis"),
+        ("area", {"metrics": ["count"], "dimensions": ["status"], "time": TIME_MONTH}, "either one dimension"),
         ("combo", {"metrics": ["count"]}, "Pick the combo chart's x axis"),
         ("combo", {"metrics": ["count"], "dimensions": ["status"], "series": "is_paid"},
          "Only bar and line charts (and area charts) have a series"),

@@ -1,9 +1,10 @@
 /** Result rows -> ECharts options for bar, line, area, combo, pie and the big-number trend.
  * Pure functions. */
-import type { EChartsOption, SeriesOption } from "echarts";
+import type { BarSeriesOption, EChartsOption, LineSeriesOption, SeriesOption } from "echarts";
 import type { ChartDataResult, Dataset, MetricRef } from "../api.ts";
 import { hasTimeAxis, incompleteBuckets, metricFormatter, planLabels, type Coverage, type LabelPlan } from "./display.ts";
-import { categoryLabel, toNumber } from "./format.ts";
+import { bucketGrain, categoryLabel, toNumber } from "./format.ts";
+import { colorRules, pickSeriesColor, ruleFor, ruleMarker, ruledItem, rulesApply, type ToneColors } from "./colorRules.ts";
 import { dimensionLabel, metricLabel, metricName, type ChartState, type ComboSeries, type DisplayOptions } from "./model.ts";
 
 export type PivotSeries = {
@@ -71,9 +72,22 @@ export function pivot(
 }
 
 /** Bar sorting: by the total of the first metric (largest first), or by label. */
-export function sortCategories(p: Pivoted, by: "value" | "label", firstMetric: MetricRef): Pivoted {
+export function sortCategories(
+  p: Pivoted,
+  by: "value" | "label",
+  firstMetric: MetricRef,
+  labelOf?: (value: unknown) => string,
+): Pivoted {
   const order = p.categories.map((_, i) => i);
-  if (by === "value") {
+  if (by === "label" && labelOf) {
+    // By the shown label (value labels apply), numbers in numeric order; (empty) last.
+    order.sort((a, b) => {
+      const va = p.categories[a];
+      const vb = p.categories[b];
+      if (va === null || va === undefined || vb === null || vb === undefined) return compareLabels(va, vb);
+      return compareLabels(labelOf(va), labelOf(vb));
+    });
+  } else if (by === "value") {
     const name = metricName(firstMetric);
     const total = (i: number) =>
       p.series.filter((s) => metricName(s.metric) === name).reduce((sum, s) => sum + (s.values[i] ?? 0), 0);
@@ -194,8 +208,12 @@ export function cartesianLayout(state: ChartState, result: ChartDataResult, data
   if ((vizType === "bar" || vizType === "combo") && !timeAxis && query.metrics[0]) {
     pivoted = sortCategories(pivoted, display.sort ?? "value", query.metrics[0]);
   }
+  // Line / area over a dimension: ordered categories, by their label.
+  if ((vizType === "line" || vizType === "area") && !timeAxis && query.metrics[0]) {
+    pivoted = sortCategories(pivoted, "label", query.metrics[0], (v) => dimensionLabel(v, xColumn, dataset));
+  }
   const ordered = sortSeries(pivoted.series, display.series_sort);
-  const partial = timeAxis ? incompleteBuckets(pivoted.categories, grain, ctx.coverage ?? {}) : new Set<number>();
+  const partial = timeAxis ? incompleteBuckets(pivoted.categories, bucketGrain(grain), ctx.coverage ?? {}) : new Set<number>();
 
   const labels = pivoted.categories.map((c) => (timeAxis ? categoryLabel(c, grain) : dimensionLabel(c, xColumn, dataset)));
   const horizontal = vizType === "bar" && Boolean(display.horizontal);
@@ -251,7 +269,13 @@ export function cartesianLayout(state: ChartState, result: ChartDataResult, data
   const several = ordered.length > 1;
   const palette = ctx.colors?.filter(Boolean) ?? [];
   const single = !several && display.color ? ctx.colors?.[display.color - 1] : undefined;
-  const colorOf = (i: number): string | undefined => single ?? (palette.length ? palette[i % palette.length] : undefined);
+  // A series' own color (picked in Customize), else the palette in order.
+  const colorOf = (i: number): string | undefined => single ?? pickSeriesColor(display, ordered[i]!.name, i, palette);
+  // Conditional colors on single values (not on 100% shares: they'd compare percentages).
+  const rules = rulesApply(vizType) && !percent ? colorRules(display) : [];
+  const tones = toneColors(ctx);
+  const itemOf = (i: number, v: number | null, extra: Record<string, unknown> | null = null) =>
+    ruledItem(v, metricName(ordered[i]!.metric), rules, tones, realFormatters[i]!, extra, ctx.labelColor);
   const realFormatters = ordered.map((s) => metricFormatter(display, s.metric, dataset));
   const formatters = percent ? ordered.map(() => (v: unknown) => `${(toNumber(v) ?? 0).toFixed(1)}%`) : realFormatters;
   const names = ordered.map((s) => seriesLabel(s.name, display));
@@ -282,13 +306,14 @@ export function cartesianLayout(state: ChartState, result: ChartDataResult, data
         ...(yAxisIndex !== undefined ? { yAxisIndex } : {}),
         name: names[i],
         data: s.values.map((v, ci) =>
-          partial.has(ci)
-            ? {
-                value: v,
-                itemStyle: { opacity: PARTIAL_OPACITY, borderType: "dashed", borderWidth: 1.5, ...(color ? { borderColor: color } : {}) },
-              }
-            : v,
-        ),
+          itemOf(
+            i,
+            v,
+            partial.has(ci)
+              ? { itemStyle: { opacity: PARTIAL_OPACITY, borderType: "dashed", borderWidth: 1.5, ...(color ? { borderColor: color } : {}) } }
+              : null,
+          ),
+        ) as BarSeriesOption["data"],
         stack: vizType === "bar" && display.stacked ? "total" : undefined,
         barMaxWidth: BAR_MAX_WIDTH,
         emphasis: { focus: "series" },
@@ -307,7 +332,7 @@ export function cartesianLayout(state: ChartState, result: ChartDataResult, data
       series.push({
         type: "line",
         name: names[i],
-        data: shareValues ? values.map((v, ci) => ({ value: v, raw: s.values[ci] ?? null })) : values,
+        data: shareValues ? values.map((v, ci) => ({ value: v, raw: s.values[ci] ?? null })) : (values.map((v) => itemOf(i, v)) as LineSeriesOption["data"]),
         stack: stacked ? "total" : undefined,
         areaStyle: { opacity: stacked ? 0.55 : 0.22 },
         showSymbol: Boolean(display.show_points),
@@ -330,8 +355,9 @@ export function cartesianLayout(state: ChartState, result: ChartDataResult, data
       type: "line",
       ...(yAxisIndex !== undefined ? { yAxisIndex } : {}),
       name: names[i],
-      data: partial.size && s.values.length > 1 ? solid : s.values,
-      showSymbol: Boolean(display.show_points),
+      data: (partial.size && s.values.length > 1 ? solid : s.values).map((v) => itemOf(i, v)) as LineSeriesOption["data"],
+      showSymbol: Boolean(display.show_points) || rules.length > 0,
+      ...(rules.length && !display.show_points ? { symbolSize: 0.1 } : {}),
       symbolSize: 6,
       connectNulls: false,
       emphasis: { focus: "series" },
@@ -426,7 +452,7 @@ export function sparklineOption(state: ChartState, trend: ChartDataResult, datas
   const buckets = trend.rows.map((r) => r[0]);
   const values = trend.rows.map((r) => toNumber(r[1]));
   const labels = buckets.map((b) => categoryLabel(b, grain));
-  const partial = incompleteBuckets(buckets, grain, ctx.coverage ?? {});
+  const partial = incompleteBuckets(buckets, bucketGrain(grain), ctx.coverage ?? {});
   const format = metricFormatter(state.display, metric, dataset);
   const last = values.length - 1;
   const solid = values.map((v, i) => ((partial.has(0) && i === 0) || (partial.has(last) && i === last) ? null : v));
@@ -515,6 +541,11 @@ export function pieSlices(state: ChartState, result: ChartDataResult, dataset: D
 }
 
 /** Pie or donut. `total`: the metric over everything, shown in the donut's middle. */
+/** Theme colors of the rule tones. */
+export function toneColors(ctx: DrawContext): ToneColors {
+  return { success: ctx.tokens?.success, danger: ctx.tokens?.danger, warning: ctx.tokens?.warning };
+}
+
 export function pieOption(
   state: ChartState,
   result: ChartDataResult,
@@ -526,6 +557,7 @@ export function pieOption(
   const format = metric ? metricFormatter(display, metric, dataset) : (v: unknown) => String(v);
   const slices = pieSlices(state, result, dataset);
   const palette = ctx.colors?.filter(Boolean) ?? [];
+  const rules = metric && rulesApply(state.vizType) ? colorRules(display) : [];
   const donut = Boolean(display.donut);
   const legendPosition = display.legend ?? "right";
   const legend =
@@ -583,9 +615,22 @@ export function pieOption(
         labelLine: { show: Boolean(display.value_labels) },
         emphasis: { scaleSize: 6 },
         data: slices.map((s, i) => {
-          // "Other" in the quiet stone color; slices in palette order.
-          const color = palette.length ? (s.other ? palette[8 % palette.length] : palette[i % palette.length]) : undefined;
-          return { name: s.name, value: s.value ?? 0, ...(color ? { itemStyle: { color } } : {}) };
+          // "Other" in the quiet stone color; slices in their own color or palette order.
+          let color = palette.length ? (s.other ? palette[8 % palette.length] : pickSeriesColor(display, s.original, i, palette)) : undefined;
+          const rule = rules.length ? ruleFor(s.value, metricName(metric!), rules) : null;
+          if (rule) color = toneColors(ctx)[rule.tone] ?? color;
+          return {
+            name: s.name,
+            value: s.value ?? 0,
+            ...(color ? { itemStyle: { color } } : {}),
+            // A colored slice always says its value, with ▲ / ▼ (not color alone).
+            ...(rule
+              ? {
+                  label: { show: true, formatter: `${s.name}\n${ruleMarker(rule)} ${format(s.value)}`, fontSize: 11, ...(ctx.labelColor ? { color: ctx.labelColor } : {}) },
+                  labelLine: { show: true },
+                }
+              : {}),
+          };
         }),
       },
     ],

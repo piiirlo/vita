@@ -31,6 +31,15 @@ export default function Toaster() {
               {t.kind === "error" && <strong className="font-semibold text-danger">Error: </strong>}
               {t.message}
             </ToastPrimitive.Description>
+            {t.action && (
+              <ToastPrimitive.Action
+                altText={t.action.label}
+                onClick={t.action.onClick}
+                className="h-7 shrink-0 cursor-pointer rounded-lg border border-border-strong bg-transparent px-2.5 text-[13px] font-medium text-text hover:bg-hover"
+              >
+                {t.action.label}
+              </ToastPrimitive.Action>
+            )}
             <ToastPrimitive.Close
               aria-label="Dismiss"
               className="inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-lg border-0 bg-transparent p-0 text-muted hover:bg-hover hover:text-text"

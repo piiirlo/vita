@@ -4,6 +4,7 @@ Anything that talks to the user database (sync, preview, metric validation) goes
 app.datasets, which uses run_query. The metadata-DB session is closed while those run.
 """
 
+import logging
 from dataclasses import asdict
 from typing import Annotated, NoReturn
 
@@ -32,12 +33,24 @@ from app.datasets import (
 )
 from app.datasets.checks import query_warnings
 from app.datasets.sql import parse_dataset_query
+from app.datasets.sync import detect_number_stats
+from app.datasets.timecols import (
+    DATE_FORMAT_LABELS,
+    add_note,
+    apply_pending,
+    check_pending,
+    check_text_dates,
+    has_pending,
+    number_stats,
+    text_date_note,
+)
 from app.db import get_db
 from app.engines import ConnectionDetails
 from app.models import Chart, Dataset, DatasetColumn, DatasetMetric
 from app.query import QueryError
 from app.schemas.charts import ChartParams
 from app.schemas.datasets import (
+    ColumnSettings,
     DatasetColumnOut,
     DatasetCreate,
     DatasetListItem,
@@ -55,6 +68,8 @@ from app.schemas.datasets import (
 from app.schemas.query import QueryErrorOut
 from app.uploads.datasets import is_upload_dataset, table_users, upload_source
 from app.uploads.importer import drop_table as drop_upload_table
+
+log = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -90,6 +105,32 @@ def get_dataset_or_404(db: Session, dataset_id: int) -> Dataset:
 
 def _details(dataset: Dataset) -> ConnectionDetails:
     return saved_connection_details(dataset.connection)
+
+
+def ensure_time_columns(db: Session, dataset_id: int) -> Dataset:
+    """The dataset, after checking its "pending" time columns (number / text columns marked
+    temporal before Part 13): year numbers and text dates are kept as such, anything else is
+    unmarked, each with a note. Lazy (dataset page, Sync, preview, chart data), never at
+    startup. Best effort: if the database can't be reached they stay pending, and charts
+    say so."""
+    dataset = get_dataset_or_404(db, dataset_id)
+    if not has_pending(dataset):
+        return dataset
+    details = _details(dataset)
+    source = source_of(dataset)
+    columns = list(dataset.columns)
+    db.close()
+    try:
+        results = check_pending(details, source, columns)
+    except QueryError:
+        log.warning("Couldn't check the time columns of dataset %s", dataset_id, exc_info=True)
+        return get_dataset_or_404(db, dataset_id)
+    dataset = get_dataset_or_404(db, dataset_id)
+    apply_pending(dataset, results)
+    _touch(dataset)
+    db.commit()
+    db.expire_all()
+    return get_dataset_or_404(db, dataset_id)
 
 
 def _check_name_free(db: Session, name: str, dataset_id: int | None = None) -> None:
@@ -152,6 +193,7 @@ def _out(db: Session, dataset: Dataset) -> DatasetOut:
         warnings=_warnings(dataset),
         sqllab_sql=sqllab_sql(source_of(dataset), db_type),
         upload_source=upload_source(db, dataset),
+        notes=dataset.notes or [],
     )
 
 
@@ -215,6 +257,80 @@ def _clean(text: str | None) -> str | None:
     return (text or "").strip() or None
 
 
+def _time_kinds(
+    dataset: Dataset, settings_list: list[ColumnSettings]
+) -> dict[int, tuple[str | None, str | None]]:
+    """(time_kind, text_date_format) for every column in the payload. Marking a column as
+    time is only allowed for dates and datetimes, numbers that are all years (a year
+    number) and text that reads as dates (a text date; values that don't are counted in a
+    note). Checking runs queries on the user database (only for columns that change)."""
+    out: dict[int, tuple[str | None, str | None]] = {}
+    by_id = {c.id: c for c in dataset.columns}
+    numbers: list[DatasetColumn] = []
+    texts: list[tuple[DatasetColumn, ColumnSettings]] = []
+    for settings in settings_list:
+        col = by_id[settings.id]
+        new_type = settings.generic_type_override or col.generic_type
+        if not settings.is_temporal or new_type in ("date", "datetime"):
+            out[col.id] = (None, None)
+        elif (
+            col.is_temporal
+            and col.time_kind is not None
+            and col.effective_type == new_type
+            and settings.text_date_format in (None, col.text_date_format)
+        ):
+            out[col.id] = (col.time_kind, col.text_date_format)  # unchanged (or pending)
+        elif new_type == "number":
+            numbers.append(col)
+        elif new_type == "string":
+            texts.append((col, settings))
+        else:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                f"“{col.name}” ({new_type}) can't be a time column. Time columns are "
+                "dates, datetimes, years (whole numbers like 2024) or text dates.",
+            )
+    if not numbers and not texts:
+        return out
+    details = _details(dataset)
+    source = source_of(dataset)
+    try:
+        stats = number_stats(details, source, [c.name for c in numbers])
+        for col in numbers:
+            if not stats[col.name].fits_years():
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    f"“{col.name}” can't be a time column: its values aren't years "
+                    "(whole numbers like 2024, between 1000 and 9999).",
+                )
+            out[col.id] = ("year_number", None)
+        for col, settings in texts:
+            check = check_text_dates(details, source, col.name, settings.text_date_format)
+            if check.order is None:
+                why = (
+                    "its dates read both as day/month and month/day. Pick the date order."
+                    if check.ambiguous
+                    else "its values don't look like dates (e.g. 2024-03-15 or 15/03/2024)."
+                )
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    f"“{col.name}” can't be a time column: {why}",
+                )
+            if check.values and check.failures == check.values:
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    f"“{col.name}” can't be a time column: none of its values are "
+                    f"dates in {DATE_FORMAT_LABELS[check.order]}. Pick another date order.",
+                )
+            note = text_date_note(col.name, check)
+            if note:
+                add_note(dataset, note)
+            out[col.id] = ("text_date", check.order)
+    except QueryError as error:
+        _query_error(error)
+    return out
+
+
 # ---------- datasets ----------
 
 
@@ -272,6 +388,7 @@ def create_dataset(payload: DatasetCreate, db: DbSession) -> DatasetOut:
         detected = detect_columns(details, source)
     except QueryError as error:
         _query_error(error)
+    stats = detect_number_stats(details, source, detected)
 
     dataset = Dataset(
         name=name,
@@ -282,7 +399,7 @@ def create_dataset(payload: DatasetCreate, db: DbSession) -> DatasetOut:
         table_name=source.table_name,
         sql=source.sql,
     )
-    merge_columns(dataset, detected)
+    merge_columns(dataset, detected, stats)
     dataset.metrics.append(DatasetMetric(**COUNT_METRIC, is_builtin=True))
     db.add(dataset)
     _commit(db, f'A dataset named "{name}" already exists')
@@ -291,7 +408,16 @@ def create_dataset(payload: DatasetCreate, db: DbSession) -> DatasetOut:
 
 @router.get("/{dataset_id}", response_model=DatasetOut)
 def get_dataset(dataset_id: int, db: DbSession) -> DatasetOut:
-    return _out(db, get_dataset_or_404(db, dataset_id))
+    return _out(db, ensure_time_columns(db, dataset_id))
+
+
+@router.delete("/{dataset_id}/notes/{note_id}", status_code=status.HTTP_204_NO_CONTENT)
+def dismiss_note(dataset_id: int, note_id: str, db: DbSession) -> Response:
+    dataset = get_dataset_or_404(db, dataset_id)
+    notes = [n for n in dataset.notes or [] if n.get("id") != note_id]
+    dataset.notes = notes or None
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.put("/{dataset_id}", response_model=DatasetOut, responses=QUERY_ERROR_RESPONSES)
@@ -325,11 +451,13 @@ def update_dataset(dataset_id: int, payload: DatasetUpdate, db: DbSession) -> Da
     usages = _chart_usages(db, dataset)
     by_id = {c.id: c for c in dataset.columns}
     for settings in payload.columns or []:
-        col = by_id.get(settings.id)
-        if col is None:
+        if settings.id not in by_id:
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST, f"Column {settings.id} is not part of this dataset"
             )
+    time_kinds = _time_kinds(dataset, payload.columns or [])
+    for settings in payload.columns or []:
+        col = by_id[settings.id]
         _check_column_change(
             usages,
             col,
@@ -340,6 +468,11 @@ def update_dataset(dataset_id: int, payload: DatasetUpdate, db: DbSession) -> Da
         col.label = _clean(settings.label)
         col.generic_type_override = settings.generic_type_override
         col.is_temporal = settings.is_temporal
+        col.time_kind, col.text_date_format = time_kinds[col.id]
+        if settings.is_identifier is not None:
+            col.is_identifier = settings.is_identifier
+        if col.is_temporal:
+            col.looks_like_years = False
         col.is_dimension = settings.is_dimension
         col.is_hidden = settings.is_hidden
         col.description = _clean(settings.description)
@@ -348,11 +481,12 @@ def update_dataset(dataset_id: int, payload: DatasetUpdate, db: DbSession) -> Da
             col.value_labels = labels or None
 
     for column_id in payload.delete_column_ids:
-        col = by_id.get(column_id)
-        if col is None:
+        missing_col = by_id.get(column_id)
+        if missing_col is None:
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST, f"Column {column_id} is not part of this dataset"
             )
+        col = missing_col
         if not col.is_missing:
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST,
@@ -438,21 +572,21 @@ def sync_dataset(dataset_id: int, db: DbSession) -> SyncOut:
         detected = detect_columns(details, source)
     except QueryError as error:
         _query_error(error)
+    stats = detect_number_stats(details, source, detected)
 
     dataset = get_dataset_or_404(db, dataset_id)
-    result = merge_columns(dataset, detected)
+    result = merge_columns(dataset, detected, stats)
     _touch(dataset)
     db.commit()
     db.expire_all()
-    return SyncOut(
-        dataset=_out(db, get_dataset_or_404(db, dataset_id)), summary=SyncSummary(**asdict(result))
-    )
+    dataset = ensure_time_columns(db, dataset_id)
+    return SyncOut(dataset=_out(db, dataset), summary=SyncSummary(**asdict(result)))
 
 
 @router.get("/{dataset_id}/preview", response_model=PreviewOut, responses=QUERY_ERROR_RESPONSES)
 def preview_dataset(dataset_id: int, db: DbSession) -> PreviewOut:
     """The first 100 rows: SELECT * FROM <dataset>."""
-    dataset = get_dataset_or_404(db, dataset_id)
+    dataset = ensure_time_columns(db, dataset_id)
     details = _details(dataset)
     source = source_of(dataset)
     db.close()
@@ -470,7 +604,7 @@ def preview_dataset(dataset_id: int, db: DbSession) -> PreviewOut:
 def dataset_time_extent(dataset_id: int, db: DbSession, column: str | None = None) -> TimeExtentOut:
     """MIN and MAX of a time column (default: the main time column), for "this dataset has
     data from A to B" when a chart's time range is empty. One aggregate row, via run_query."""
-    dataset = get_dataset_or_404(db, dataset_id)
+    dataset = ensure_time_columns(db, dataset_id)
     name = column or dataset.main_time_column
     if not name:
         raise HTTPException(
@@ -487,7 +621,7 @@ def dataset_time_extent(dataset_id: int, db: DbSession, column: str | None = Non
     source = source_of(dataset)
     db.close()
     try:
-        low, high = time_extent(details, source, name)
+        low, high = time_extent(details, source, col)
     except QueryError as error:
         _query_error(error)
     return TimeExtentOut(

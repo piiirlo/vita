@@ -9,7 +9,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from app.dashboard_grid import GRID_COLUMNS
+from app.dashboard_grid import GRID_COLUMNS, first_free_spot
 from app.db import get_db
 from app.models import Chart, Dashboard, DashboardChart
 from app.schemas.dashboards import (
@@ -211,20 +211,22 @@ def duplicate_dashboard(dashboard_id: int, db: DbSession) -> DashboardOut:
 
 @router.post("/{dashboard_id}/charts", response_model=DashboardOut)
 def add_chart(dashboard_id: int, payload: AddChartIn, db: DbSession) -> DashboardOut:
-    """Add a chart tile below the existing tiles ("Add to dashboard" in the chart editor)."""
+    """Add a chart tile in the first free spot (top to bottom, left to right) that fits it:
+    "Add to dashboard" and "Save to dashboard" in the chart editor."""
     dashboard = _get_or_404(db, dashboard_id)
     if len(dashboard.layout) >= MAX_TILES:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST, f"A dashboard has at most {MAX_TILES} tiles"
         )
-    bottom = max((int(t["y"]) + int(t["h"]) for t in dashboard.layout), default=0)
+    w = min(NEW_CHART_TILE_W, GRID_COLUMNS)
+    x, y = first_free_spot(dashboard.layout, w, NEW_CHART_TILE_H)
     tile = ChartTile(
         id=uuid.uuid4().hex[:12],
         type="chart",
         chart_id=payload.chart_id,
-        x=0,
-        y=bottom,
-        w=min(NEW_CHART_TILE_W, GRID_COLUMNS),
+        x=x,
+        y=y,
+        w=w,
         h=NEW_CHART_TILE_H,
     )
     _set_layout(db, dashboard, [*dashboard.layout, tile.model_dump(mode="json")])

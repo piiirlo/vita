@@ -1,5 +1,7 @@
 import { Component, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import type { ChartTileSpec, DashboardChartInfo } from "../api.ts";
+import type { ChartTileSpec, DashboardChartInfo, QueryErrorDetail } from "../api.ts";
+import { QueryErrorBody } from "../components/QueryErrorAlert.tsx";
+import { toQueryError } from "../components/queryError.ts";
 import ChartView from "../charts/ChartView.tsx";
 import { errorText, relativeTime } from "../datasets/format.ts";
 import { csvFilename, downloadCsv, toCsv } from "../sqllab/results.ts";
@@ -35,7 +37,7 @@ export default function ChartTile({ tile, info, editing, onRemove }: Props) {
   const task = useRef<QueuedTask<TileData> | null>(null);
 
   const [data, setData] = useState<TileData | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<QueryErrorDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [ownRefresh, setOwnRefresh] = useState(0);
   const [showSql, setShowSql] = useState(false);
@@ -63,7 +65,7 @@ export default function ChartTile({ tile, info, editing, onRemove }: Props) {
       (err: unknown) => {
         if (cancelled || err instanceof CancelledError) return;
         loadedOnce.current = true; // Retry / Refresh after an error query fresh too
-        setError(errorText(err));
+        setError(toQueryError(err));
         setLoading(false);
       },
     );
@@ -120,7 +122,10 @@ export default function ChartTile({ tile, info, editing, onRemove }: Props) {
       <div className="dash-tile-body" title={data ? `Updated ${relativeTime(new Date(data.loadedAt).toISOString())}` : undefined}>
         {error ? (
           <div className="dash-tile-error" role="alert">
-            <p>{error}</p>
+            <div className="mb-2">
+              <strong className="font-semibold text-danger">Error: </strong>
+              <QueryErrorBody error={error} />
+            </div>
             <button className="small" onClick={() => setOwnRefresh((k) => k + 1)}>
               Retry
             </button>

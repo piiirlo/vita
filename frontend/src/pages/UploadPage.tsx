@@ -303,13 +303,14 @@ export default function UploadPage() {
           </h2>
           <p>
             {(phase.job.row_count ?? 0).toLocaleString("en-US")} rows were imported. These values didn’t fit their column’s
-            type and were left empty:
+            type or meant “no value”, and were left empty:
           </p>
           <ul>
             {phase.job.bad_values.map((b) => (
-              <li key={b.column}>
+              <li key={`${b.column}:${b.kind ?? "misfit"}`}>
                 <strong className="mono">{b.column}</strong>: {b.count.toLocaleString("en-US")}{" "}
-                {b.count === 1 ? "value" : "values"}, e.g.{" "}
+                {b.count === 1 ? "value" : "values"}
+                {b.kind === "null_word" ? " meaning “no value” (like N/A)" : ""}, e.g.{" "}
                 {b.examples.map((e) => `“${e.value}” (row ${e.row})`).join(", ")}
               </li>
             ))}
@@ -358,7 +359,14 @@ export default function UploadPage() {
             onLocalOptions={setOptions}
           />
 
-          <PreviewTable preview={preview} options={options} busy={refreshing} />
+          <PreviewTable
+            preview={preview}
+            options={options}
+            busy={refreshing}
+            onDateOrder={(index, date_order) =>
+              reread({ ...options, columns: (options.columns ?? []).map((c) => (c.index === index ? { ...c, date_order } : c)) }, true)
+            }
+          />
         </>
       )}
 

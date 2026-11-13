@@ -115,3 +115,44 @@ export function layoutKey(tiles: DashboardTile[]): string {
 
 /** Tiles resize from any edge or corner. */
 export const RESIZE_HANDLES = ["n", "s", "e", "w", "ne", "nw", "se", "sw"] as const;
+
+// ---------- free placement (Part 13) ----------
+
+type Box = { x: number; y: number; w: number; h: number };
+const overlaps = (a: Box, b: Box) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+
+/** Auto-fit on drop: the free rectangle a tile lands in, when it is a real gap (something
+ * below it), as the tile's new position and size; null to keep the tile as it is (it lands
+ * in open space, its corner is on another tile, or the gap is smaller than its minimum).
+ * Starting from the cell under the tile's top-left corner: as wide as that row is free, up
+ * to the first row above that isn't free across that width, down to the first row below
+ * that isn't. */
+export function fitToGap(
+  items: readonly (Box & { i: string })[],
+  id: string,
+  at: Box,
+  min: { w: number; h: number },
+  cols: number = GRID_COLUMNS,
+): Box | null {
+  const others = items.filter((t) => t.i !== id);
+  const bottom = others.reduce((max, t) => Math.max(max, t.y + t.h), 0);
+  const free = (x: number, y: number, w = 1, h = 1) => x >= 0 && x + w <= cols && y >= 0 && !others.some((t) => overlaps(t, { x, y, w, h }));
+  const x0 = Math.min(Math.max(at.x, 0), cols - 1);
+  const y0 = Math.max(at.y, 0);
+  if (!free(x0, y0)) return null;
+  let left = x0;
+  while (left > 0 && free(left - 1, y0)) left--;
+  let right = x0 + 1;
+  while (right < cols && free(right, y0)) right++;
+  const width = right - left;
+  let top = y0;
+  while (top > 0 && free(left, top - 1, width, 1)) top--;
+  let end = y0 + 1;
+  while (end < bottom && free(left, end, width, 1)) end++;
+  // Nothing below in those columns: open space, not a gap.
+  if (end >= bottom) return null;
+  const fit = { x: left, y: top, w: width, h: end - top };
+  if (fit.w < min.w || fit.h < min.h) return null;
+  if (fit.x === at.x && fit.y === at.y && fit.w === at.w && fit.h === at.h) return null;
+  return fit;
+}

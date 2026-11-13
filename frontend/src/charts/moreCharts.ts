@@ -1,10 +1,11 @@
 /** Treemap, funnel and gauge: result rows -> ECharts options. Pure functions. */
 import type { EChartsOption } from "echarts";
-import type { ChartDataResult, Dataset } from "../api.ts";
+import { isSqlMetric, type ChartDataResult, type Dataset } from "../api.ts";
 import { metricFormatter } from "./display.ts";
 import { toNumber } from "./format.ts";
 import { dimensionLabel, metricLabel, metricName, type ChartState, type GaugeBand, type GaugeTone } from "./model.ts";
-import { OTHER_COLUMN, OTHER_LABEL, seriesLabel, type DrawContext } from "./options.ts";
+import { OTHER_COLUMN, OTHER_LABEL, seriesLabel, toneColors, type DrawContext } from "./options.ts";
+import { colorRules, pickSeriesColor, ruleFor, ruleMarker } from "./colorRules.ts";
 
 const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const columnIndex = (result: ChartDataResult, name: string) => result.columns.findIndex((c) => c.name === name);
@@ -93,6 +94,7 @@ export function treemapTree(state: ChartState, result: ChartDataResult, dataset:
 export function nonAdditive(state: ChartState, dataset: Dataset | null): boolean {
   const metric = state.query.metrics[0];
   if (!metric) return false;
+  if (isSqlMetric(metric)) return /\b(AVG|MIN|MAX|DISTINCT|PERCENTILE|MEDIAN)\b|\//i.test(metric.sql);
   if (typeof metric !== "string") return metric.aggregate !== "SUM" && metric.aggregate !== "COUNT";
   const expression = dataset?.metrics.find((m) => m.name === metric)?.expression ?? "";
   return /\b(AVG|MIN|MAX|DISTINCT|PERCENTILE|MEDIAN)\b/i.test(expression);
@@ -105,7 +107,14 @@ export function treemapOption(state: ChartState, result: ChartDataResult, datase
   const palette = ctx.colors?.filter(Boolean) ?? [];
   const twoLevels = state.query.dimensions.length === 2;
   const showValues = Boolean(state.display.value_labels);
-  const colorAt = (i: number, other: boolean) => (palette.length ? (other ? palette[8 % palette.length] : palette[i % palette.length]) : undefined);
+  const rules = metric ? colorRules(state.display) : [];
+  const tones = toneColors(ctx);
+  const ruleOf = (value: unknown) => (metric && rules.length ? ruleFor(value, metricName(metric), rules) : null);
+  const colorAt = (i: number, other: boolean, key: string, value: unknown) => {
+    const rule = ruleOf(value);
+    if (rule && tones[rule.tone]) return tones[rule.tone];
+    return palette.length ? (other ? palette[8 % palette.length] : pickSeriesColor(state.display, key, i, palette)) : undefined;
+  };
   type Item = {
     name: string;
     value: number;
@@ -118,7 +127,7 @@ export function treemapOption(state: ChartState, result: ChartDataResult, datase
   // parent's color (told apart by the gaps and their labels), so the choice holds for them too.
   const textOn = (fill: string | undefined) => readableOn(fill, [ctx.tokens?.text, ctx.tokens?.surface]);
   const data: Item[] = nodes.map((n, i) => {
-    const color = colorAt(i, n.other);
+    const color = colorAt(i, n.other, n.name, n.ownValue ?? n.value);
     const label = textOn(color);
     const style = color ? { itemStyle: { color }, ...(label ? { label: { color: label } } : {}) } : {};
     return {
@@ -155,6 +164,9 @@ export function treemapOption(state: ChartState, result: ChartDataResult, datase
           show: true,
           formatter: (p: unknown) => {
             const item = p as { name: string; value: unknown };
+            // A colored box always says its value, with ▲ / ▼ (not color alone).
+            const rule = ruleOf(item.value);
+            if (rule) return `${item.name}\n${ruleMarker(rule)} ${format(item.value)}`;
             return showValues ? `${item.name}\n${format(item.value)}` : item.name;
           },
           fontSize: 12,
@@ -223,6 +235,9 @@ export function funnelOption(state: ChartState, result: ChartDataResult, dataset
   const steps = funnelSteps(state, result, dataset);
   const palette = ctx.colors?.filter(Boolean) ?? [];
   const max = Math.max(0, ...steps.map((s) => s.value));
+  const rules = metric ? colorRules(state.display) : [];
+  const tones = toneColors(ctx);
+  const ruleOf = (value: unknown) => (metric && rules.length ? ruleFor(value, metricName(metric), rules) : null);
   const showValues = state.display.value_labels !== false;
   return {
     tooltip: {
@@ -255,6 +270,8 @@ export function funnelOption(state: ChartState, result: ChartDataResult, dataset
           position: "right",
           formatter: (p: unknown) => {
             const step = steps[(p as { dataIndex: number }).dataIndex]!;
+            const rule = ruleOf(step.value);
+            if (rule) return `${step.name}\n${ruleMarker(rule)} ${format(step.value)}`;
             if (!showValues) return step.name;
             return step.ofFirst === null ? `${step.name}\n${format(step.value)}` : `${step.name}\n${format(step.value)} · ${percent(step.ofFirst)}`;
           },
@@ -266,7 +283,8 @@ export function funnelOption(state: ChartState, result: ChartDataResult, dataset
         itemStyle: { borderWidth: 0 },
         emphasis: { label: { fontSize: 13 } },
         data: steps.map((s, i) => {
-          const color = palette.length ? palette[i % palette.length] : undefined;
+          const rule = ruleOf(s.value);
+          const color = rule && tones[rule.tone] ? tones[rule.tone] : palette.length ? pickSeriesColor(state.display, s.key, i, palette) : undefined;
           return { name: s.name, value: s.value, ...(color ? { itemStyle: { color } } : {}) };
         }),
       },

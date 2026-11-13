@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Literal
 
 from app.config import settings
+from app.datasets.timecols import is_code_name, is_year_name
 from app.schemas.uploads import CellExample, ColumnOption, ColumnPreview, Problem, ReadOptionsIn
 from app.uploads.excel import SheetRows, first_sheet_with_data, read_sheet
 from app.uploads.names import column_names
@@ -179,7 +180,15 @@ def build_preview(
         return Preview(options, [], [], [], problems, len(sample), more_rows)
 
     fmt = number_format(options)
-    guesses = [guess_column([row[i] for row in sample], fmt) for i in range(len(headers))]
+    guesses = [
+        guess_column(
+            [row[i] for row in sample],
+            fmt,
+            code_like=is_code_name(headers[i]),
+            year_like=is_year_name(headers[i]),
+        )
+        for i in range(len(headers))
+    ]
     given = options.columns if options.columns and len(options.columns) == len(headers) else None
     fresh = given is None
     if given is None:
@@ -222,6 +231,8 @@ def build_preview(
                 examples=[CellExample(row=r, value=v[:80]) for r, v in fit.examples],
                 locked=status.get(i) == "matched",
                 status=status.get(i),
+                null_words=guess.null_words if col.type != "text" else 0,
+                years=guess.years if col.type == "integer" else None,
             )
         )
         if order is not None and is_date:

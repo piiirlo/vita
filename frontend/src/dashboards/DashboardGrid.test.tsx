@@ -9,7 +9,7 @@ import { readSource } from "../test/readSource.ts";
 
 const COL = (1000 - 23 * 12) / 24 + 12;
 const ROW = 26;
-// At the top: the grid compacts tiles upwards, so y stays 0 and top handles shrink the height.
+// At the top. Nothing pulls tiles up (free placement): a top handle moves the top edge down.
 const START: GridItem = { i: "a", x: 6, y: 0, w: 12, h: 16, minW: 6, minH: 10 };
 
 function renderGrid(onLayoutChange: (items: readonly GridItem[]) => void, editing = true) {
@@ -58,11 +58,11 @@ describe("DashboardGrid resizing", () => {
     ["e", 2 * COL, 0, { x: 6, w: 14 }],
     ["w", -2 * COL, 0, { x: 4, w: 14 }],
     ["s", 0, 2 * ROW, { y: 0, h: 18 }],
-    ["n", 0, 2 * ROW, { y: 0, h: 14 }], // the top edge moves down: shorter
+    ["n", 0, 2 * ROW, { y: 2, h: 14 }], // the top edge moves down: shorter, and it stays there
     ["se", 2 * COL, 2 * ROW, { x: 6, y: 0, w: 14, h: 18 }],
     ["sw", -2 * COL, 2 * ROW, { x: 4, y: 0, w: 14, h: 18 }],
-    ["ne", 2 * COL, 2 * ROW, { x: 6, y: 0, w: 14, h: 14 }],
-    ["nw", -2 * COL, 2 * ROW, { x: 4, y: 0, w: 14, h: 14 }],
+    ["ne", 2 * COL, 2 * ROW, { x: 6, y: 2, w: 14, h: 14 }],
+    ["nw", -2 * COL, 2 * ROW, { x: 4, y: 2, w: 14, h: 14 }],
   ];
   it.each(cases)("resizing from %s saves the right layout", (handle, dx, dy, expected) => {
     const onLayoutChange = vi.fn();

@@ -1,12 +1,13 @@
 /** Heatmap, scatter / bubble and histogram: result rows -> ECharts options. Pure functions. */
-import type { EChartsOption, SeriesOption } from "echarts";
+import type { BarSeriesOption, EChartsOption, SeriesOption } from "echarts";
 import type { ChartDataResult, Dataset } from "../api.ts";
 import { incompleteBuckets, metricFormatter, type Coverage } from "./display.ts";
 import { isGrain, isTimePart, PART_DOMAIN, splitDim } from "./dimensions.ts";
 import { formatNumber, toNumber } from "./format.ts";
 import { columnLabel, dimensionLabel, metricLabel, metricName, type ChartState } from "./model.ts";
 import { readableOn } from "./moreCharts.ts";
-import { seriesLabel, type DrawContext } from "./options.ts";
+import { seriesLabel, toneColors, type DrawContext } from "./options.ts";
+import { colorRules, ruleFor, ruleMarker, ruledItem } from "./colorRules.ts";
 
 const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const columnIndex = (result: ChartDataResult, name: string) => result.columns.findIndex((c) => c.name === name);
@@ -213,15 +214,31 @@ export function scatterOption(state: ChartState, result: ChartDataResult, datase
   };
   const palette = ctx.colors?.filter(Boolean) ?? [];
   const showLegend = Boolean(series) && (state.display.legend ?? "top") !== "none";
-  // Palette colors in order, skipping the stone one (Other's).
+  // Palette colors in order, skipping the stone one (Other's); or the group's own color.
   const groupColor = (i: number) => palette[i >= 8 ? i + 1 : i];
+  // Conditional colors on the y value (with ▲ / ▼ and the value as the point's label).
+  const rules = ym ? colorRules(state.display) : [];
+  const tones = toneColors(ctx);
   const out: SeriesOption[] = groups.map((group, i) => {
     const other = group === "Other";
-    const color = palette.length ? (other ? palette[8 % palette.length] : groupColor(i % 9)) : undefined;
+    const picked = state.display.series_colors?.[group];
+    const color = palette.length ? (other ? palette[8 % palette.length] : picked ? palette[picked - 1] : groupColor(i % 9)) : undefined;
     return {
       type: "scatter",
       name: group || (ym ? metricLabel(ym, dataset) : ""),
-      data: points.filter((p) => p.group === group).map((p) => ({ name: p.name, value: [p.x, p.y, p.size], symbolSize: sizeOf(p.size) })),
+      data: points
+        .filter((p) => p.group === group)
+        .map((p) => {
+          const rule = ym ? ruleFor(p.y, metricName(ym), rules) : null;
+          const point = { name: p.name, value: [p.x, p.y, p.size], symbolSize: sizeOf(p.size) };
+          if (!rule) return point;
+          const tone = tones[rule.tone];
+          return {
+            ...point,
+            itemStyle: { opacity: 1, ...(tone ? { color: tone } : {}) },
+            label: { show: true, position: "top" as const, fontSize: 11, formatter: `${ruleMarker(rule)} ${fy(p.y)}`, ...(ctx.labelColor ? { color: ctx.labelColor } : {}) },
+          };
+        }),
       // "Other" sits underneath, quieter.
       z: other ? 1 : 2,
       itemStyle: { opacity: other ? 0.45 : 0.8, ...(color ? { color } : {}) },
@@ -350,7 +367,9 @@ export function histogramOption(state: ChartState, result: ChartDataResult, data
       {
         type: "bar",
         name: metric ? metricLabel(metric, dataset) : "",
-        data: bins.map((b) => b.value),
+        data: bins.map((b) =>
+          metric ? ruledItem(b.value, metricName(metric), colorRules(state.display), toneColors(ctx), format, null, ctx.labelColor) : b.value,
+        ) as BarSeriesOption["data"],
         barCategoryGap: "6%",
         ...(color ? { itemStyle: { color, borderRadius: [2, 2, 0, 0] } } : { itemStyle: { borderRadius: [2, 2, 0, 0] } }),
         label: state.display.value_labels

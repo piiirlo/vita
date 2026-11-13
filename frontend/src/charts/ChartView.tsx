@@ -1,4 +1,5 @@
 import { ArrowDown, ArrowUp, TriangleAlert } from "lucide-react";
+import { colorRules, ruleFor, ruleText } from "./colorRules.ts";
 import { lazy, Suspense, useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import type { ChartDataResult, Dataset } from "../api.ts";
 import { CountUp } from "../components/motion.tsx";
@@ -11,7 +12,7 @@ import EmptyRange from "./EmptyRange.tsx";
 import { hasTimeRange } from "./emptyRange.ts";
 import { useTimeExtent } from "./extentCache.ts";
 import { categoryLabel, formatBucket, toNumber } from "./format.ts";
-import { metricLabel, PIE_MAX_READABLE, type ChartState } from "./model.ts";
+import { metricLabel, metricName, PIE_MAX_READABLE, type ChartState } from "./model.ts";
 import { funnelOption, gaugeOption, gaugeTargetText, nonAdditive, treemapOption } from "./moreCharts.ts";
 import { cartesianLayout, pieOption, sparklineOption, type DrawContext, type DrawToken } from "./options.ts";
 import PivotTable from "./PivotTable.tsx";
@@ -263,10 +264,9 @@ function BigNumber({
   const metric = query.metrics[0];
   const value = result.rows[0]?.[0];
   const format = metric ? metricFormatter(display, metric, dataset) : (v: unknown) => String(v);
-  const n = toNumber(value);
-  const below = display.color_below ?? null;
-  const above = display.color_above ?? null;
-  const status = n === null ? null : below !== null && n < below ? "below" : above !== null && n > above ? "above" : null;
+  // Conditional color: the rule's tone + an arrow + words (never color alone).
+  const rule = metric && toNumber(value) !== null ? ruleFor(value, metricName(metric), colorRules(display)) : null;
+  const status = rule ? `is-${rule.when} is-${rule.tone}` : null;
   const grain = query.time?.grain ?? null;
   const trendOption = useMemo(
     () => (trend && trend.rows.length > 1 ? sparklineOption(state, trend, dataset, { ...drawColors, coverage }) : null),
@@ -274,14 +274,14 @@ function BigNumber({
   );
 
   return (
-    <div className={`big-number big-number-size-${display.font_size ?? "auto"}`}>
-      <div className={`big-number-value${status ? ` is-${status}` : ""}`} data-testid="big-number-value">
+    <div className={bigNumberClass(display)}>
+      <div className={`big-number-value${status ? ` ${status}` : ""}`} data-testid="big-number-value">
         <BigValue value={value} format={format} />
       </div>
-      {status && (
-        <div className={`big-number-status is-${status}`} data-testid="big-number-status">
-          {status === "below" ? <ArrowDown size={14} aria-hidden /> : <ArrowUp size={14} aria-hidden />}
-          {status === "below" ? `Below ${format(below)}` : `Above ${format(above)}`}
+      {rule && (
+        <div className={`big-number-status ${status}`} data-testid="big-number-status">
+          {rule.when === "below" ? <ArrowDown size={14} aria-hidden /> : <ArrowUp size={14} aria-hidden />}
+          {ruleText(rule, format)}
         </div>
       )}
       <div className="big-number-subtitle">{display.subtitle || (metric ? metricLabel(metric, dataset) : "")}</div>
@@ -299,6 +299,12 @@ function BigNumber({
       )}
     </div>
   );
+}
+
+/** Size and position of a big number in its card (centered by default; the subtitle, the
+ * comparison and the trend line follow). */
+function bigNumberClass(display: ChartState["display"]): string {
+  return `big-number big-number-size-${display.font_size ?? "auto"} big-number-h-${display.align ?? "center"} big-number-v-${display.valign ?? "middle"}`;
 }
 
 const CHART_NAMES: Partial<Record<ChartState["vizType"], string>> = { bar: "Bar chart", line: "Line chart", area: "Area chart", combo: "Combo chart" };
@@ -427,7 +433,7 @@ function GaugeView({ state, result, dataset, drawColors }: { state: ChartState; 
 function EmptyBigNumber({ state, dataset, message }: { state: ChartState; dataset: Dataset | null; message: ReactNode }) {
   const metric = state.query.metrics[0];
   return (
-    <div className={`big-number big-number-empty big-number-size-${state.display.font_size ?? "auto"}`}>
+    <div className={`${bigNumberClass(state.display)} big-number-empty`}>
       <div className="big-number-value is-empty" data-testid="big-number-value" aria-label="No data">
         -
       </div>

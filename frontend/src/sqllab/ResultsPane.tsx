@@ -6,6 +6,7 @@ import {
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import type { QueryErrorDetail, QueryResult } from "../api.ts";
+import { QueryErrorBody } from "../components/QueryErrorAlert.tsx";
 import { toNumber } from "../charts/format.ts";
 import {
   cellText,
@@ -98,10 +99,12 @@ export default function ResultsPane({ run, title, onStop }: Props) {
           </span>
         )}
         {run?.status === "error" && (
-          <span className="run-error" role="alert">
+          <div className="run-error" role="alert">
             <span className="run-state error">Error</span>
-            <span className="run-error-message">{run.error.message}</span>
-          </span>
+            <div className="run-error-message">
+              <QueryErrorBody error={run.error} />
+            </div>
+          </div>
         )}
         {run?.status === "done" && <ResultSummary result={run.result} />}
       </div>

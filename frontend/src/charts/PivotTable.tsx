@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import type { ChartDataResult, Dataset } from "../api.ts";
 import type { Coverage } from "./display.ts";
 import { PIVOT_MAX_COLUMNS, type ChartState } from "./model.ts";
+import { cellRule, ruleMarker } from "./colorRules.ts";
 import { PIVOT_MAX_ROWS_SHOWN, pivotLayout } from "./pivotTable.ts";
 
 const toggle = (set: ReadonlySet<string>, key: string) => {
@@ -129,11 +130,20 @@ export default function PivotTable({
                     </>
                   )}
                 </th>
-                {row.cells.map((c, ci) => (
-                  <td key={ci} className={`num pivot-cell-${layout.columns[ci]?.kind ?? "leaf"}${c.heat ? ` heat-${c.heat}` : ""}`}>
-                    {c.text}
-                  </td>
-                ))}
+                {row.cells.map((c, ci) => {
+                  const metric = layout.columns[ci]?.metric;
+                  const rule = metric ? cellRule(state, metric, c.value) : null;
+                  return (
+                    <td
+                      key={ci}
+                      className={`num pivot-cell-${layout.columns[ci]?.kind ?? "leaf"}${c.heat ? ` heat-${c.heat}` : ""}${rule ? ` cell-rule cell-${rule.tone}` : ""}`}
+                    >
+                      {rule && <span aria-hidden>{ruleMarker(rule)} </span>}
+                      {c.text}
+                      {rule && <span className="sr-only"> ({rule.when} {rule.value})</span>}
+                    </td>
+                  );
+                })}
               </tr>
             ))}
           </tbody>

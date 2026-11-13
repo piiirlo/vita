@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import {
   ApiError,
+  dismissDatasetNote,
   getDataset,
   isQueryErrorDetail,
   syncDataset,
@@ -21,6 +22,7 @@ import { usePageTitle } from "../components/usePageTitle.ts";
 import { toast } from "../components/toast.ts";
 import PageHeader from "../shell/PageHeader.tsx";
 import { Button } from "../components/ui/button.tsx";
+import { Notice } from "../components/ui/alert.tsx";
 
 type TabName = "columns" | "metrics" | "preview";
 
@@ -44,6 +46,8 @@ function draftOf(dataset: Dataset): Draft {
       is_hidden: c.is_hidden,
       description: c.description,
       value_labels: c.value_labels ?? {},
+      text_date_format: c.text_date_format ?? null,
+      is_identifier: c.is_identifier ?? false,
     };
   }
   return {
@@ -67,6 +71,8 @@ function sameSettings(a: ColumnSettings, b: ColumnSettings): boolean {
     a.is_temporal === b.is_temporal &&
     a.is_dimension === b.is_dimension &&
     a.is_hidden === b.is_hidden &&
+    (a.text_date_format ?? null) === (b.text_date_format ?? null) &&
+    (a.is_identifier ?? false) === (b.is_identifier ?? false) &&
     labelsKey(a.value_labels) === labelsKey(b.value_labels)
   );
 }
@@ -78,10 +84,14 @@ function changedColumns(draft: Draft, saved: Draft): ColumnSettings[] {
       return !draft.removed.has(c.id) && before !== undefined && !sameSettings(c, before);
     })
     .map((c) => {
-      // Value labels only when they changed (left out = unchanged on the server).
-      if (labelsKey(c.value_labels) !== labelsKey(saved.columns[c.id]?.value_labels)) return c;
-      const { value_labels: _unchanged, ...rest } = c;
-      return rest;
+      // Value labels, the text date format and the identifier flag only when they changed
+      // (left out = unchanged on the server).
+      const before = saved.columns[c.id];
+      const out: ColumnSettings = { ...c };
+      if (labelsKey(c.value_labels) === labelsKey(before?.value_labels)) delete out.value_labels;
+      if ((c.text_date_format ?? null) === (before?.text_date_format ?? null)) delete out.text_date_format;
+      if ((c.is_identifier ?? false) === (before?.is_identifier ?? false)) delete out.is_identifier;
+      return out;
     });
 }
 
@@ -158,7 +168,22 @@ export default function DatasetEditPage() {
   }
 
   function fail(err: unknown) {
-    setError(err instanceof ApiError && isQueryErrorDetail(err.detail) ? err.detail.message : errorText(err));
+    if (err instanceof ApiError && isQueryErrorDetail(err.detail)) {
+      const detail = err.detail;
+      setError(detail.title ? `${detail.title}. ${detail.hint ?? ""}`.trim() : detail.message);
+    } else {
+      setError(errorText(err));
+    }
+  }
+
+  async function dismiss(noteId: string) {
+    if (!dataset) return;
+    try {
+      await dismissDatasetNote(dataset.id, noteId);
+      setDataset((prev) => (prev ? { ...prev, notes: (prev.notes ?? []).filter((n) => n.id !== noteId) } : prev));
+    } catch (err) {
+      fail(err);
+    }
   }
 
   async function save() {
@@ -274,6 +299,16 @@ export default function DatasetEditPage() {
           <p key={w} className="alert alert-warning small">
             {w}
           </p>
+        ))}
+        {(dataset.notes ?? []).map((note) => (
+          <Notice key={note.id} className="dataset-note">
+            <div className="flex items-start gap-3">
+              <span className="min-w-0 flex-1">{note.message}</span>
+              <Button size="sm" variant="ghost" onClick={() => void dismiss(note.id)} aria-label="Dismiss this note">
+                Dismiss
+              </Button>
+            </div>
+          </Notice>
         ))}
       </div>
 

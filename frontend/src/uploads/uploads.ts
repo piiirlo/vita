@@ -70,3 +70,31 @@ export function sameReadOptions(a: UploadReadOptions, b: UploadReadOptions): boo
   const cols = (o: UploadReadOptions) => (o.columns ?? []).map((c) => [c.index, c.name, c.type, c.ignore, c.date_order]);
   return a.columns === null || b.columns === null || JSON.stringify(cols(a)) === JSON.stringify(cols(b));
 }
+
+// ---------- dates in the preview ----------
+
+const DATE_RE = /^(\d{1,4})([-/.])(\d{1,2})\2(\d{1,4})(?:[T ](\d{1,2}):(\d{2})(?::(\d{2}))?)?/;
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** A date as read in `order`, shown so it can't be misread: "9 Nov 2013" (and "14:30" for
+ * datetimes). The same rules as the backend parser (a 4-digit year first for ymd, last
+ * otherwise); null when the value isn't a date in that order. */
+export function readableDate(text: string, order: DateOrder, withTime: boolean): string | null {
+  const m = DATE_RE.exec(text.trim());
+  if (!m) return null;
+  const [a, b, c] = [m[1]!, m[3]!, m[4]!];
+  let year: number, month: number, day: number;
+  if (order === "ymd") {
+    if (a.length !== 4) return null;
+    [year, month, day] = [Number(a), Number(b), Number(c)];
+  } else {
+    if (c.length !== 4 || a.length > 2) return null;
+    year = Number(c);
+    [day, month] = order === "dmy" ? [Number(a), Number(b)] : [Number(b), Number(a)];
+  }
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (month < 1 || month > 12 || date.getUTCDate() !== day || date.getUTCMonth() !== month - 1) return null;
+  const shown = `${day} ${MONTHS[month - 1]} ${year}`;
+  if (withTime && m[5] !== undefined) return `${shown} ${m[5].padStart(2, "0")}:${m[6]}`;
+  return shown;
+}

@@ -1,23 +1,38 @@
-import { useState } from "react";
+import { useState, type DragEvent, type ReactNode } from "react";
 import ChartTypePicker from "./ChartTypePicker.tsx";
+import ColumnPalette from "./ColumnPalette.tsx";
+import SqlMetricEditor from "./SqlMetricEditor.tsx";
+import { COLUMN_MIME } from "./columnKinds.ts";
+import { dropColumn, emptyHint, SECTION_TITLES, sectionsFor, targetsFor, type SectionId } from "./editorSections.ts";
+import { metricNameFor } from "./sqlMetric.ts";
+import { toast } from "../components/toast.ts";
+import { queryErrorSummary, toQueryError } from "../components/queryError.ts";
 import { dimensionOptions, type DimOption } from "./dimensions.ts";
-import type {
-  Aggregate,
-  ChartFilter,
-  ChartQuery,
-  Dataset,
-  DatasetColumn,
-  DatasetListItem,
-  FilterOperator,
-  FilterScalar,
-  GenericType,
-  Grain,
-  MetricRef,
-  RangeKind,
-  VizType,
+import {
+  createMetric,
+  isSqlMetric,
+  type Aggregate,
+  type AxisGrain,
+  type ChartFilter,
+  type ChartQuery,
+  type Dataset,
+  type DatasetColumn,
+  type DatasetListItem,
+  type DatasetMetric,
+  type FilterOperator,
+  type FilterScalar,
+  type GenericType,
+  type MetricRef,
+  type RangeKind,
+  type SqlMetric,
+  type VizType,
 } from "../api.ts";
 import {
   GRAINS,
+  RAW_GRAIN,
+  YEARS_ONLY_HINT,
+  defaultGrain,
+  grainAllowed,
   PIVOT_MAX_COLUMN_DIMENSIONS,
   PIVOT_MAX_ROW_DIMENSIONS,
   DEFAULT_BINS,
@@ -46,6 +61,8 @@ type Props = {
   onVizType(viz: VizType): void;
   onQuery(patch: Partial<ChartQuery>): void;
   onDisplay(patch: Partial<DisplayOptions>): void;
+  /** A custom SQL metric was saved to the dataset ("Save to dataset"). */
+  onMetricSaved?(metric: DatasetMetric): void;
 };
 
 const RANGES: { value: RangeKind; label: string }[] = [
@@ -86,7 +103,7 @@ const OPERATOR_LABELS: Partial<Record<FilterOperator, string>> = {
   "IS NOT NULL": "is not empty",
 };
 
-export default function ChartControls({ state, dataset, datasets, onDataset, onVizType, onQuery, onDisplay }: Props) {
+export default function ChartControls({ state, dataset, datasets, onDataset, onVizType, onQuery, onDisplay, onMetricSaved }: Props) {
   const { vizType, query, display } = state;
   const raw = vizType === "table" && display.mode === "raw";
   const grain = query.time?.grain ?? null;
@@ -95,6 +112,8 @@ export default function ChartControls({ state, dataset, datasets, onDataset, onV
   const categories = dims.filter((c) => !c.is_temporal);
   // What carried over the last chart type switch (kept / dropped); the to-do list is live.
   const [report, setReport] = useState<{ viz: VizType; report: SwitchReport } | null>(null);
+  // Why the last dropped column couldn't go where it was dropped.
+  const [dropNotice, setDropNotice] = useState<string | null>(null);
   const todo = missingFor(state, dataset);
   // Date buckets ("Order date · by month") for pivot rows / columns; every grain and time
   // part for heatmap axes.
@@ -110,6 +129,283 @@ export default function ChartControls({ state, dataset, datasets, onDataset, onV
     if (ref === undefined) next.splice(i, 1);
     else next[i] = ref;
     onQuery({ metrics: next.filter(Boolean) });
+  };
+  const sections = sectionsFor(state, dataset);
+
+  function drop(section: SectionId, name: string) {
+    const result = dropColumn(state, dataset, section, name);
+    if ("refused" in result) {
+      setDropNotice(result.refused);
+      return;
+    }
+    setDropNotice(null);
+    onQuery(result.patch);
+  }
+
+  async function saveToDataset(ref: SqlMetric) {
+    try {
+      const metric = await createMetric(dataset.id, {
+        name: metricNameFor(ref.label, dataset.metrics.map((m) => m.name)),
+        label: ref.label,
+        expression: ref.sql,
+        description: null,
+        number_format: ref.number_format ?? null,
+      });
+      onMetricSaved?.(metric);
+      onQuery({ metrics: query.metrics.map((m) => (m === ref ? metric.name : m)) });
+      toast.success(`Saved “${ref.label}” to the dataset's metrics.`);
+    } catch (err) {
+      toast.error(`Couldn't save the metric: ${queryErrorSummary(toQueryError(err))}`);
+    }
+  }
+
+  const metricList = (title: string, single = false) => (
+    <MetricList title={title} single={single} dataset={dataset} metrics={query.metrics} onChange={(metrics) => onQuery({ metrics })} onSaveToDataset={(m) => void saveToDataset(m)} />
+  );
+
+  const measure = (
+    <>
+      {raw ? (
+        <ColumnList title="Columns" columns={usableColumns(dataset)} selected={query.columns} dataset={dataset} onChange={(columns) => onQuery({ columns })} />
+      ) : vizType === "scatter" ? (
+        <>
+          <MetricList title="X axis" slot single dataset={dataset} metrics={query.metrics.slice(0, 1)} onChange={([m]) => setMetric(0, m)} />
+          <MetricList title="Y axis" slot single dataset={dataset} metrics={query.metrics.slice(1, 2)} onChange={([m]) => setMetric(1, m)} />
+          <MetricList title="Bubble size" slot single dataset={dataset} metrics={query.metrics.slice(2, 3)} onChange={([m]) => setMetric(2, m)} />
+          {query.metrics[2] && (
+            <button type="button" className="small" onClick={() => setMetric(2, undefined)}>
+              No bubble size
+            </button>
+          )}
+        </>
+      ) : vizType === "histogram" ? (
+        <>
+          {metricList("Bar height", true)}
+          <p className="control-hint">Usually the count of rows. Rows without a value are counted apart.</p>
+        </>
+      ) : SINGLE_METRIC_VIZ.has(vizType) ? (
+        metricList("Metric", true)
+      ) : (
+        metricList("Metrics")
+      )}
+      {vizType === "big_number" && <p className="control-hint">Subtitle, colors, position, trend line and comparison are in Customize.</p>}
+      {vizType === "gauge" && <p className="control-hint">Min, max, target and color bands are in Customize.</p>}
+      {vizType === "combo" && <p className="control-hint">Bars or line and left or right axis per metric are in Customize.</p>}
+    </>
+  );
+
+  const breakdown = (
+    <>
+      {vizType === "table" && (
+        <ColumnList title="Group by" columns={nonTimeDims} selected={query.dimensions} dataset={dataset} onChange={(dimensions) => onQuery({ dimensions })} />
+      )}
+
+      {(vizType === "bar" || vizType === "combo") && (
+        <>
+          <XAxisSelect query={query} dataset={dataset} categories={categories} onQuery={onQuery} />
+          {vizType === "bar" && <SeriesSelect query={query} dataset={dataset} columns={nonTimeDims} onQuery={onQuery} />}
+        </>
+      )}
+
+      {vizType === "pie" && (
+        <>
+          <label className="control">
+            <span>Slices</span>
+            <select aria-label="Slices" value={query.dimensions[0] ?? ""} onChange={(e) => onQuery({ dimensions: e.target.value ? [e.target.value] : [] })}>
+              {query.dimensions.length === 0 && <option value="">Pick…</option>}
+              {categories.map((c) => (
+                <option key={c.name} value={c.name}>
+                  {c.label || c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="control">
+            <span>Top slices</span>
+            <NumberInput
+              value={query.series_limit ?? 0}
+              min={0}
+              max={100}
+              title="Keep the N biggest slices and group the rest into Other (0 = every slice)"
+              onChange={(n) => onQuery({ series_limit: n > 0 ? n : null })}
+            />
+          </label>
+          <p className="control-hint">The rest is grouped into “Other”. Donut, sorting and labels are in Customize.</p>
+        </>
+      )}
+
+      {(vizType === "line" || vizType === "area") && (
+        <>
+          <XAxisSelect query={query} dataset={dataset} categories={categories} onQuery={onQuery} />
+          <SeriesSelect query={query} dataset={dataset} columns={nonTimeDims.filter((c) => !query.dimensions.includes(c.name))} onQuery={onQuery} />
+        </>
+      )}
+
+      {vizType === "treemap" && (
+        <>
+          <DimensionSelect label="Boxes" value={query.dimensions[0] ?? ""} columns={categories} dataset={dataset}
+            onChange={(name) => onQuery({ dimensions: name ? [name, ...query.dimensions.slice(1).filter((d) => d !== name)] : [] })} />
+          <DimensionSelect label="Inside each box" optional value={query.dimensions[1] ?? ""} dataset={dataset}
+            columns={categories.filter((c) => c.name !== query.dimensions[0])}
+            onChange={(name) => onQuery({ dimensions: [query.dimensions[0] ?? "", ...(name ? [name] : [])].filter(Boolean) })} />
+          <label className="control">
+            <span>Top boxes</span>
+            <NumberInput
+              value={query.series_limit ?? 0}
+              min={0}
+              max={100}
+              title="Keep the N biggest outer boxes and group the rest into Other (0 = every box)"
+              onChange={(n) => onQuery({ series_limit: n > 0 ? n : null })}
+            />
+          </label>
+          <p className="control-hint">The rest is grouped into “Other”. Colors, names and labels are in Customize.</p>
+        </>
+      )}
+
+      {vizType === "funnel" && (
+        <>
+          <DimensionSelect label="Steps" value={query.dimensions[0] ?? ""} columns={categories} dataset={dataset} onChange={(name) => onQuery({ dimensions: name ? [name] : [] })} />
+          <p className="control-hint">Largest step first; pick your own step order in Customize.</p>
+        </>
+      )}
+
+      {vizType === "pivot_table" && (
+        <>
+          <ColumnList
+            title="Rows"
+            columns={dims.filter((c) => !(query.column_dimensions ?? []).includes(c.name))}
+            extra={pivotBuckets.filter((o) => !(query.column_dimensions ?? []).includes(o.value))}
+            selected={query.dimensions}
+            dataset={dataset}
+            max={PIVOT_MAX_ROW_DIMENSIONS}
+            fullHint={`A pivot table has at most ${PIVOT_MAX_ROW_DIMENSIONS} row dimensions: remove one, or move it to the columns.`}
+            onChange={(dimensions) => onQuery({ dimensions })}
+          />
+          <ColumnList
+            title="Columns"
+            columns={dims.filter((c) => !query.dimensions.includes(c.name))}
+            extra={pivotBuckets.filter((o) => !query.dimensions.includes(o.value))}
+            selected={query.column_dimensions ?? []}
+            dataset={dataset}
+            max={PIVOT_MAX_COLUMN_DIMENSIONS}
+            fullHint={`A pivot table has at most ${PIVOT_MAX_COLUMN_DIMENSIONS} column dimensions: remove one, or move it to the rows.`}
+            onChange={(column_dimensions) => onQuery({ column_dimensions })}
+          />
+          <label className="checkbox">
+            <input type="checkbox" checked={Boolean(query.totals)} onChange={(e) => onQuery({ totals: e.target.checked })} />
+            Totals and subtotals
+          </label>
+          <p className="control-hint">Totals are computed by the database, so averages and distinct counts add up correctly. Heat colors are in Customize.</p>
+        </>
+      )}
+
+      {vizType === "heatmap" && (
+        <>
+          <RefSelect label="Rows" value={query.dimensions[0] ?? ""} options={heatmapDims.filter((o) => o.value !== query.dimensions[1])}
+            onChange={(v) => onQuery({ dimensions: [v, query.dimensions[1] ?? ""].filter(Boolean) })} />
+          <RefSelect label="Columns" value={query.dimensions[1] ?? ""} options={heatmapDims.filter((o) => o.value !== query.dimensions[0])}
+            onChange={(v) => onQuery({ dimensions: [query.dimensions[0] ?? "", v].filter(Boolean) })} />
+          <p className="control-hint">Time columns can be split by day of week (Monday first), hour or month, or grouped by month, quarter…</p>
+        </>
+      )}
+
+      {vizType === "scatter" && (
+        <>
+          <DimensionSelect label="One point per" value={query.dimensions[0] ?? ""} columns={dims} dataset={dataset} onChange={(name) => onQuery({ dimensions: name ? [name] : [] })} />
+          <SeriesSelect query={query} dataset={dataset} columns={categories.filter((c) => c.name !== query.dimensions[0])} onQuery={onQuery} label="Color by" />
+          <p className="control-hint">One point per {query.dimensions[0] ? columnLabel(query.dimensions[0], dataset) : "value"}; at most the row limit ({query.row_limit.toLocaleString("en-US")}) points.</p>
+        </>
+      )}
+
+      {vizType === "histogram" && <HistogramBins query={query} numbers={numbers} dataset={dataset} onQuery={onQuery} />}
+
+      {vizType === "world_map" && (
+        <>
+          <DimensionSelect label="Countries" value={query.dimensions[0] ?? ""} columns={categories} dataset={dataset} onChange={(name) => onQuery({ dimensions: name ? [name] : [] })} />
+          <p className="control-hint">ISO codes (US, USA) and country names in any common form match. Fix the rest with value labels on the dataset's column.</p>
+        </>
+      )}
+    </>
+  );
+
+  const content: Record<SectionId, ReactNode> = {
+    measure,
+    breakdown,
+    time: <TimeSection state={state} dataset={dataset} onQuery={onQuery} />,
+    filter: <FilterList dataset={dataset} filters={query.filters} onChange={(filters) => onQuery({ filters })} />,
+    sort: (
+      <>
+        {ORDERABLE.has(vizType) && (
+          <label className="control">
+            <span>Order by</span>
+            <select
+              aria-label="Order by"
+              value={query.order_by?.by ?? ""}
+              onChange={(e) => onQuery({ order_by: e.target.value ? { by: e.target.value, descending: query.order_by?.descending ?? true } : null })}
+            >
+              <option value="">Default</option>
+              {outputNames(query, vizType, display).map((n) => (
+                <option key={n} value={n}>
+                  {outputLabel(n, query, dataset)}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        <details className="more-options">
+          <summary>More options</summary>
+          {query.order_by && (
+            <label className="control">
+              <span>Order direction</span>
+              <select
+                aria-label="Order direction"
+                value={query.order_by.descending ? "desc" : "asc"}
+                onChange={(e) => onQuery({ order_by: { ...query.order_by!, descending: e.target.value === "desc" } })}
+              >
+                <option value="desc">Descending</option>
+                <option value="asc">Ascending</option>
+              </select>
+            </label>
+          )}
+          <div className="inline-controls">
+            {!NO_ROW_LIMIT.has(vizType) && (
+              <label className="control">
+                <span>Row limit</span>
+                <NumberInput value={query.row_limit} min={1} max={10000} onChange={(row_limit) => onQuery({ row_limit })} />
+              </label>
+            )}
+            {query.series && (
+              <label className="control">
+                <span>Top series</span>
+                <NumberInput
+                  value={query.series_limit ?? 0}
+                  min={0}
+                  max={1000}
+                  title="Keep only the N biggest series by the first metric (0 = all)"
+                  onChange={(n) => onQuery({ series_limit: n > 0 ? n : null })}
+                />
+              </label>
+            )}
+          </div>
+          <label className="control">
+            <span>Cache results</span>
+            <select
+              aria-label="Cache results"
+              title="Charts reuse a result this long (Update chart and Refresh always query again)"
+              value={display.cache_ttl ?? ""}
+              onChange={(e) => onDisplay({ cache_ttl: e.target.value === "" ? undefined : Number(e.target.value) })}
+            >
+              <option value="">Default (10 minutes)</option>
+              {CACHE_TTLS.filter((t) => t.value !== DEFAULT_CACHE_TTL).map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </details>
+      </>
+    ),
   };
 
   return (
@@ -132,11 +428,7 @@ export default function ChartControls({ state, dataset, datasets, onDataset, onV
             onVizType(viz);
           }}
         />
-        <SwitchNote report={report?.viz === vizType ? report.report : null} todo={todo} onDismiss={() => setReport(null)} />
-      </section>
-
-      {vizType === "table" && (
-        <section>
+        {vizType === "table" && (
           <div className="segmented" role="radiogroup" aria-label="Table mode">
             {(["aggregate", "raw"] as const).map((m) => (
               <button
@@ -150,365 +442,171 @@ export default function ChartControls({ state, dataset, datasets, onDataset, onV
               </button>
             ))}
           </div>
-          {raw ? (
-            <ColumnList
-              title="Columns"
-              columns={usableColumns(dataset)}
-              selected={query.columns}
-              dataset={dataset}
-              onChange={(columns) => onQuery({ columns })}
-            />
-          ) : (
-            <>
-              <ColumnList
-                title="Group by"
-                columns={nonTimeDims}
-                selected={query.dimensions}
-                dataset={dataset}
-                onChange={(dimensions) => onQuery({ dimensions })}
-              />
-              <MetricList title="Metrics" dataset={dataset} metrics={query.metrics} onChange={(metrics) => onQuery({ metrics })} />
-            </>
-          )}
-        </section>
-      )}
-
-      {vizType === "big_number" && (
-        <section>
-          <MetricList title="Metric" single dataset={dataset} metrics={query.metrics} onChange={(metrics) => onQuery({ metrics })} />
-          <p className="control-hint">Subtitle, colors, trend line and comparison are in Customize.</p>
-        </section>
-      )}
-
-      {(vizType === "bar" || vizType === "combo") && (
-        <section>
-          <label className="control">
-            <span>X axis</span>
-            <select
-              aria-label="X axis"
-              value={grain ? "__time__" : (query.dimensions[0] ?? "")}
-              onChange={(e) => {
-                if (e.target.value === "__time__") {
-                  onQuery({ dimensions: [], time: timeWith(query, dataset, { grain: grain ?? "month" }) });
-                } else {
-                  onQuery({ dimensions: [e.target.value], time: timeWith(query, dataset, { grain: null }) });
-                }
-              }}
-            >
-              {!grain && query.dimensions.length === 0 && <option value="">Pick…</option>}
-              {temporalColumns(dataset).length > 0 && <option value="__time__">Time (by grain)</option>}
-              {dims
-                .filter((c) => !c.is_temporal)
-                .map((c) => (
-                  <option key={c.name} value={c.name}>
-                    {c.label || c.name}
-                  </option>
-                ))}
-            </select>
-          </label>
-          {vizType === "bar" && <SeriesSelect query={query} dataset={dataset} columns={nonTimeDims} onQuery={onQuery} />}
-          <MetricList title="Metrics" dataset={dataset} metrics={query.metrics} onChange={(metrics) => onQuery({ metrics })} />
-          {vizType === "combo" && <p className="control-hint">Bars or line and left or right axis per metric are in Customize.</p>}
-        </section>
-      )}
-
-      {vizType === "pie" && (
-        <section>
-          <label className="control">
-            <span>Slices</span>
-            <select
-              aria-label="Slices"
-              value={query.dimensions[0] ?? ""}
-              onChange={(e) => onQuery({ dimensions: e.target.value ? [e.target.value] : [] })}
-            >
-              {query.dimensions.length === 0 && <option value="">Pick…</option>}
-              {dims
-                .filter((c) => !c.is_temporal)
-                .map((c) => (
-                  <option key={c.name} value={c.name}>
-                    {c.label || c.name}
-                  </option>
-                ))}
-            </select>
-          </label>
-          <MetricList title="Metric" single dataset={dataset} metrics={query.metrics} onChange={(metrics) => onQuery({ metrics })} />
-          <label className="control">
-            <span>Top slices</span>
-            <NumberInput
-              value={query.series_limit ?? 0}
-              min={0}
-              max={100}
-              title="Keep the N biggest slices and group the rest into Other (0 = every slice)"
-              onChange={(n) => onQuery({ series_limit: n > 0 ? n : null })}
-            />
-          </label>
-          <p className="control-hint">The rest is grouped into “Other”. Donut, sorting and labels are in Customize.</p>
-        </section>
-      )}
-
-      {(vizType === "line" || vizType === "area") && (
-        <section>
-          <SeriesSelect query={query} dataset={dataset} columns={nonTimeDims} onQuery={onQuery} />
-          <MetricList title="Metrics" dataset={dataset} metrics={query.metrics} onChange={(metrics) => onQuery({ metrics })} />
-        </section>
-      )}
-
-      {vizType === "treemap" && (
-        <section>
-          <DimensionSelect label="Boxes" value={query.dimensions[0] ?? ""} columns={categories} dataset={dataset}
-            onChange={(name) => onQuery({ dimensions: name ? [name, ...query.dimensions.slice(1).filter((d) => d !== name)] : [] })} />
-          <DimensionSelect label="Inside each box" optional value={query.dimensions[1] ?? ""} dataset={dataset}
-            columns={categories.filter((c) => c.name !== query.dimensions[0])}
-            onChange={(name) => onQuery({ dimensions: [query.dimensions[0] ?? "", ...(name ? [name] : [])].filter(Boolean) })} />
-          <MetricList title="Metric" single dataset={dataset} metrics={query.metrics} onChange={(metrics) => onQuery({ metrics })} />
-          <label className="control">
-            <span>Top boxes</span>
-            <NumberInput
-              value={query.series_limit ?? 0}
-              min={0}
-              max={100}
-              title="Keep the N biggest outer boxes and group the rest into Other (0 = every box)"
-              onChange={(n) => onQuery({ series_limit: n > 0 ? n : null })}
-            />
-          </label>
-          <p className="control-hint">The rest is grouped into “Other”. Colors, names and labels are in Customize.</p>
-        </section>
-      )}
-
-      {vizType === "funnel" && (
-        <section>
-          <DimensionSelect label="Steps" value={query.dimensions[0] ?? ""} columns={categories} dataset={dataset}
-            onChange={(name) => onQuery({ dimensions: name ? [name] : [] })} />
-          <MetricList title="Metric" single dataset={dataset} metrics={query.metrics} onChange={(metrics) => onQuery({ metrics })} />
-          <p className="control-hint">Largest step first; pick your own step order in Customize.</p>
-        </section>
-      )}
-
-      {vizType === "gauge" && (
-        <section>
-          <MetricList title="Metric" single dataset={dataset} metrics={query.metrics} onChange={(metrics) => onQuery({ metrics })} />
-          <p className="control-hint">Min, max, target and color bands are in Customize.</p>
-        </section>
-      )}
-
-      {vizType === "pivot_table" && (
-        <section>
-          <ColumnList
-            title="Rows"
-            columns={dims.filter((c) => !(query.column_dimensions ?? []).includes(c.name))}
-            extra={pivotBuckets.filter((o) => !(query.column_dimensions ?? []).includes(o.value))}
-            selected={query.dimensions}
-            dataset={dataset}
-            max={PIVOT_MAX_ROW_DIMENSIONS}
-            fullHint={`A pivot table has at most ${PIVOT_MAX_ROW_DIMENSIONS} row dimensions: remove one, or move it to the columns.`}
-            onChange={(dimensions) => onQuery({ dimensions })}
-          />
-          <ColumnList
-            title="Columns"
-            columns={dims.filter((c) => !query.dimensions.includes(c.name))}
-            extra={pivotBuckets.filter((o) => !query.dimensions.includes(o.value))}
-            selected={query.column_dimensions ?? []}
-            dataset={dataset}
-            max={PIVOT_MAX_COLUMN_DIMENSIONS}
-            fullHint={`A pivot table has at most ${PIVOT_MAX_COLUMN_DIMENSIONS} column dimensions: remove one, or move it to the rows.`}
-            onChange={(column_dimensions) => onQuery({ column_dimensions })}
-          />
-          <MetricList title="Metrics" dataset={dataset} metrics={query.metrics} onChange={(metrics) => onQuery({ metrics })} />
-          <label className="checkbox">
-            <input type="checkbox" checked={Boolean(query.totals)} onChange={(e) => onQuery({ totals: e.target.checked })} />
-            Totals and subtotals
-          </label>
-          <p className="control-hint">Totals are computed by the database, so averages and distinct counts add up correctly. Heat colors are in Customize.</p>
-        </section>
-      )}
-
-      {vizType === "heatmap" && (
-        <section>
-          <RefSelect label="Rows" value={query.dimensions[0] ?? ""} options={heatmapDims.filter((o) => o.value !== query.dimensions[1])}
-            onChange={(v) => onQuery({ dimensions: [v, query.dimensions[1] ?? ""].filter(Boolean) })} />
-          <RefSelect label="Columns" value={query.dimensions[1] ?? ""} options={heatmapDims.filter((o) => o.value !== query.dimensions[0])}
-            onChange={(v) => onQuery({ dimensions: [query.dimensions[0] ?? "", v].filter(Boolean) })} />
-          <MetricList title="Metric" single dataset={dataset} metrics={query.metrics} onChange={(metrics) => onQuery({ metrics })} />
-          <p className="control-hint">Time columns can be split by day of week (Monday first), hour or month, or grouped by month, quarter…</p>
-        </section>
-      )}
-
-      {vizType === "scatter" && (
-        <section>
-          <DimensionSelect label="One point per" value={query.dimensions[0] ?? ""} columns={dims} dataset={dataset}
-            onChange={(name) => onQuery({ dimensions: name ? [name] : [] })} />
-          <MetricList title="X axis" slot single dataset={dataset} metrics={query.metrics.slice(0, 1)} onChange={([m]) => setMetric(0, m)} />
-          <MetricList title="Y axis" slot single dataset={dataset} metrics={query.metrics.slice(1, 2)} onChange={([m]) => setMetric(1, m)} />
-          <MetricList title="Bubble size" slot single dataset={dataset} metrics={query.metrics.slice(2, 3)} onChange={([m]) => setMetric(2, m)} />
-          {query.metrics[2] && (
-            <button type="button" className="small" onClick={() => setMetric(2, undefined)}>
-              No bubble size
-            </button>
-          )}
-          <SeriesSelect query={query} dataset={dataset} columns={categories.filter((c) => c.name !== query.dimensions[0])} onQuery={onQuery} label="Color by" />
-          <p className="control-hint">One point per {query.dimensions[0] ? columnLabel(query.dimensions[0], dataset) : "value"}; at most the row limit ({query.row_limit.toLocaleString("en-US")}) points.</p>
-        </section>
-      )}
-
-      {vizType === "histogram" && (
-        <section>
-          <label className="control">
-            <span>Number column</span>
-            <select
-              aria-label="Number column"
-              value={query.bins?.column ?? ""}
-              onChange={(e) => onQuery({ bins: e.target.value ? { ...(query.bins ?? { count: DEFAULT_BINS }), column: e.target.value } : null })}
-            >
-              {!query.bins?.column && <option value="">Pick…</option>}
-              {numbers.map((c) => (
-                <option key={c.name} value={c.name}>
-                  {columnLabel(c.name, dataset)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="control">
-            <span>Bins</span>
-            <div className="segmented" role="radiogroup" aria-label="Bins">
-              {(
-                [
-                  ["count", "Number of bins"],
-                  ["width", "Bin width"],
-                ] as const
-              ).map(([mode, label]) => {
-                const active = (query.bins?.width ? "width" : "count") === mode;
-                return (
-                  <button
-                    key={mode}
-                    type="button"
-                    role="radio"
-                    aria-checked={active}
-                    className={active ? "active" : ""}
-                    disabled={!query.bins}
-                    onClick={() =>
-                      query.bins &&
-                      onQuery({ bins: mode === "width" ? { ...query.bins, width: query.bins.width ?? 10 } : { ...query.bins, width: null, count: query.bins.count ?? DEFAULT_BINS } })
-                    }
-                  >
-                    {label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          {query.bins && !query.bins.width && (
-            <label className="control">
-              <span>Number of bins</span>
-              <NumberInput value={query.bins.count ?? DEFAULT_BINS} min={1} max={200} title="1 to 200 bins between the smallest and largest value"
-                onChange={(count) => onQuery({ bins: { ...query.bins!, count } })} />
-            </label>
-          )}
-          {query.bins?.width && (
-            <label className="control">
-              <span>Bin width</span>
-              <input
-                type="number"
-                aria-label="Bin width"
-                min={0}
-                step="any"
-                defaultValue={query.bins.width}
-                onChange={(e) => {
-                  const width = Number(e.target.value);
-                  if (e.target.value !== "" && width > 0) onQuery({ bins: { ...query.bins!, width } });
-                }}
-              />
-            </label>
-          )}
-          <MetricList title="Bar height" single dataset={dataset} metrics={query.metrics} onChange={(metrics) => onQuery({ metrics })} />
-          <p className="control-hint">Usually the count of rows. Rows without a value are counted apart.</p>
-        </section>
-      )}
-
-      {vizType === "world_map" && (
-        <section>
-          <DimensionSelect label="Countries" value={query.dimensions[0] ?? ""} columns={categories} dataset={dataset}
-            onChange={(name) => onQuery({ dimensions: name ? [name] : [] })} />
-          <MetricList title="Metric" single dataset={dataset} metrics={query.metrics} onChange={(metrics) => onQuery({ metrics })} />
-          <p className="control-hint">ISO codes (US, USA) and country names in any common form match. Fix the rest with value labels on the dataset's column.</p>
-        </section>
-      )}
-
-      <TimeSection state={state} dataset={dataset} onQuery={onQuery} />
-
-      <section>
-        <FilterList dataset={dataset} filters={query.filters} onChange={(filters) => onQuery({ filters })} />
+        )}
+        <SwitchNote report={report?.viz === vizType ? report.report : null} todo={todo} onDismiss={() => setReport(null)} />
       </section>
 
-      <section>
-        {ORDERABLE.has(vizType) && (
-          <label className="control">
-            <span>Order by</span>
-            <div className="inline-controls">
-              <select
-                aria-label="Order by"
-                value={query.order_by?.by ?? ""}
-                onChange={(e) =>
-                  onQuery({ order_by: e.target.value ? { by: e.target.value, descending: query.order_by?.descending ?? true } : null })
+      <ColumnPalette dataset={dataset} targetsFor={(name) => targetsFor(state, dataset, name)} onAdd={drop} />
+      {dropNotice && (
+        <p className="drop-notice" role="status">
+          {dropNotice}
+        </p>
+      )}
+
+      {sections.map((id) => (
+        <EditorSection
+          key={id}
+          id={id}
+          title={id === "measure" && raw ? "What to show" : SECTION_TITLES[id]}
+          hint={emptyHint(id, state)}
+          collapsible={id === "sort"}
+          onDropColumn={id === "sort" ? undefined : (name) => drop(id, name)}
+        >
+          {content[id]}
+        </EditorSection>
+      ))}
+    </div>
+  );
+}
+
+/** Chart types that show one metric. */
+const SINGLE_METRIC_VIZ = new Set<VizType>(["big_number", "gauge", "pie", "treemap", "funnel", "heatmap", "world_map"]);
+
+/** One section of the Data panel: a title, a one-line hint while it's empty, and a drop zone
+ * for columns dragged from the column list. "Sort & limit" is folded by default. */
+function EditorSection({
+  id,
+  title,
+  hint,
+  collapsible,
+  onDropColumn,
+  children,
+}: {
+  id: SectionId;
+  title: string;
+  hint: string | null;
+  collapsible?: boolean;
+  onDropColumn?(name: string): void;
+  children: ReactNode;
+}) {
+  const [over, setOver] = useState(false);
+  const headingId = `section-${id}`;
+  const dropProps = onDropColumn
+    ? {
+        onDragOver: (e: DragEvent<HTMLElement>) => {
+          if (!e.dataTransfer.types.includes(COLUMN_MIME)) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "copy";
+          setOver(true);
+        },
+        onDragLeave: (e: DragEvent<HTMLElement>) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver(false);
+        },
+        onDrop: (e: DragEvent<HTMLElement>) => {
+          const name = e.dataTransfer.getData(COLUMN_MIME);
+          setOver(false);
+          if (!name) return;
+          e.preventDefault();
+          onDropColumn(name);
+        },
+      }
+    : {};
+  const className = `editor-section editor-section-${id}${over ? " is-drop-target" : ""}`;
+  if (collapsible) {
+    return (
+      <details className={className} {...dropProps}>
+        <summary>
+          <h3 className="section-title" id={headingId}>
+            {title}
+          </h3>
+        </summary>
+        {hint && <p className="section-hint">{hint}</p>}
+        {children}
+      </details>
+    );
+  }
+  return (
+    <section className={className} aria-labelledby={headingId} data-section={id} {...dropProps}>
+      <h3 className="section-title" id={headingId}>
+        {title}
+      </h3>
+      {hint && <p className="section-hint">{hint}</p>}
+      {children}
+    </section>
+  );
+}
+
+function HistogramBins({ query, numbers, dataset, onQuery }: { query: ChartQuery; numbers: DatasetColumn[]; dataset: Dataset; onQuery(p: Partial<ChartQuery>): void }) {
+  return (
+    <>
+      <label className="control">
+        <span>Number column</span>
+        <select
+          aria-label="Number column"
+          value={query.bins?.column ?? ""}
+          onChange={(e) => onQuery({ bins: e.target.value ? { ...(query.bins ?? { count: DEFAULT_BINS }), column: e.target.value } : null })}
+        >
+          {!query.bins?.column && <option value="">Pick…</option>}
+          {numbers.map((c) => (
+            <option key={c.name} value={c.name}>
+              {columnLabel(c.name, dataset)}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="control">
+        <span>Bins</span>
+        <div className="segmented" role="radiogroup" aria-label="Bins">
+          {(
+            [
+              ["count", "Number of bins"],
+              ["width", "Bin width"],
+            ] as const
+          ).map(([mode, label]) => {
+            const active = (query.bins?.width ? "width" : "count") === mode;
+            return (
+              <button
+                key={mode}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                className={active ? "active" : ""}
+                disabled={!query.bins}
+                onClick={() =>
+                  query.bins &&
+                  onQuery({ bins: mode === "width" ? { ...query.bins, width: query.bins.width ?? 10 } : { ...query.bins, width: null, count: query.bins.count ?? DEFAULT_BINS } })
                 }
               >
-                <option value="">Default</option>
-                {outputNames(query, vizType, display).map((n) => (
-                  <option key={n} value={n}>
-                    {outputLabel(n, query, dataset)}
-                  </option>
-                ))}
-              </select>
-              {query.order_by && (
-                <select
-                  aria-label="Order direction"
-                  value={query.order_by.descending ? "desc" : "asc"}
-                  onChange={(e) => onQuery({ order_by: { ...query.order_by!, descending: e.target.value === "desc" } })}
-                >
-                  <option value="desc">Descending</option>
-                  <option value="asc">Ascending</option>
-                </select>
-              )}
-            </div>
-          </label>
-        )}
-        <div className="inline-controls">
-          {!NO_ROW_LIMIT.has(vizType) && (
-            <label className="control">
-              <span>Row limit</span>
-              <NumberInput value={query.row_limit} min={1} max={10000} onChange={(row_limit) => onQuery({ row_limit })} />
-            </label>
-          )}
-          {query.series && (
-            <label className="control">
-              <span>Top series</span>
-              <NumberInput
-                value={query.series_limit ?? 0}
-                min={0}
-                max={1000}
-                title="Keep only the N biggest series by the first metric (0 = all)"
-                onChange={(n) => onQuery({ series_limit: n > 0 ? n : null })}
-              />
-            </label>
-          )}
+                {label}
+              </button>
+            );
+          })}
         </div>
+      </div>
+      {query.bins && !query.bins.width && (
         <label className="control">
-          <span>Cache results</span>
-          <select
-            aria-label="Cache results"
-            title="Charts reuse a result this long (Update chart and Refresh always query again)"
-            value={display.cache_ttl ?? ""}
-            onChange={(e) => onDisplay({ cache_ttl: e.target.value === "" ? undefined : Number(e.target.value) })}
-          >
-            <option value="">Default (10 minutes)</option>
-            {CACHE_TTLS.filter((t) => t.value !== DEFAULT_CACHE_TTL).map((t) => (
-              <option key={t.value} value={t.value}>
-                {t.label}
-              </option>
-            ))}
-          </select>
+          <span>Number of bins</span>
+          <NumberInput value={query.bins.count ?? DEFAULT_BINS} min={1} max={200} title="1 to 200 bins between the smallest and largest value"
+            onChange={(count) => onQuery({ bins: { ...query.bins!, count } })} />
         </label>
-      </section>
-    </div>
+      )}
+      {query.bins?.width && (
+        <label className="control">
+          <span>Bin width</span>
+          <input
+            type="number"
+            aria-label="Bin width"
+            min={0}
+            step="any"
+            defaultValue={query.bins.width}
+            onChange={(e) => {
+              const width = Number(e.target.value);
+              if (e.target.value !== "" && width > 0) onQuery({ bins: { ...query.bins!, width } });
+            }}
+          />
+        </label>
+      )}
+    </>
   );
 }
 
@@ -597,7 +695,49 @@ function DimensionSelect({
   );
 }
 
-function timeWith(query: ChartQuery, dataset: Dataset, patch: { grain?: Grain | null; column?: string | null }) {
+/** The x axis of bar / combo / line / area charts: time (by grain) or one dimension (for line
+ * and area: ordered categories, sorted by label). */
+function XAxisSelect({
+  query,
+  dataset,
+  categories,
+  onQuery,
+}: {
+  query: ChartQuery;
+  dataset: Dataset;
+  categories: DatasetColumn[];
+  onQuery(p: Partial<ChartQuery>): void;
+}) {
+  const grain = query.time?.grain ?? null;
+  const timeColumn = dataset.columns.find((c) => c.name === (query.time?.column ?? dataset.main_time_column));
+  return (
+    <label className="control">
+      <span>X axis</span>
+      <select
+        aria-label="X axis"
+        value={grain ? "__time__" : (query.dimensions[0] ?? "")}
+        onChange={(e) => {
+          if (e.target.value === "__time__") {
+            onQuery({ dimensions: [], time: timeWith(query, dataset, { grain: grain ?? defaultGrain(timeColumn) }) });
+          } else {
+            const series = query.series === e.target.value ? null : query.series;
+            onQuery({ dimensions: [e.target.value], series, time: timeWith(query, dataset, { grain: null }) });
+          }
+        }}
+      >
+        {!grain && query.dimensions.length === 0 && <option value="">Pick…</option>}
+        {temporalColumns(dataset).length > 0 && <option value="__time__">Time (by grain)</option>}
+        {categories.map((c) => (
+          <option key={c.name} value={c.name}>
+            {c.label || c.name}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function timeWith(query: ChartQuery, dataset: Dataset, patch: { grain?: AxisGrain | null; column?: string | null }) {
   const column = patch.column ?? query.time?.column ?? dataset.main_time_column ?? temporalColumns(dataset)[0]?.name ?? null;
   return {
     column,
@@ -729,6 +869,7 @@ function MetricList({
   single,
   slot,
   onChange,
+  onSaveToDataset,
 }: {
   title: string;
   dataset: Dataset;
@@ -737,14 +878,21 @@ function MetricList({
   /** Several single pickers on one panel (scatter x / y / size): name the controls by title. */
   slot?: boolean;
   onChange(metrics: MetricRef[]): void;
+  /** Turn a custom SQL metric into a saved metric of the dataset. */
+  onSaveToDataset?(metric: SqlMetric): void;
 }) {
+  const [mode, setMode] = useState<"simple" | "sql">("simple");
   const named = (text: string) => (slot ? `${title}: ${text.toLowerCase()}` : text);
   const [aggregate, setAggregate] = useState<Aggregate>("SUM");
   const [column, setColumn] = useState("");
   const names = metrics.map(metricName);
   const saved = dataset.metrics.filter((m) => !names.includes(m.name));
   const allowed = AGGREGATES.find((a) => a.value === aggregate)?.types ?? null;
-  const columns = usableColumns(dataset).filter((c) => !allowed || allowed.includes(c.effective_type));
+  // Identifiers (row_id, postal_code...) are numbers nobody sums or averages.
+  const summing = aggregate === "SUM" || aggregate === "AVG";
+  const columns = usableColumns(dataset).filter(
+    (c) => (!allowed || allowed.includes(c.effective_type)) && !(summing && c.is_identifier),
+  );
   const add = (ref: MetricRef) => onChange(single ? [ref] : [...metrics.filter((m) => metricName(m) !== metricName(ref)), ref]);
 
   return (
@@ -752,8 +900,18 @@ function MetricList({
       <span>{title}</span>
       <ul className="chips" aria-label={title}>
         {metrics.map((m) => (
-          <li key={metricName(m)} className="chip chip-metric">
+          <li key={metricName(m)} className={`chip chip-metric${isSqlMetric(m) ? " chip-sql" : ""}`}>
+            {isSqlMetric(m) && (
+              <span className="chip-badge" title={m.sql}>
+                SQL
+              </span>
+            )}
             {metricLabel(m, dataset)}
+            {isSqlMetric(m) && onSaveToDataset && (
+              <button type="button" className="chip-action" onClick={() => onSaveToDataset(m)} title="Make it a saved metric of the dataset, usable in every chart">
+                Save to dataset
+              </button>
+            )}
             {!single && (
               <button aria-label={`Remove ${metricLabel(m, dataset)}`} onClick={() => onChange(metrics.filter((x) => x !== m))}>
                 ×
@@ -772,6 +930,23 @@ function MetricList({
           ))}
         </select>
       )}
+      {!slot && (
+        <div className="segmented metric-mode" role="radiogroup" aria-label={named("Metric kind")}>
+          {(
+            [
+              ["simple", "Simple"],
+              ["sql", "Custom SQL"],
+            ] as const
+          ).map(([value, label]) => (
+            <button key={value} type="button" role="radio" aria-checked={mode === value} className={mode === value ? "active" : ""} onClick={() => setMode(value)}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+      {mode === "sql" ? (
+        <SqlMetricEditor dataset={dataset} taken={names} single={single} onAdd={(m) => add(m)} />
+      ) : (
       <div className="inline-controls adhoc">
         <select aria-label={named("Aggregate")} value={aggregate} onChange={(e) => setAggregate(e.target.value as Aggregate)}>
           {AGGREGATES.map((a) => (
@@ -799,6 +974,7 @@ function MetricList({
           {single ? "Use" : "Add"}
         </button>
       </div>
+      )}
     </div>
   );
 }
@@ -810,16 +986,21 @@ function TimeSection({ state, dataset, onQuery }: { state: ChartState; dataset: 
   const time = query.time ?? { column: dataset.main_time_column ?? temporal[0]!.name, grain: null, range: { kind: "none" } };
   const set = (patch: Partial<NonNullable<ChartQuery["time"]>>) => onQuery({ time: { ...time, ...patch } });
   const raw = vizType === "table" && display.mode === "raw";
-  const grainRequired = vizType === "line" || vizType === "area" || (vizType === "big_number" && display.show_trend);
+  const lineLike = vizType === "line" || vizType === "area";
+  const grainRequired = (lineLike && query.dimensions.length === 0) || (vizType === "big_number" && display.show_trend);
   const noGrain = ["pie", "treemap", "funnel", "gauge", "pivot_table", "heatmap", "scatter", "histogram", "world_map"].includes(vizType);
   const grainShown =
     !raw &&
     !noGrain &&
     !(vizType === "big_number" && !display.show_trend) &&
-    !((vizType === "bar" || vizType === "combo") && !time.grain);
+    !((vizType === "bar" || vizType === "combo" || lineLike) && !time.grain);
+  const timeColumn = dataset.columns.find((c) => c.name === time.column);
+  const yearsOnly = timeColumn?.time_kind === "year_number";
+  // Line / area: also every time value as it is (a year number has nothing finer than years).
+  const grains = lineLike && !yearsOnly ? [...GRAINS, RAW_GRAIN] : GRAINS;
 
   return (
-    <section>
+    <>
       <label className="control">
         <span>Time column</span>
         <select aria-label="Time column" value={time.column ?? ""} onChange={(e) => set({ column: e.target.value })}>
@@ -834,15 +1015,29 @@ function TimeSection({ state, dataset, onQuery }: { state: ChartState; dataset: 
       {grainShown && (
         <label className="control">
           <span>Time grain</span>
-          <select aria-label="Time grain" value={time.grain ?? ""} onChange={(e) => set({ grain: (e.target.value || null) as Grain | null })}>
+          <select
+            aria-label="Time grain"
+            value={time.grain ?? ""}
+            aria-describedby={yearsOnly ? "grain-years-hint" : undefined}
+            onChange={(e) => set({ grain: (e.target.value || null) as AxisGrain | null })}
+          >
             {!grainRequired && <option value="">None</option>}
-            {GRAINS.map((g) => (
-              <option key={g.value} value={g.value}>
-                {g.label}
-              </option>
-            ))}
+            {grains.map((g) => {
+              const allowed = grainAllowed(timeColumn, g.value);
+              return (
+                <option key={g.value} value={g.value} disabled={!allowed} title={allowed ? undefined : YEARS_ONLY_HINT}>
+                  {g.label}
+                  {allowed ? "" : ` (${YEARS_ONLY_HINT.toLowerCase()})`}
+                </option>
+              );
+            })}
           </select>
         </label>
+      )}
+      {grainShown && yearsOnly && (
+        <p className="control-hint" id="grain-years-hint">
+          {YEARS_ONLY_HINT}: it holds whole years like 2006, so it groups by year.
+        </p>
       )}
       <label className="control">
         <span>Time range</span>
@@ -878,7 +1073,7 @@ function TimeSection({ state, dataset, onQuery }: { state: ChartState; dataset: 
           />
         </div>
       )}
-    </section>
+    </>
   );
 }
 

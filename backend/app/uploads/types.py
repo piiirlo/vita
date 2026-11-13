@@ -6,6 +6,7 @@ what the preview says fits is exactly what gets imported.
 
 import re
 from collections import Counter
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
@@ -274,6 +275,11 @@ class ColumnGuess:
     date_order: DateOrder | None = None
     date_ambiguous: bool = False
     non_null: int = 0
+    # Words like "N/A" read as empty (reported: they become NULL in non-text columns).
+    null_words: int = 0
+    # Integers that are all years (1900-2100): "name" when the name says so too (a time
+    # column automatically), "values" when only the values do (suggested).
+    years: Literal["name", "values"] | None = None
 
 
 @dataclass
@@ -302,6 +308,12 @@ def _date_order_for(values: list[str]) -> tuple[DateOrder | None, bool, int]:
     return best, False, counts[best]
 
 
+def guess_date_order(values: list[str]) -> tuple[DateOrder | None, bool]:
+    """(order, ambiguous) for date-like text values; (None, False) when they aren't dates."""
+    order, ambiguous, _ = _date_order_for(values)
+    return order, ambiguous
+
+
 def _fits(value: str, column_type: ColumnType, fmt: NumberFormat, order: DateOrder | None) -> bool:
     try:
         if column_type in ("date", "datetime") and order is None:
@@ -316,11 +328,26 @@ def _fits(value: str, column_type: ColumnType, fmt: NumberFormat, order: DateOrd
         return False
 
 
-def guess_column(values: list[str], fmt: NumberFormat) -> ColumnGuess:
-    """The type most values fit (>= 90%), most specific on a tie; else text."""
+# Codes keep their leading zeros: "02134" is a zip code, not the number 2134.
+_LEADING_ZERO = re.compile(r"^[+-]?0\d+$")
+YEAR_LOW, YEAR_HIGH = 1900, 2100
+
+
+def count_null_words(values: Sequence[str | None]) -> int:
+    return sum(1 for v in values if v and v.strip() and v.strip().lower() in NULL_WORDS)
+
+
+def guess_column(
+    values: list[str], fmt: NumberFormat, code_like: bool = False, year_like: bool = False
+) -> ColumnGuess:
+    """The type most values fit (>= 90%), most specific on a tie; else text.
+
+    Numbers stay text when the column is `code_like` (named zip, postal, phone, code, id...)
+    or any value has a leading zero. Integers all between 1900 and 2100 are `years`."""
     present = [v for v in values if not is_null(v, "integer")]
+    null_words = count_null_words(values)
     if not present:
-        return ColumnGuess("text", non_null=0)
+        return ColumnGuess("text", non_null=0, null_words=null_words)
     order, ambiguous, _ = _date_order_for(present)
     best: ColumnType = "text"
     best_share = 0.0
@@ -328,10 +355,23 @@ def guess_column(values: list[str], fmt: NumberFormat) -> ColumnGuess:
         share = sum(_fits(v, column_type, fmt, order) for v in present) / len(present)
         if share >= GUESS_THRESHOLD and share > best_share + 1e-9:
             best, best_share = column_type, share
-    guess = ColumnGuess(best, non_null=len(present))
+    if best in ("integer", "decimal") and (
+        code_like or any(_LEADING_ZERO.match(v.strip()) for v in present)
+    ):
+        best = "text"
+    guess = ColumnGuess(best, non_null=len(present), null_words=null_words)
     if best in ("date", "datetime"):
         guess.date_order = order
         guess.date_ambiguous = ambiguous
+    if best == "integer":
+        numbers = []
+        for v in present:
+            try:
+                numbers.append(parse_integer(v, fmt))
+            except ConvertError:
+                continue
+        if numbers and all(YEAR_LOW <= n <= YEAR_HIGH for n in numbers):
+            guess.years = "name" if year_like else "values"
     return guess
 
 

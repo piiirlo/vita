@@ -70,9 +70,15 @@ export function dimensionOptions(
       continue;
     }
     if (raw) out.push({ value: c.name, label: name(c) });
-    for (const g of buckets) out.push({ value: `${c.name}${SEPARATOR}${g}`, label: `${name(c)} · ${PART_LABELS[g]}` });
+    // A year number (2006) only has years; text dates have no time of day.
+    const years = c.time_kind === "year_number";
+    for (const g of buckets) {
+      if (years && g !== "year") continue;
+      out.push({ value: `${c.name}${SEPARATOR}${g}`, label: `${name(c)} · ${PART_LABELS[g]}` });
+    }
     for (const p of parts) {
-      if (p === "hour_of_day" && c.effective_type === "date") continue;
+      if (years) continue;
+      if (p === "hour_of_day" && (c.effective_type === "date" || c.time_kind)) continue;
       out.push({ value: `${c.name}${SEPARATOR}${p}`, label: `${name(c)} · ${PART_LABELS[p]}` });
     }
   }

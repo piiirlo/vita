@@ -11,12 +11,19 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.connections import saved_connection_details
-from app.api.datasets import get_dataset_or_404
+from app.api.datasets import ensure_time_columns, get_dataset_or_404
 from app.charts import build_chart_query, cache
 from app.db import get_db
 from app.models import Chart, Dashboard, DashboardChart, Dataset
 from app.query import DEFAULT_TIMEOUT_SECONDS, QueryError, run_query
-from app.schemas.charts import ChartDataOut, ChartDataRequest, ChartIn, ChartOut, ChartParams
+from app.schemas.charts import (
+    ChartDashboardRef,
+    ChartDataOut,
+    ChartDataRequest,
+    ChartIn,
+    ChartOut,
+    ChartParams,
+)
 from app.schemas.query import QueryErrorOut
 
 log = logging.getLogger(__name__)
@@ -46,7 +53,7 @@ def today() -> date:
 def chart_data(payload: ChartDataRequest, db: DbSession) -> ChartDataOut:
     """Build SQL from the chart query and run it (read-only, with timeout and row limit).
     Not logged in query_history."""
-    dataset = get_dataset_or_404(db, payload.query.dataset_id)
+    dataset = ensure_time_columns(db, payload.query.dataset_id)
     details = saved_connection_details(dataset.connection)
     try:
         built = build_chart_query(
@@ -112,8 +119,21 @@ def _get_or_404(db: Session, chart_id: int) -> Chart:
     return chart
 
 
-def _out(chart: Chart) -> ChartOut:
+def _dashboards(db: Session, chart_id: int) -> list[ChartDashboardRef]:
+    rows = db.execute(
+        select(Dashboard.id, Dashboard.name)
+        .join(DashboardChart, DashboardChart.dashboard_id == Dashboard.id)
+        .where(DashboardChart.chart_id == chart_id)
+        .distinct()
+        .order_by(Dashboard.name)
+    ).all()
+    return [ChartDashboardRef(id=r.id, name=r.name) for r in rows]
+
+
+def _out(chart: Chart, db: Session | None = None) -> ChartOut:
+    """With `db`: also the dashboards that show the chart."""
     return ChartOut(
+        dashboards=_dashboards(db, chart.id) if db is not None else [],
         id=chart.id,
         name=chart.name,
         description=chart.description,
@@ -201,12 +221,12 @@ def create_chart(payload: ChartIn, db: DbSession) -> ChartOut:
     _apply(db, chart, payload)
     db.add(chart)
     _commit(db, chart.name)
-    return _out(_get_or_404(db, chart.id))
+    return _out(_get_or_404(db, chart.id), db)
 
 
 @router.get("/charts/{chart_id}", response_model=ChartOut)
 def get_chart(chart_id: int, db: DbSession) -> ChartOut:
-    return _out(_get_or_404(db, chart_id))
+    return _out(_get_or_404(db, chart_id), db)
 
 
 @router.put("/charts/{chart_id}", response_model=ChartOut, responses=QUERY_ERROR_RESPONSES)
@@ -215,7 +235,7 @@ def update_chart(chart_id: int, payload: ChartIn, db: DbSession) -> ChartOut:
     _apply(db, chart, payload)
     _commit(db, chart.name)
     db.expire_all()
-    return _out(_get_or_404(db, chart_id))
+    return _out(_get_or_404(db, chart.id), db)
 
 
 @router.delete("/charts/{chart_id}", status_code=status.HTTP_204_NO_CONTENT)

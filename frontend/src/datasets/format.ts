@@ -1,4 +1,4 @@
-import type { GenericType } from "../api.ts";
+import type { DateOrder, GenericType } from "../api.ts";
 
 export const GENERIC_TYPES: GenericType[] = ["number", "string", "date", "datetime", "boolean", "other"];
 
@@ -29,3 +29,10 @@ export function relativeTime(iso: string, now: number = Date.now()): string {
 export function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
+
+/** How dates are written, for text dates and uploaded files: "Day first: DD-MM-YYYY". */
+export const DATE_FORMAT_LABELS: Record<DateOrder, string> = {
+  ymd: "Year first: YYYY-MM-DD",
+  dmy: "Day first: DD-MM-YYYY",
+  mdy: "Month first: MM-DD-YYYY",
+};

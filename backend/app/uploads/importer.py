@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.config import settings
 from app.datasets import COUNT_METRIC
 from app.datasets.sql import DatasetSource
-from app.datasets.sync import detect_columns, merge_columns
+from app.datasets.sync import detect_columns, detect_number_stats, merge_columns
 from app.engines import details_from_connection
 from app.models import Connection, Dataset, DatasetMetric, Upload
 from app.schemas.uploads import ColumnOption, ImportIn
@@ -32,7 +32,7 @@ from app.uploads import bootstrap, files
 from app.uploads.names import table_name_for
 from app.uploads.preview import FileKind, Target, build_preview, number_format, open_source
 from app.uploads.reading import ReadError
-from app.uploads.types import PG_TYPES, ColumnType, ConvertError, convert
+from app.uploads.types import NULL_WORDS, PG_TYPES, ColumnType, ConvertError, convert
 
 log = logging.getLogger(__name__)
 
@@ -200,6 +200,7 @@ def _load(
             )
         update(table_schema=bootstrap.SCHEMA, table_name=table)
         bad: dict[int, dict[str, Any]] = {}
+        null_words: dict[int, dict[str, Any]] = {}
         rows_done = 0
         last_report = time.monotonic()
         target_sql = sql.Identifier(bootstrap.SCHEMA, load_into)
@@ -218,6 +219,14 @@ def _load(
                     values: list[object] = []
                     for c in kept:
                         text = row[c.index]
+                        if c.type != "text" and text and text.strip().lower() in NULL_WORDS:
+                            entry = null_words.setdefault(
+                                c.index,
+                                {"column": c.name, "count": 0, "examples": [], "kind": "null_word"},
+                            )
+                            entry["count"] += 1
+                            if len(entry["examples"]) < BAD_EXAMPLES:
+                                entry["examples"].append({"row": rows_done, "value": text[:80]})
                         try:
                             value = convert(text, c.type, fmt, c.date_order)
                         except ConvertError:
@@ -257,7 +266,7 @@ def _load(
         rows_done=rows_done,
         row_count=rows_done,
         progress=0.99,
-        bad_values=list(bad.values()),
+        bad_values=[*bad.values(), *null_words.values()],
         warnings=warnings,
         columns=[{"name": c.name, "type": c.type, "source": c.index} for c in kept],
     )
@@ -289,6 +298,7 @@ def _create_dataset(
             details = details_from_connection(conn)
             source = DatasetSource("table", schema=bootstrap.SCHEMA, table_name=table)
             detected = detect_columns(details, source)
+            stats = detect_number_stats(details, source, detected)
             dataset = Dataset(
                 name=name,
                 connection_id=conn.id,
@@ -296,10 +306,12 @@ def _create_dataset(
                 schema=bootstrap.SCHEMA,
                 table_name=table,
             )
-            merge_columns(dataset, detected)
+            merge_columns(dataset, detected, stats)
+            # The first date column is the time column, else the first column of years.
             time_columns = [c.name for c in kept if c.type in ("date", "datetime")]
-            if time_columns:
-                dataset.main_time_column = time_columns[0]
+            years = [c.name for c in dataset.columns if c.time_kind == "year_number"]
+            if time_columns or years:
+                dataset.main_time_column = (time_columns or years)[0]
             dataset.metrics.append(DatasetMetric(**COUNT_METRIC, is_builtin=True))
             db.add(dataset)
             try:

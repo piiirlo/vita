@@ -5,7 +5,8 @@ from typing import Any
 from sqlglot import exp
 
 from app.datasets.checks import parse_metric_expression
-from app.datasets.sql import DatasetSource, column, select_sql
+from app.datasets.sql import DatasetSource, select_sql
+from app.datasets.timecols import time_value
 from app.engines import ConnectionDetails
 from app.query import DEFAULT_TIMEOUT_SECONDS, QueryResult, run_query
 
@@ -40,18 +41,19 @@ def validate_metric(
 def time_extent(
     details: ConnectionDetails,
     source: DatasetSource,
-    time_column: str,
+    time_column: Any,
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
 ) -> tuple[Any, Any]:
-    """(MIN, MAX) of a time column over the whole dataset: one cheap aggregate row.
+    """(MIN, MAX) of a time column (a DatasetColumn: year numbers and text dates are read
+    as dates) over the whole dataset: one cheap aggregate row.
     Both are None when the dataset has no non-NULL values in that column."""
-    col = column(time_column)
+    value = time_value(time_column, details.db_type)
     sql = select_sql(
         source,
         details.db_type,
         [
-            exp.Min(this=col.copy()).as_("min_value", quoted=True),
-            exp.Max(this=col.copy()).as_("max_value", quoted=True),
+            exp.Min(this=value.copy()).as_("min_value", quoted=True),
+            exp.Max(this=value.copy()).as_("max_value", quoted=True),
         ],
     )
     result = run_query(details, sql, limit=1, timeout_seconds=timeout_seconds)

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Plus, RefreshCw, Type } from "lucide-react";
+import { ArrowUpToLine, Plus, RefreshCw, Type } from "lucide-react";
 import { Link, useParams, useSearchParams } from "react-router";
 import {
   getDashboard,
@@ -18,6 +18,7 @@ import { SearchCapsule } from "../shell/PageHeader.tsx";
 import AddChartDialog from "../dashboards/AddChartDialog.tsx";
 import ChartTile from "../dashboards/ChartTile.tsx";
 import DashboardGrid from "../dashboards/DashboardGrid.tsx";
+import { tidyUp } from "../dashboards/gridTidy.ts";
 import { useMediaQuery, useNow, usePageVisible } from "../dashboards/hooks.ts";
 import {
   addChartTile,
@@ -281,6 +282,13 @@ export default function DashboardPage() {
               </Button>
               <Button onClick={() => setLayout((ts) => addTextTile(ts))}>
                 <Type size={16} aria-hidden /> Add text
+              </Button>
+              <Button
+                variant="ghost"
+                title="Pull every tile up, closing the gaps between them"
+                onClick={() => setLayout((ts) => applyGridItems(ts, tidyUp(toGridItems(ts))))}
+              >
+                <ArrowUpToLine size={16} aria-hidden /> Tidy up
               </Button>
               <Button variant="ghost" onClick={cancel} disabled={saving}>
                 Cancel

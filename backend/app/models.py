@@ -122,6 +122,9 @@ class Dataset(Base):
     sql: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Name of one of the dataset's temporal columns.
     main_time_column: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Things Vita changed on its own that the user should know about (dataset page), e.g.
+    # a number column unmarked as time. [{"id", "message", "created_at"}]. NULL = none.
+    notes: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -161,6 +164,16 @@ class DatasetColumn(Base):
     # ... and the user's override (kept across syncs). Effective type = override or detected.
     generic_type_override: Mapped[str | None] = mapped_column(String(20), nullable=True)
     is_temporal: Mapped[bool] = mapped_column(default=False)
+    # How a temporal column becomes a date (app/datasets/timecols.py): NULL = it is a date /
+    # datetime; "year_number" (2006 -> 2006-01-01); "text_date" (read with
+    # text_date_format); "pending" = a number / text column marked temporal before Part 13,
+    # not checked yet (checked lazily, never at startup).
+    time_kind: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    text_date_format: Mapped[str | None] = mapped_column(String(3), nullable=True)  # ymd/dmy/mdy
+    # An identifier (row_id, postal_code...): not offered for SUM / AVG.
+    is_identifier: Mapped[bool] = mapped_column(default=False)
+    # Whole numbers between 1900 and 2100 without a year-like name: suggest "use as time".
+    looks_like_years: Mapped[bool] = mapped_column(default=False)
     is_dimension: Mapped[bool] = mapped_column(default=False)
     is_hidden: Mapped[bool] = mapped_column(default=False)
     # The last sync didn't find this column. Kept so its settings return if it does.

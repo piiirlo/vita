@@ -65,6 +65,11 @@ class ColumnPreview(BaseModel):
     # is new (replace adds it) or extra (append can't take it: leave it out or rename it).
     locked: bool = False
     status: Literal["matched", "new", "extra"] | None = None
+    # Values like "N/A" / "null" that become empty (non-text columns only).
+    null_words: int = 0
+    # Whole numbers all between 1900 and 2100: "name" = also a year-like name (it becomes a
+    # year time column), "values" = only the values (the Columns tab suggests it).
+    years: Literal["name", "values"] | None = None
 
 
 class Problem(BaseModel):
@@ -118,6 +123,8 @@ class BadValues(BaseModel):
     column: str
     count: int
     examples: list[CellExample]
+    # misfit: didn't fit the column's type; null_word: "N/A", "null"... read as empty.
+    kind: Literal["misfit", "null_word"] = "misfit"
 
 
 class UploadOut(BaseModel):

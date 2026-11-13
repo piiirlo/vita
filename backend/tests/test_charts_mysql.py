@@ -348,3 +348,92 @@ def test_pivot_date_buckets_on_mysql(bins_details: ConnectionDetails) -> None:
     assert got[("2026-11-01", None, 1, 0)] == 5
     assert got[(None, 1, 0, 1)] == 2
     assert got[(None, None, 0, 0)] == 7
+
+
+# ---------- Part 13: year numbers, text dates, raw values, line dimensions ----------
+
+GAMES_TABLE = "games"
+# (year as BIGINT, day-first dates as text with mixed separators, region, sales)
+GAMES_ROWS: list[tuple[int | None, str | None, str, float]] = [
+    (2006, "9/11/2006", "NA", 41.5),
+    (2006, "13-06-2006", "EU", 29.0),
+    (2008, "1.2.2008", "NA", 15.9),
+    (2009, "31/12/2009", "JP", 3.3),
+    (None, "30/02/2009", "EU", 1.0),  # no year; an impossible date
+    (1985, "not a date", "NA", 29.1),
+]
+
+
+@pytest.fixture(scope="module")
+def games_details(details: ConnectionDetails) -> Iterator[ConnectionDetails]:
+    conn = pymysql.connect(host=HOST, user="root", password=details.password, database=DATABASE,
+                           autocommit=True)  # fmt: skip
+    try:
+        with conn.cursor() as cur:
+            cur.execute(f"DROP TABLE IF EXISTS `{GAMES_TABLE}`")
+            cur.execute(
+                f"CREATE TABLE `{GAMES_TABLE}` (`Year` BIGINT, `day` VARCHAR(20), "
+                "`region` VARCHAR(10), `sales` DECIMAL(10, 2))"
+            )
+            cur.executemany(f"INSERT INTO `{GAMES_TABLE}` VALUES (%s, %s, %s, %s)", GAMES_ROWS)
+        yield details
+    finally:
+        with conn.cursor() as cur:
+            cur.execute(f"DROP TABLE IF EXISTS `{GAMES_TABLE}`")
+        conn.close()
+
+
+def games_dataset() -> Dataset:
+    def col(name: str, kind: str, **extra: Any) -> DatasetColumn:
+        return DatasetColumn(
+            name=name, generic_type=kind, generic_type_override=None, is_hidden=False,
+            is_missing=False, **{"is_temporal": False, "is_dimension": False, **extra},
+        )  # fmt: skip
+
+    return Dataset(
+        kind="table", schema=DATABASE, table_name=GAMES_TABLE, main_time_column="Year",
+        columns=[
+            col("Year", "number", is_temporal=True, time_kind="year_number"),
+            col("day", "string", is_temporal=True, time_kind="text_date", text_date_format="dmy"),
+            col("region", "string", is_dimension=True),
+            col("sales", "number"),
+        ],
+        metrics=[DatasetMetric(name="count", expression="COUNT(*)", is_builtin=True)],
+    )  # fmt: skip
+
+
+def run_games(details: ConnectionDetails, viz: VizType, **query: Any) -> list[list[Any]]:
+    built = build_chart_query(games_dataset(), "mysql", viz, ChartQuery(dataset_id=1, **query),
+                              today=date(2009, 6, 1))  # fmt: skip
+    rows = run_query(details, built.sql, limit=built.row_limit).rows
+    return [row[:-1] for row in rows if row[-1] is not None] if built.rows_probe else rows
+
+
+def test_year_numbers_on_mysql(games_details: ConnectionDetails) -> None:
+    rows = run_games(games_details, "line", metrics=["count"], time={"grain": "year"})
+    assert rows == [[None, 1], ["1985-01-01", 1], ["2006-01-01", 2], ["2008-01-01", 1],
+                    ["2009-01-01", 1]]  # fmt: skip
+    # Time range on the year: this year (2009) and the no-data probe.
+    total = run_games(games_details, "big_number", metrics=["count"],
+                      time={"range": {"kind": "this_year"}})  # fmt: skip
+    assert total == [[1]]
+    none = run_games(games_details, "big_number", metrics=["count"],
+                     time={"range": {"kind": "custom", "start": "1990-01-01",
+                                     "end": "1990-12-31"}})  # fmt: skip
+    assert none == []
+
+
+def test_text_dates_on_mysql(games_details: ConnectionDetails) -> None:
+    rows = run_games(games_details, "bar", metrics=["count"],
+                     time={"column": "day", "grain": "month"})  # fmt: skip
+    # "30/02/2009" and "not a date" read as no date (NULL), never an error.
+    assert rows == [[None, 2], ["2006-06-01", 1], ["2006-11-01", 1], ["2008-02-01", 1],
+                    ["2009-12-01", 1]]  # fmt: skip
+
+
+def test_raw_values_and_line_dimensions_on_mysql(games_details: ConnectionDetails) -> None:
+    raw = run_games(games_details, "line", metrics=["count"],
+                    time={"column": "day", "grain": "raw"})  # fmt: skip
+    assert [r[0] for r in raw] == [None, "2006-06-13", "2006-11-09", "2008-02-01", "2009-12-31"]
+    by_region = run_games(games_details, "line", metrics=["count"], dimensions=["region"])
+    assert by_region == [["EU", 2], ["JP", 1], ["NA", 3]]  # ordered by the category

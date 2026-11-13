@@ -26,13 +26,133 @@ QueryErrorKind = Literal[
 
 @dataclass
 class QueryError(Exception):
+    """A query that failed. `message` is the detailed text (kept as before); `title` and
+    `hint` are the plain-language version for the UI (filled in from the kind and the
+    database's text when not given; None for errors Vita doesn't recognize, which then show
+    `message`); `raw` is the database's own error, shown under "Details"."""
+
     kind: QueryErrorKind
     message: str
     line: int | None = None
     column: int | None = None
+    title: str | None = None
+    hint: str | None = None
+    raw: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.title is None:
+            explained = explain(self.kind, self.raw or self.message)
+            if explained is not None:
+                self.title, hint = explained
+                self.hint = self.hint or hint
 
     def __str__(self) -> str:
         return self.message
+
+
+MAX_RAW_LENGTH = 2000
+
+_TIME_FUNCTION = re.compile(
+    r"\b(date_trunc|date_part|extract|make_date|makedate|to_char|date_bin|age|"
+    r"date_format|str_to_date|year|month|weekday|dayofmonth|quarter)\s*\(",
+    re.IGNORECASE,
+)
+_TIME_TYPE_TROUBLE = (
+    "invalid input syntax for type date",
+    "invalid input syntax for type timestamp",
+    "date/time field value out of range",
+    "incorrect datetime value",
+    "incorrect date value",
+    "truncated incorrect date",
+    "truncated incorrect datetime",
+)
+_HINT_TIME = (
+    "A number or text column is probably being used as a date. In the dataset's Columns "
+    "tab, mark a column of years as “year (number)”, a text column of dates with its date "
+    "format, or pick a real date column as the time column."
+)
+_HINT_COLUMN = (
+    "Check the spelling. Names with capitals, spaces or accents need quotes "
+    '(“"Order Date"” on Postgres, “`Order Date`” on MySQL). If the table changed, '
+    "use Sync columns on the dataset."
+)
+
+
+def explain(kind: str, text: str) -> tuple[str, str | None] | None:
+    """(title, hint) in plain language for an error, or None when it isn't recognized."""
+    low = text.lower()
+    time_trouble = any(t in low for t in _TIME_TYPE_TROUBLE) or (
+        ("does not exist" in low or "operator does not exist" in low)
+        and (
+            _TIME_FUNCTION.search(text) is not None
+            or ("operator does not exist" in low and ("date" in low or "timestamp" in low))
+        )
+    )
+    if time_trouble:
+        return "A date function got a value that isn't a date", _HINT_TIME
+    if "division by zero" in low or "division by 0" in low:
+        return (
+            "Division by zero",
+            "Some rows divide by 0. Wrap the divisor in NULLIF(…, 0), e.g. "
+            "SUM(amount) / NULLIF(SUM(quantity), 0).",
+        )
+    match kind:
+        case "syntax":
+            return (
+                "The SQL has a syntax error",
+                "Look near the marked spot: a missing comma, an unclosed quote or "
+                "parenthesis, or a keyword used as a name are the usual causes.",
+            )
+        case "multiple_statements":
+            return "Only one statement can run at a time", "Run the statements one by one."
+        case "read_only" | "not_allowed":
+            return (
+                "Vita only reads data",
+                "Only read queries (SELECT, WITH ... SELECT, SHOW, EXPLAIN) can run.",
+            )
+        case "permission":
+            return (
+                "Permission denied",
+                "The database user of this connection isn't allowed to read this. Ask the "
+                "database owner for SELECT rights, or use another user in the connection.",
+            )
+        case "timeout":
+            return (
+                "The query took too long",
+                "Add filters, pick a shorter time range or a smaller row limit.",
+            )
+        case "connection":
+            if any(w in low for w in ("lost", "closed", "terminat", "gone away", "reset")):
+                return (
+                    "The connection to the database was lost",
+                    "The database may have restarted or the network dropped. Try again.",
+                )
+            return (
+                "Couldn't reach the database",
+                "Check that the database is running and reachable from Vita, and the "
+                "connection's settings, then try again.",
+            )
+        case "not_found":
+            if "column" in low:
+                return "Unknown column", _HINT_COLUMN
+            if "function" in low:
+                return (
+                    "Unknown function, or wrong argument types",
+                    "Check the function's name for this database, and the types of its "
+                    "arguments: a CAST may be needed.",
+                )
+            if "relation" in low or "table" in low:
+                return (
+                    "Unknown table",
+                    "Check the spelling and the schema (schema.table). If the table was "
+                    "renamed or deleted, update the dataset.",
+                )
+            return "Something named in the query doesn't exist", None
+    return None
+
+
+def _raw_text(err: BaseException) -> str:
+    return str(err).strip()[:MAX_RAW_LENGTH]
 
 
 def read_only_error(what: str) -> QueryError:
@@ -55,12 +175,15 @@ def translate_db_error(
 ) -> QueryError:
     orig = getattr(exc, "orig", None) or exc
     if isinstance(orig, psycopg.Error):
-        return _postgres_error(orig, details, sql, timeout_seconds)
-    if isinstance(orig, pymysql.err.MySQLError):
-        return _mysql_error(orig, details, timeout_seconds)
-    if isinstance(orig, (TypeError, FileNotFoundError, OSError)):
-        return QueryError("connection", friendly_db_error(orig, details))
-    return QueryError("other", friendly_db_error(orig, details))
+        error = _postgres_error(orig, details, sql, timeout_seconds)
+    elif isinstance(orig, pymysql.err.MySQLError):
+        error = _mysql_error(orig, details, timeout_seconds)
+    elif isinstance(orig, (TypeError, FileNotFoundError, OSError)):
+        error = QueryError("connection", friendly_db_error(orig, details))
+    else:
+        error = QueryError("other", friendly_db_error(orig, details))
+    # The database's own words (for "Details"), and the explanation based on them.
+    return QueryError(error.kind, error.message, error.line, error.column, raw=_raw_text(orig))
 
 
 def _timeout(timeout_seconds: float) -> QueryError:

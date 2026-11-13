@@ -3,7 +3,9 @@
 import { useSyncExternalStore } from "react";
 
 export type ToastKind = "success" | "error" | "info";
-export type Toast = { id: number; kind: ToastKind; message: string };
+/** An optional button in the toast, e.g. "Open dashboard". */
+export type ToastAction = { label: string; onClick(): void };
+export type Toast = { id: number; kind: ToastKind; message: string; action?: ToastAction };
 
 /** How long each kind stays (Radix pauses the timer while hovered or focused). */
 export const TOAST_DURATION_MS: Record<ToastKind, number> = { success: 3000, info: 4000, error: 7000 };
@@ -22,16 +24,16 @@ export function dismissToast(id: number): void {
   emit();
 }
 
-function show(kind: ToastKind, message: string): number {
+function show(kind: ToastKind, message: string, action?: ToastAction): number {
   const id = nextId++;
   // The same message twice in a row replaces the old one instead of stacking.
-  toasts = [...toasts.filter((t) => t.message !== message), { id, kind, message }].slice(-MAX_TOASTS);
+  toasts = [...toasts.filter((t) => t.message !== message), { id, kind, message, ...(action ? { action } : {}) }].slice(-MAX_TOASTS);
   emit();
   return id;
 }
 
 export const toast = {
-  success: (message: string) => show("success", message),
+  success: (message: string, action?: ToastAction) => show("success", message, action),
   error: (message: string) => show("error", message),
   info: (message: string) => show("info", message),
 };

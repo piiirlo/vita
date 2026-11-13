@@ -3,7 +3,11 @@
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 
-from app.schemas.charts import AdhocMetric, ChartQuery
+import sqlglot
+from sqlglot import exp
+from sqlglot.errors import ParseError, TokenError
+
+from app.schemas.charts import AdhocMetric, ChartQuery, SqlMetric
 
 # Roles a column can play; they decide which dataset changes break a chart.
 GROUP = "group"  # dimension or series: needs is_dimension or is_temporal
@@ -33,6 +37,9 @@ def query_usage(query: ChartQuery, main_time_column: str | None) -> QueryUsage:
     for ref in query.metrics:
         if isinstance(ref, AdhocMetric):
             usage.add(ref.column, OTHER)
+        elif isinstance(ref, SqlMetric):
+            for name in sql_columns(ref.sql):
+                usage.add(name, OTHER)
         else:
             usage.metrics.add(ref)
     time = query.time
@@ -41,6 +48,16 @@ def query_usage(query: ChartQuery, main_time_column: str | None) -> QueryUsage:
         if column:
             usage.add(column, TIME)
     return usage
+
+
+def sql_columns(sql: str) -> set[str]:
+    """Column names a custom SQL metric mentions (best effort: unparseable SQL names none;
+    building the chart reports it)."""
+    try:
+        parsed = sqlglot.parse_one(sql)
+    except (ParseError, TokenError):
+        return set()
+    return {c.name for c in parsed.find_all(exp.Column) if c.name}
 
 
 def used_by_message(what: str, chart_names: Iterable[str]) -> str:

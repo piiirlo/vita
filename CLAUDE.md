@@ -34,6 +34,11 @@ One part at a time, in order:
     dataset. Round 1 *(done)*: CSV / TSV, the Uploads database and roles, the basic flow.
     Round 2 *(done)*: Excel, adjust panel polish, Replace / Append file, delete behavior,
     the dataset's file panel, uploads in backups.
+13. **Fixes from real usage, round 2** — data correctness (year-number / text-date time
+    columns, friendly query errors, raw grain and dimension x axis for line / area,
+    code-like upload columns, readable upload dates); the chart editor (Data / Customize
+    redesign, custom SQL metrics, conditional + per-series colors, big number position,
+    save to a dashboard); dashboard free placement, auto-fit and Tidy up *(done)*
 
 **Out of scope for v1:** dashboard filters, multi-user permissions, alerts, scheduled
 reports, chart types beyond the 15 of Part 11.
@@ -52,6 +57,15 @@ This folder may contain the Apache Superset source code. It is **read-only refer
 - If any code is copied directly, keep the Apache 2.0 license notice in that file.
 - It must stay in `.gitignore`.
 
+## Off-limits (confidential data)
+- Never start, stop, rebuild, query, seed, back up, restore or
+  screenshot the prod stack (docker-compose.prod.yml, project
+  vita-prod, 127.0.0.1:8080). Use only the dev stack for all checks.
+- Never connect to, query or inspect anything on port 5440 or the
+  gold-local stack (C:\Projects\gold-local), and never read files in
+  that folder.
+- If a task seems to need the prod stack, stop and ask me.
+
 ## Layout
 - `backend/` — FastAPI app (`app/`), Alembic migrations (`alembic/`), tests (`tests/`)
   - `app/engines.py` — builds SQLAlchemy engines for *user* databases (NullPool, 5s connect
@@ -62,7 +76,11 @@ This folder may contain the Apache Superset source code. It is **read-only refer
     Safety layers: sqlglot check (one statement, read queries only; `validate.py`), a
     read-only transaction that is always rolled back, server-side timeout + client-side
     guard, and at most limit + 1 rows fetched (Postgres server-side cursor; MySQL outer
-    LIMIT capped). Errors are `QueryError(kind, message, line, column)`.
+    LIMIT capped). Errors are `QueryError(kind, message, line, column, title, hint, raw)`:
+    `__post_init__` fills `title` / `hint` (plain language) from the kind and the database's
+    text via `errors.explain` (type mismatch on date functions, unknown column / table /
+    function, division by zero, permission, timeout, connection lost, syntax); unrecognized
+    errors keep `title` None and show `message`. `raw` is the driver's own text ("Details").
     Every run via the API is logged in `query_history`.
   - `app/browsing.py` — column metadata for a table. Falls back to `information_schema` on
     Postgres servers that deny access to system catalogs (e.g. public RNAcentral). Reuse it.
@@ -190,6 +208,11 @@ This folder may contain the Apache Superset source code. It is **read-only refer
     _2). Limits: `VITA_UPLOAD_MAX_ROWS`, `VITA_UPLOAD_MAX_COLUMNS`. Tests use the database
     `vita_uploads_test` (`uploads_db` fixture in tests/test_uploads.py); startup doesn't
     create the Uploads connection in tests (`no_uploads_on_startup` in conftest).
+    Part 13 guessing: names like zip / postal / phone / code (`is_code_name`) and values
+    with leading zeros stay text; id-named columns are text only when their values are;
+    integers all in 1900-2100 report `years` ("name" when the name says year too). Words
+    like N/A in non-text columns are counted (`null_words`) and reported in `bad_values`
+    with `kind: "null_word"` (never a stop on error).
     Excel (`excel.py`, openpyxl read-only, opened from a file handle: stored uploads have no
     .xlsx extension): .xlsx only (old .xls / other zips → 415); the zip is checked before
     opening (`check_zip`: entries, total size, ratio); **formulas are never evaluated** (the
@@ -211,6 +234,31 @@ This folder may contain the Apache Superset source code. It is **read-only refer
     other datasets read it (table datasets on it, SQL datasets on Uploads naming it).
     Startup gives tables not owned by the writer back to it and re-grants the reader
     (restored backups come back owned by the admin).
+  - Time columns that aren't dates (Part 13): `app/datasets/timecols.py`. A temporal
+    column's `time_kind`: None (date / datetime), `year_number` (2006 → 2006-01-01: Postgres
+    make_date, MySQL MAKEDATE; only the year grain), `text_date` (`text_date_format`
+    ymd / dmy / mdy, - / . separators) or `pending`. **Every** use of a time column in SQL
+    goes through `time_value(col, db_type)` (buckets, time parts, ranges, the rows probe,
+    time extent); its expressions never raise on bad values (CASE-guarded, NULL instead).
+    `pending` = number / text columns marked temporal before Part 13: checked lazily by
+    `ensure_time_columns` (api/datasets.py: dataset page, Sync, preview, time extent, chart
+    data), **never at startup** (no user-DB queries at startup, ever); results become
+    dataset `notes` (dismissable, `DELETE /api/datasets/{id}/notes/{note_id}`). Marking a
+    column temporal (`_time_kinds` in the update) is only for dates, numbers that are all
+    years (1000-9999, checked by a query) and text that parses (counted failures → a note).
+    Detection (upload, create, Sync; `merge_columns(..., stats)` with `number_stats`): a
+    year-like name (`is_year_name`) + whole numbers 1900-2100 → a year time column; values
+    alone → `looks_like_years` (the Columns tab suggests it). `is_identifier` (names like
+    id / row_id / postal_code / rank): not offered for SUM / AVG.
+    Charts: `TimeSpec.grain` may be `"raw"` (every time value, no bucket); line / area take
+    a dimension x axis like bar (ordered by the dimension). `SqlMetric` (`{sql, label,
+    number_format}`) is a third metric kind: `parse_metric_expression` checks (like saved
+    metrics); `usage.sql_columns` protects the columns it names. `ChartOut.dashboards`
+    (single-chart responses). `POST /api/dashboards/{id}/charts` uses
+    `dashboard_grid.first_free_spot`. `dashboard_grid.compact_vertical` is react-grid-
+    layout's vertical compaction ported step for step (migration 0013 stored every layout
+    compacted once: tiles are placed freely since, so old dashboards keep their look;
+    `frontend/scripts/rgl-compact-check.mjs` prints RGL's own results to compare).
   - Lint/types: `ruff check .`, `ruff format .`, `mypy .` (strict, pydantic plugin; config in
     `pyproject.toml`). sqlglot 30 type hints use `exp.Expr` (the base class), not
     `exp.Expression`.
@@ -286,6 +334,29 @@ This folder may contain the Apache Superset source code. It is **read-only refer
     (world-atlas, topojson-client, i18n-iso-countries).
     Side panel tabs: **Data** (`ChartControls.tsx`: what to query, debounced auto-update, cache
     setting) and **Customize** (`CustomizePanel.tsx`: the look, stored in `display`).
+    The Data panel (Part 13): sections in the order people think — What to measure, Break it
+    down by, Over time, Filter, Sort & limit (a folded `<details>`, advanced options under
+    "More options") — only those the chart type uses, each with a one-line hint while empty
+    (`editorSections.ts`, pure: `sectionsFor`, `emptyHint`, `dropColumn` = what dropping a
+    column on a section does, `targetsFor`). `ColumnPalette.tsx`: the dataset's columns
+    (search, type icons from `columnKinds.ts`), draggable (`COLUMN_MIME`) and an "Add to…"
+    menu (the keyboard way). Metrics: Simple or Custom SQL (`SqlMetricEditor.tsx`, column
+    autocomplete in `sqlMetric.ts`, Validate via the metric validate endpoint, "Save to
+    dataset" turns it into a saved metric). Customize groups: Labels & numbers, Colors, Axes
+    & legend, Layout. Conditional colors (`colorRules.ts`): `display.color_rules` (above /
+    below a value → success / danger / warning; first match wins; "Positive / negative" in
+    one click; the big number's older `color_below` / `color_above` read as rules) on bars,
+    points, slices, boxes, steps, table and pivot cells, the big number (not heatmap / world
+    map / gauge: they have scales or bands); a colored value always shows its value with ▲ /
+    ▼. `display.series_colors` (series / slice name → palette index). Big number position:
+    `display.align` / `valign` (classes `big-number-h-*` / `big-number-v-*`, centered by
+    default, hero tiles too). Saving: `charts/SaveChartDialog.tsx` (name, and optionally a
+    dashboard: search existing or type a new name); the chart is saved first, then placed;
+    toasts can carry an action (`toast.success(msg, {label, onClick})`, "Open dashboard").
+    Query errors everywhere use `components/QueryErrorAlert.tsx` (`QueryErrorBody`: title,
+    hint, "Details" with the raw error; helpers in `components/queryError.ts`). The editor
+    checks the time column before running (`timeColumnProblem` in model.ts; year numbers
+    have only the Year grain: `grainAllowed`, `YEARS_ONLY_HINT`).
     `display.ts`: per-metric `FormatSpec` (chart format beats the metric's own; works for
     ad-hoc metrics), `unavailableOptions` (options that don't apply → disabled + hint),
     `drawState` (draw a loaded result with the **current** look: look options never query;
@@ -306,6 +377,13 @@ This folder may contain the Apache Superset source code. It is **read-only refer
     boundary). The first load of a tile may use the chart-data cache; every reload (Refresh,
     Refresh all, auto-refresh, Retry) passes `refresh`. `DashboardGrid.tsx` wraps
     react-grid-layout v2 (page tests mock it; `DashboardGrid.test.tsx` drives the real one):
+    tiles are placed freely (Part 13): no forced compaction; `compactor.ts` pushes tiles that
+    overlap down (cascading) and never up, the tile being dragged / resized keeping its
+    place; "Tidy up" (`gridTidy.ts`) compacts on demand with RGL's own vertical compactor.
+    Dropped into a gap, a tile fills it (`layout.ts` `fitToGap`: bounded below, within its
+    minimum size, only when it moved); the dashed placeholder shows that size during the drag
+    (onDrag sets it), onDragStop sets the final item. jsdom can't simulate RGL drags (no
+    layout): `freePlacement.test.tsx` drives the grid's callbacks and RGL's `moveElement`.
     24 columns, resize from all 8 handles (`RESIZE_HANDLES`), minimum size per chart type
     (gauge 4×8, pivot 8×10, treemap / funnel / heatmap / scatter 6×12, world map 8×14, ...)
     (`minTileSize`); handles are hidden outside edit mode. Text tiles
@@ -325,6 +403,11 @@ This folder may contain the Apache Superset source code. It is **read-only refer
     `src/shell/`: `Rail` (72px icon rail, bottom bar on phones; theme toggle + account menu),
     `PageHeader` (eyebrow, title, search capsule, actions — use it on every page),
     `CommandPaletteHost` (Ctrl/Cmd+K; lazy-loads `CommandPalette`, cmdk).
+  - Datasets (Part 13): the Columns tab shows "year (number)", a text date's format picker,
+    "Looks like years, use as time?", and an identifier switch; the dataset page shows
+    `notes`. The upload preview shows dates as "9 Nov 2013" (title: the file's text) with
+    the detected format ("Day first: DD-MM-YYYY", a select) in the column header, and N/A
+    counts / "years: a time column" notes (`uploads/uploads.ts` `readableDate`).
   - Shared UI: `components/toast.ts` (`toast.success/error/info` from anywhere; one
     `<Toaster />` (Radix Toast) in the shell; use it for saves, deletes and errors),
     `ConfirmDialog` (Radix AlertDialog; never `window.confirm`/`alert`), `Modal` from
