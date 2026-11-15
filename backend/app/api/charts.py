@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.api.connections import saved_connection_details
 from app.api.datasets import ensure_time_columns, get_dataset_or_404
+from app.api.projects import resolve_project, same_project
 from app.charts import build_chart_query, cache
 from app.db import get_db
 from app.models import Chart, Dashboard, DashboardChart, Dataset
@@ -135,6 +136,7 @@ def _out(chart: Chart, db: Session | None = None) -> ChartOut:
     return ChartOut(
         dashboards=_dashboards(db, chart.id) if db is not None else [],
         id=chart.id,
+        project_id=chart.project_id,
         name=chart.name,
         description=chart.description,
         dataset_id=chart.dataset_id,
@@ -146,8 +148,10 @@ def _out(chart: Chart, db: Session | None = None) -> ChartOut:
     )
 
 
-def _check_name_free(db: Session, name: str, chart_id: int | None = None) -> None:
-    stmt = select(Chart.id).where(func.lower(Chart.name) == name.lower())
+def _check_name_free(db: Session, name: str, project_id: int, chart_id: int | None = None) -> None:
+    stmt = select(Chart.id).where(
+        func.lower(Chart.name) == name.lower(), Chart.project_id == project_id
+    )
     if chart_id is not None:
         stmt = stmt.where(Chart.id != chart_id)
     if db.scalar(stmt) is not None:
@@ -157,10 +161,16 @@ def _check_name_free(db: Session, name: str, chart_id: int | None = None) -> Non
 def _apply(db: Session, chart: Chart, payload: ChartIn) -> None:
     """Validate the chart's query against its dataset (no query is run) and copy fields."""
     name = payload.name.strip()
-    _check_name_free(db, name, chart.id)
     dataset = db.get(Dataset, payload.params.query.dataset_id)
     if dataset is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "The chart's dataset doesn't exist")
+    if chart.project_id is None:
+        chart.project_id = resolve_project(
+            db, payload.project_id, dataset.project_id, "The chart's dataset"
+        )
+    else:
+        same_project(dataset.project_id, chart.project_id, "The chart's dataset")
+    _check_name_free(db, name, chart.project_id, chart.id)
     dataset = get_dataset_or_404(db, dataset.id)  # with columns, metrics and connection
     query = payload.params.query
     time = query.time
@@ -194,6 +204,7 @@ def list_charts(
     db: DbSession,
     q: Annotated[str | None, Query(max_length=200)] = None,
     dataset_id: int | None = None,
+    project_id: int | None = None,
 ) -> list[ChartOut]:
     stmt = select(Chart).join(Chart.dataset).options(selectinload(Chart.dataset))
     if q and q.strip():
@@ -208,6 +219,8 @@ def list_charts(
         )
     if dataset_id is not None:
         stmt = stmt.where(Chart.dataset_id == dataset_id)
+    if project_id is not None:
+        stmt = stmt.where(Chart.project_id == project_id)
     stmt = stmt.order_by(Chart.updated_at.desc(), Chart.id.desc())
     return [_out(c) for c in db.scalars(stmt)]
 

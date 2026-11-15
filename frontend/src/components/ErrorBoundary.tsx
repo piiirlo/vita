@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { Link } from "react-router";
+import { projectPath } from "../projects/paths.ts";
 
 type Props = { children: ReactNode };
 type State = { error: Error | null };
@@ -28,7 +29,7 @@ export default class ErrorBoundary extends Component<Props, State> {
           <button className="primary" onClick={() => window.location.reload()}>
             Reload the page
           </button>
-          <Link to="/dashboards" className="button">
+          <Link to={projectPath("/dashboards")} className="button">
             Go to dashboards
           </Link>
         </div>

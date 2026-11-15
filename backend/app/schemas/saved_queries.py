@@ -9,6 +9,8 @@ class SavedQueryIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     description: str | None = Field(default=None, max_length=5000)
     connection_id: int | None = None
+    # None = the connection's project (else the default project). Ignored on update.
+    project_id: int | None = None
     sql: str = Field(min_length=1, max_length=100_000)
 
 
@@ -16,6 +18,7 @@ class SavedQueryOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    project_id: int
     name: str
     description: str | None
     connection_id: int | None

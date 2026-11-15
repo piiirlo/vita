@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import type { Dataset, UploadEvent } from "../api.ts";
 import { Button } from "../components/ui/button.tsx";
 import { relativeTime } from "./format.ts";
+import { projectPath } from "../projects/paths.ts";
 
 const MODE_LABEL: Record<UploadEvent["mode"], string> = { create: "Uploaded", replace: "Replaced", append: "Appended" };
 
@@ -11,7 +12,7 @@ const rows = (n: number) => `${n.toLocaleString("en-US")} ${n === 1 ? "row" : "r
 /** Where an uploaded dataset's data came from, with Replace file / Append file. */
 export default function UploadSourcePanel({ dataset }: { dataset: Dataset }) {
   const source = dataset.upload_source;
-  const link = (mode: "replace" | "append") => `/datasets/upload?dataset=${dataset.id}&mode=${mode}`;
+  const link = (mode: "replace" | "append") => projectPath(`/datasets/upload?dataset=${dataset.id}&mode=${mode}`);
   return (
     <section className="upload-source" aria-label="Uploaded file">
       <FileSpreadsheet size={18} aria-hidden className="upload-source-icon" />

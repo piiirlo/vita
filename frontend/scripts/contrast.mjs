@@ -7,16 +7,33 @@ import fs from "node:fs";
 
 const css = fs.readFileSync(new URL("../src/styles/tokens.css", import.meta.url), "utf8");
 
+/** Every block whose selector is exactly `selector` (":root" has two), merged in order. */
 function block(selector) {
-  const start = css.indexOf(selector + " {");
-  if (start < 0) throw new Error(`no block ${selector}`);
-  const body = css.slice(css.indexOf("{", start) + 1, css.indexOf("\n}", start));
   const vars = {};
-  for (const m of body.matchAll(/(--[\w-]+):\s*([^;]+);/g)) vars[m[1]] = m[2].trim();
+  let from = 0;
+  for (;;) {
+    const start = css.indexOf("\n" + selector + " {", from);
+    if (start < 0) break;
+    const body = css.slice(css.indexOf("{", start) + 1, css.indexOf("\n}", start));
+    for (const m of body.matchAll(/(--[\w-]+):\s*([^;]+);/g)) vars[m[1]] = m[2].trim();
+    from = start + 1;
+  }
+  if (!Object.keys(vars).length) throw new Error(`no block ${selector}`);
   return vars;
 }
 const light = block(":root");
 const dark = { ...light, ...block('[data-theme="dark"]') };
+// Cards made of Paper (.paper) in each theme; their page is the card itself.
+const paperOf = (vars) => {
+  const merged = { ...vars, ...block(".paper") };
+  return { ...merged, "--bg": merged["--surface"] };
+};
+const THEMES = [
+  ["light", light],
+  ["dark", dark],
+  ["paper (light)", paperOf(light)],
+  ["paper (dark)", paperOf(dark)],
+];
 
 function resolve(vars, value, depth = 0) {
   const m = /^var\((--[\w-]+)\)$/.exec(value.trim());
@@ -120,10 +137,13 @@ const PAIRS = [
   ["focus ring vs card", "--focus-ring", ["--bg", "--surface"], LARGE],
 ];
 
-// Chart series: each one is a UI part (3:1 on cards), and every two must be clearly different
-// colors (CIEDE2000; 15+ is "clearly different" at a glance, neighbors get 18+).
+// Chart series: charts are always drawn on Paper, so each one is a UI part (3:1) on Paper
+// cards, and every two must be clearly different colors (CIEDE2000; 15+ is "clearly
+// different" at a glance, neighbors get 18+).
 const SERIES = Array.from({ length: 10 }, (_, i) => `--series-${i + 1}`);
-for (const token of SERIES) PAIRS.push([`chart ${token.slice(2)} on card`, token, ["--bg", "--surface"], UI]);
+const PAPER_PAIRS = SERIES.map((token) => [`chart ${token.slice(2)} on Paper`, token, ["--bg", "--surface"], UI]);
+
+PAPER_PAIRS.push(["text on Clay on Paper", "--accent-fg", ["--accent"], NORMAL]);
 const MIN_DELTA_E = 15;
 const MIN_DELTA_E_NEIGHBORS = 18;
 
@@ -172,12 +192,11 @@ function deltaE(c1, c2) {
 }
 
 let failed = 0;
-for (const [theme, vars] of [
-  ["light", light],
-  ["dark", dark],
-]) {
+for (const [theme, vars] of THEMES) {
   console.log(`\n${theme}`);
-  for (const [what, fg, stack, min] of PAIRS) {
+  // Paper cards hold no SQL, rail or hero: only their own pairs.
+  const onPaper = PAIRS.filter(([what]) => !/SQL|rail|hero/.test(what));
+  for (const [what, fg, stack, min] of theme.startsWith("paper") ? [...onPaper, ...PAPER_PAIRS] : PAIRS) {
     let bg = parse(resolve(vars, vars[stack[0]]));
     for (const layer of stack.slice(1)) bg = over(parse(resolve(vars, vars[layer])), bg);
     const text = over(parse(resolve(vars, vars[fg])), bg);
@@ -188,10 +207,7 @@ for (const [theme, vars] of [
   }
 }
 
-for (const [theme, vars] of [
-  ["light", light],
-  ["dark", dark],
-]) {
+for (const [theme, vars] of THEMES.filter(([name]) => name.startsWith("paper"))) {
   console.log(`\n${theme}: chart series must be clearly different`);
   const colors = SERIES.map((t) => parse(resolve(vars, vars[t])));
   let worst = { d: Infinity, what: "" };

@@ -25,6 +25,8 @@ import AdjustPanel from "../uploads/AdjustPanel.tsx";
 import { ACCEPTED_FILES, takePendingFile, useFileDrop } from "../uploads/fileDrop.ts";
 import PreviewTable from "../uploads/PreviewTable.tsx";
 import { formatBytes, problemsKey } from "../uploads/uploads.ts";
+import { projectPath } from "../projects/paths.ts";
+import { useCrumbTitle } from "../projects/projectContext.ts";
 
 type Phase =
   | { kind: "pick" }
@@ -56,6 +58,7 @@ export default function UploadPage() {
   const [params] = useSearchParams();
   const target = useMemo(() => targetOf(params), [params]);
   usePageTitle(target ? (target.mode === "replace" ? "Replace file" : "Append file") : "Upload file");
+  useCrumbTitle(target ? (target.mode === "replace" ? "Replace file" : "Append file") : "Upload file");
   const navigate = useNavigate();
   const [targetDataset, setTargetDataset] = useState<Dataset | null>(null);
   const [confirmReplace, setConfirmReplace] = useState(false);
@@ -165,7 +168,7 @@ export default function UploadPage() {
                 ? `Appended ${rows} to "${preview.dataset_name}".`
                 : `Created the dataset "${datasetName.trim()}" (${rows}).`,
           );
-          void navigate(`/datasets/${job.dataset_id}`);
+          void navigate(projectPath(`/datasets/${job.dataset_id}`));
         }
       } else {
         setPhase({ kind: "failed", message: job.error ?? "The import failed." });
@@ -196,13 +199,13 @@ export default function UploadPage() {
       <PageHeader
         eyebrow={
           <>
-            <Link to="/datasets" className="crumb">
+            <Link to={projectPath("/datasets")} className="crumb">
               Datasets
             </Link>{" "}
             {target ? (
               <>
                 /{" "}
-                <Link to={`/datasets/${target.datasetId}`} className="crumb">
+                <Link to={projectPath(`/datasets/${target.datasetId}`)} className="crumb">
                   {targetName}
                 </Link>{" "}
                 / {target.mode === "replace" ? "Replace file" : "Append file"}
@@ -315,7 +318,7 @@ export default function UploadPage() {
               </li>
             ))}
           </ul>
-          <Button variant="primary" onClick={() => void navigate(`/datasets/${phase.job.dataset_id}`)}>
+          <Button variant="primary" onClick={() => void navigate(projectPath(`/datasets/${phase.job.dataset_id}`))}>
             Open the dataset
           </Button>
         </section>
@@ -327,7 +330,7 @@ export default function UploadPage() {
             {preview.target ? (
               <p className="upload-into">
                 <span className="eyebrow">{preview.mode === "replace" ? "Replaces the data of" : "Adds rows to"}</span>
-                <Link to={`/datasets/${preview.target.id}`}>{preview.target.name}</Link>
+                <Link to={projectPath(`/datasets/${preview.target.id}`)}>{preview.target.name}</Link>
                 <span className="muted small mono"> · {preview.target.table_name}</span>
               </p>
             ) : (

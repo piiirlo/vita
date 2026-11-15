@@ -46,6 +46,8 @@ import EmptyState from "../components/EmptyState.tsx";
 import UnsavedChangesDialog from "../components/UnsavedChangesDialog.tsx";
 import { useUnsavedChanges } from "../components/useUnsavedChanges.ts";
 import { relativeTime } from "../datasets/format.ts";
+import { projectPath } from "../projects/paths.ts";
+import { useCrumbTitle } from "../projects/projectContext.ts";
 
 const AUTO_UPDATE_MS = 600;
 
@@ -98,6 +100,7 @@ export default function ChartEditorPage() {
   const [fromDashboard, setFromDashboard] = useState<{ id: number; name: string } | null>(null);
   const controller = useRef<AbortController | null>(null);
   usePageTitle(chart?.name ?? (chartId === null ? "New chart" : "Chart"));
+  useCrumbTitle(chart?.name ?? (chartId === null ? "New chart" : null));
 
   // ---------- loading ----------
 
@@ -249,7 +252,7 @@ export default function ChartEditorPage() {
     }
     toast.success(`Saved "${chartName}" and added it to ${dashboard.name}.`, {
       label: "Open dashboard",
-      onClick: () => void navigate(`/dashboards/${dashboard.id}`),
+      onClick: () => void navigate(projectPath(`/dashboards/${dashboard.id}`)),
     });
   }
 
@@ -281,7 +284,7 @@ export default function ChartEditorPage() {
       blocker.proceed?.();
       return;
     }
-    void navigate(`/charts/${created.id}`, { replace: chartId === null });
+    void navigate(projectPath(`/charts/${created.id}`), { replace: chartId === null });
   }
 
   /** Resolves true when saved. A new chart asks for a name first (and resolves false). */
@@ -330,7 +333,7 @@ export default function ChartEditorPage() {
     return (
       <div className="page-pad">
         <p className="alert alert-error">{loadError}</p>
-        <Link to="/charts">Back to charts</Link>
+        <Link to={projectPath("/charts")}>Back to charts</Link>
       </div>
     );
   }
@@ -340,7 +343,7 @@ export default function ChartEditorPage() {
         <EmptyState
           title="Charts are built on datasets. Create a dataset first."
           action={
-            <Link to="/datasets/new" className="button primary">
+            <Link to={projectPath("/datasets/new")} className="button primary">
               New dataset
             </Link>
           }
@@ -399,7 +402,7 @@ export default function ChartEditorPage() {
 
       <section className="chart-editor-main">
         <div className="chart-editor-header">
-          <Link to="/charts" className="crumb">
+          <Link to={projectPath("/charts")} className="crumb">
             Charts
           </Link>
           <span className="crumb">/</span>
@@ -411,7 +414,7 @@ export default function ChartEditorPage() {
           {dirty && <span className="dirty-dot" title="Unsaved changes" aria-label="Unsaved changes" />}
           <span className="spacer" />
           {fromDashboard && (
-            <Link to={`/dashboards/${fromDashboard.id}`} className="back-link">
+            <Link to={projectPath(`/dashboards/${fromDashboard.id}`)} className="back-link">
               ← Back to {fromDashboard.name}
             </Link>
           )}
@@ -451,7 +454,7 @@ export default function ChartEditorPage() {
         </div>
 
         {tab === "chart" && (
-          <div className="chart-canvas">
+          <div className="chart-canvas paper">
             {results.status === "error" && (
               <div className="alert alert-error chart-error" role="alert">
                 <QueryErrorBody error={results.error} />
@@ -504,7 +507,7 @@ export default function ChartEditorPage() {
                   const location: SqlLabLocationState = {
                     openTab: { title: name || `${typeLabel} chart`, sql: sqls[0]!, connectionId: dataset.connection_id, schema: null },
                   };
-                  void navigate("/sql-lab", { state: location });
+                  void navigate(projectPath("/sql-lab"), { state: location });
                 }}
               >
                 Open in SQL Lab
@@ -530,7 +533,7 @@ export default function ChartEditorPage() {
             setChart((c) => (c ? { ...c, dashboards: [...(c.dashboards ?? []), { id: dashboard.id, name: dashboard.name }] } : c));
             toast.success(`Added "${chart.name}" to ${dashboard.name}.`, {
               label: "Open dashboard",
-              onClick: () => void navigate(`/dashboards/${dashboard.id}`),
+              onClick: () => void navigate(projectPath(`/dashboards/${dashboard.id}`)),
             });
           }}
           onCancel={() => setAddToDashboard(false)}

@@ -28,6 +28,7 @@ import {
 } from "../api.ts";
 import { useAuth } from "../auth/auth.ts";
 import type { SqlLabLocationState } from "../datasets/sqlLabLink.ts";
+import { projectPath } from "../projects/paths.ts";
 import { toggleTheme } from "../theme/theme.ts";
 import { setCommandPaletteOpen as setOpen, useCommandPaletteOpen as useOpen } from "./commandPaletteStore.ts";
 
@@ -77,7 +78,9 @@ export default function CommandPalette() {
     setOpen(false);
     action();
   }
-  const go = (to: string, state?: unknown) => run(() => void navigate(to, state === undefined ? undefined : { state }));
+  // Inside a project, every page and item opens in that project.
+  const go = (to: string, state?: unknown) =>
+    run(() => void navigate(projectPath(to), state === undefined ? undefined : { state }));
   const openInSqlLab = (title: string, sql: string, connectionId: number | null) => {
     const state: SqlLabLocationState = { openTab: { title, sql, connectionId, schema: null } };
     go("/sql-lab", state);

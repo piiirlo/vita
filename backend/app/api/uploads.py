@@ -18,10 +18,11 @@ from urllib.parse import unquote
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response, status
 from fastapi.concurrency import run_in_threadpool
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.api.auth import require_user
+from app.api.projects import resolve_project
 from app.config import settings
 from app.db import get_db
 from app.models import Connection, Dataset, Upload, User
@@ -101,8 +102,10 @@ def _pending(db: Session, upload_id: int) -> Upload:
     return upload
 
 
-def _free_dataset_name(db: Session, wanted: str) -> str:
-    taken = {n.lower() for n in db.scalars(select(Dataset.name))}
+def _free_dataset_name(db: Session, wanted: str, project_id: int) -> str:
+    taken = {
+        n.lower() for n in db.scalars(select(Dataset.name).where(Dataset.project_id == project_id))
+    }
     name, n = wanted, 2
     while name.lower() in taken:
         name = f"{wanted} ({n})"
@@ -195,6 +198,7 @@ def _after_upload(
     user: User,
     dataset_id: int | None,
     mode: Mode,
+    project_id: int,
 ) -> UploadPreview:
     if size == 0:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "The file is empty.")
@@ -211,6 +215,7 @@ def _after_upload(
         status="pending",
         mode=mode,
         dataset_id=dataset_id,
+        project_id=project_id,
         user_id=user.id,
         bad_values=[],
         warnings=[],
@@ -218,7 +223,7 @@ def _after_upload(
     db.add(upload)
     db.commit()
     db.refresh(upload)
-    name = _free_dataset_name(db, dataset_name_for(file_name))
+    name = _free_dataset_name(db, dataset_name_for(file_name), project_id)
     out = _preview_out(db, upload, detected, detected, name)
     # What was detected (shown next to the user's changes in later previews).
     upload.options = out.detected.model_dump()
@@ -233,17 +238,21 @@ async def upload_file(
     user: CurrentUser,
     dataset_id: int | None = None,
     mode: Mode = "create",
+    project_id: int | None = None,
 ) -> UploadPreview:
     """The raw file as the body; its name (URL-encoded) in X-File-Name. With `dataset_id`
-    and mode replace / append, the file is for that (uploaded) dataset."""
+    and mode replace / append, the file is for that (uploaded) dataset (and its project);
+    otherwise the dataset will be in `project_id` (None = the default project)."""
     await run_in_threadpool(_uploads_connection, db)
     if (mode == "create") != (dataset_id is None):
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
             "Replace and append need a dataset; a new upload doesn't take one.",
         )
+    owner = None
     if dataset_id is not None:
-        await run_in_threadpool(uploaded_table_dataset, db, dataset_id)
+        owner = (await run_in_threadpool(uploaded_table_dataset, db, dataset_id)).project_id
+    project_id = await run_in_threadpool(resolve_project, db, project_id, owner, "The dataset")
     file_name = os.path.basename(unquote(request.headers.get("x-file-name", "")).replace("\\", "/"))
     file_name = file_name.strip()[:255] or "upload.csv"
     declared = request.headers.get("content-length")
@@ -262,7 +271,7 @@ async def upload_file(
                     raise _too_big()
                 out.write(chunk)
         return await run_in_threadpool(
-            _after_upload, token, file_name, size, db, user, dataset_id, mode
+            _after_upload, token, file_name, size, db, user, dataset_id, mode, project_id
         )
     except BaseException:
         files.delete_file(token)
@@ -273,7 +282,7 @@ async def upload_file(
 def preview_upload(upload_id: int, options: ReadOptionsIn, db: DbSession) -> UploadPreview:
     upload = _pending(db, upload_id)
     detected = ReadOptionsIn.model_validate(upload.options) if upload.options else options
-    name = _free_dataset_name(db, dataset_name_for(upload.file_name))
+    name = _free_dataset_name(db, dataset_name_for(upload.file_name), upload.project_id)
     return _preview_out(db, upload, options, detected, name)
 
 
@@ -285,7 +294,10 @@ def import_upload(
     upload = _pending(db, upload_id)
     if upload.mode == "create":
         name = payload.dataset_name.strip()
-        if db.scalar(select(Dataset.id).where(Dataset.name == name)) is not None:
+        same_name = select(Dataset.id).where(
+            func.lower(Dataset.name) == name.lower(), Dataset.project_id == upload.project_id
+        )
+        if db.scalar(same_name) is not None:
             raise HTTPException(
                 status.HTTP_409_CONFLICT, f'A dataset named "{name}" already exists.'
             )

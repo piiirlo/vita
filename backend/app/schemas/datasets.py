@@ -103,6 +103,8 @@ class DatasetCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     description: str | None = None
     connection_id: int
+    # None = the connection's project (the default project for the Uploads connection).
+    project_id: int | None = None
     kind: DatasetKind
     schema_: str | None = Field(default=None, alias="schema", max_length=255)
     table_name: str | None = Field(default=None, max_length=255)
@@ -141,6 +143,7 @@ class DatasetListItem(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     id: int
+    project_id: int
     name: str
     description: str | None
     connection_id: int

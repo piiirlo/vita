@@ -12,10 +12,13 @@ import { errorText } from "../datasets/format.ts";
 import { usePageTitle } from "../components/usePageTitle.ts";
 import EmptyState from "../components/EmptyState.tsx";
 import PageHeader from "../shell/PageHeader.tsx";
+import { projectPath } from "../projects/paths.ts";
+import { useCrumbTitle } from "../projects/projectContext.ts";
 
 /** Create a dataset from a table: pick connection, schema, table. */
 export default function DatasetNewPage() {
   usePageTitle("New dataset");
+  useCrumbTitle("New dataset");
   const navigate = useNavigate();
   const [connections, setConnections] = useState<Connection[] | null>(null);
   const [connectionId, setConnectionId] = useState<number | null>(null);
@@ -101,7 +104,7 @@ export default function DatasetNewPage() {
         schema,
         table_name: table,
       });
-      void navigate(`/datasets/${dataset.id}`);
+      void navigate(projectPath(`/datasets/${dataset.id}`));
     } catch (err) {
       setError(errorText(err));
       setSaving(false);
@@ -113,7 +116,7 @@ export default function DatasetNewPage() {
       <EmptyState
         title="A dataset needs a database connection first"
         action={
-          <Link to="/connections/new" className="button primary">
+          <Link to={projectPath("/connections/new")} className="button primary">
             Add a connection
           </Link>
         }
@@ -125,7 +128,7 @@ export default function DatasetNewPage() {
     <div className="narrow">
       <PageHeader
         eyebrow={
-          <Link to="/datasets" className="crumb">
+          <Link to={projectPath("/datasets")} className="crumb">
             Datasets
           </Link>
         }
@@ -134,7 +137,7 @@ export default function DatasetNewPage() {
       />
       <p className="muted">
         Create a dataset from a table or view. To use a SQL query instead, write it in{" "}
-        <Link to="/sql-lab">SQL Lab</Link> and click “Save as dataset”.
+        <Link to={projectPath("/sql-lab")}>SQL Lab</Link> and click “Save as dataset”.
       </p>
 
       <form className="card form" onSubmit={(e) => void submit(e)}>
@@ -194,7 +197,7 @@ export default function DatasetNewPage() {
         {error && <p className="alert alert-error">{error}</p>}
         <div className="form-actions">
           <span className="spacer" />
-          <Link to="/datasets" className="button">
+          <Link to={projectPath("/datasets")} className="button">
             Cancel
           </Link>
           <button type="submit" className="primary" disabled={saving || !table}>

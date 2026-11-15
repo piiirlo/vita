@@ -11,13 +11,15 @@
 @import "react-grid-layout/css/styles.css" layer(vendor);
 @import "react-resizable/css/styles.css" layer(vendor);
 
-@import "@fontsource-variable/space-grotesk/wght.css" layer(base);
+@import "@fontsource-variable/bricolage-grotesque/opsz.css" layer(base);
+@import "@fontsource-variable/instrument-sans/wght.css" layer(base);
 @import "@fontsource-variable/jetbrains-mono/wght.css" layer(base);
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities);
 @import "./tokens.css";
 @import "./base.css" layer(base);
 @import "../App.css" layer(base);
+@import "./projects.css" layer(base);
 @import "./components.css" layer(components);
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
@@ -58,6 +60,7 @@
   --color-current: currentColor;
 
   --font-sans: var(--font-ui);
+  --font-display: var(--font-display);
   --font-mono: var(--font-mono);
 
   --radius-card: var(--radius-card);

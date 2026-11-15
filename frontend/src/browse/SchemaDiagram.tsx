@@ -14,6 +14,7 @@ import {
   selectAllSql,
   type EdgeLine,
 } from "./diagramLayout.ts";
+import { projectPath } from "../projects/paths.ts";
 
 type Props = { connectionId: number; dbType: DbType; schema: string };
 type View = { x: number; y: number; scale: number };
@@ -345,7 +346,7 @@ function TablePanel({
     const state: SqlLabLocationState = {
       openTab: { title: table, sql: selectAllSql(diagram.schema_name, table, dbType), connectionId, schema: diagram.schema_name },
     };
-    void navigate("/sql-lab", { state });
+    void navigate(projectPath("/sql-lab"), { state });
   }
 
   return (

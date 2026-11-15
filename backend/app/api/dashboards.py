@@ -5,10 +5,11 @@ import uuid
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from sqlalchemy import func, or_, select
+from sqlalchemy import Select, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
+from app.api.projects import resolve_project
 from app.dashboard_grid import GRID_COLUMNS, first_free_spot
 from app.db import get_db
 from app.models import Chart, Dashboard, DashboardChart
@@ -55,6 +56,7 @@ def _out(db: Session, dashboard: Dashboard) -> DashboardOut:
     charts = db.execute(select(Chart.id, Chart.name, Chart.viz_type).where(Chart.id.in_(ids))).all()
     return DashboardOut(
         id=dashboard.id,
+        project_id=dashboard.project_id,
         name=dashboard.name,
         description=dashboard.description,
         layout=dashboard.layout,
@@ -72,16 +74,25 @@ def _name_taken(name: str) -> HTTPException:
     return HTTPException(status.HTTP_409_CONFLICT, f'A dashboard named "{name}" already exists')
 
 
-def _check_name_free(db: Session, name: str, dashboard_id: int | None = None) -> None:
-    stmt = select(Dashboard.id).where(func.lower(Dashboard.name) == name.lower())
+def _name_stmt(name: str, project_id: int) -> Select[Any]:
+    return select(Dashboard.id).where(
+        func.lower(Dashboard.name) == name.lower(), Dashboard.project_id == project_id
+    )
+
+
+def _check_name_free(
+    db: Session, name: str, project_id: int, dashboard_id: int | None = None
+) -> None:
+    stmt = _name_stmt(name, project_id)
     if dashboard_id is not None:
         stmt = stmt.where(Dashboard.id != dashboard_id)
     if db.scalar(stmt) is not None:
         raise _name_taken(name)
 
 
-def _check_charts_exist(db: Session, chart_ids: list[int]) -> None:
-    found = set(db.scalars(select(Chart.id).where(Chart.id.in_(chart_ids))))
+def _check_charts_exist(db: Session, chart_ids: list[int], project_id: int) -> None:
+    rows = db.execute(select(Chart.id, Chart.project_id).where(Chart.id.in_(chart_ids)))
+    found = {row.id: row.project_id for row in rows}
     missing = [i for i in chart_ids if i not in found]
     if missing:
         noun = "chart doesn't" if len(missing) == 1 else "charts don't"
@@ -90,12 +101,20 @@ def _check_charts_exist(db: Session, chart_ids: list[int]) -> None:
             f"These {noun} exist (anymore): {', '.join(str(i) for i in missing)}. "
             "Remove those tiles and save again.",
         )
+    elsewhere = [i for i in chart_ids if found[i] != project_id]
+    if elsewhere:
+        noun = "chart belongs" if len(elsewhere) == 1 else "charts belong"
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"These {noun} to another project: {', '.join(str(i) for i in elsewhere)}. "
+            "A dashboard shows only its own project's charts.",
+        )
 
 
 def _set_layout(db: Session, dashboard: Dashboard, layout: list[dict[str, Any]]) -> None:
     """Store the layout and sync the dashboard -> charts links with it."""
     chart_ids = _chart_ids(layout)
-    _check_charts_exist(db, chart_ids)
+    _check_charts_exist(db, chart_ids, dashboard.project_id)
     dashboard.layout = layout
     keep = set(chart_ids)
     for link in list(dashboard.chart_links):
@@ -109,7 +128,9 @@ def _set_layout(db: Session, dashboard: Dashboard, layout: list[dict[str, Any]])
 
 def _apply(db: Session, dashboard: Dashboard, payload: DashboardIn) -> None:
     name = payload.name.strip()
-    _check_name_free(db, name, dashboard.id)
+    if dashboard.project_id is None:
+        dashboard.project_id = resolve_project(db, payload.project_id)
+    _check_name_free(db, name, dashboard.project_id, dashboard.id)
     dashboard.name = name
     dashboard.description = (payload.description or "").strip() or None
     dashboard.refresh_interval = payload.refresh_interval
@@ -117,13 +138,13 @@ def _apply(db: Session, dashboard: Dashboard, payload: DashboardIn) -> None:
     _set_layout(db, dashboard, [t.model_dump(mode="json") for t in payload.layout])
 
 
-def _commit(db: Session, name: str) -> None:
+def _commit(db: Session, name: str, project_id: int) -> None:
     try:
         db.commit()
     except IntegrityError:
         # A name race, or a chart deleted between the check and the commit.
         db.rollback()
-        if db.scalar(select(Dashboard.id).where(func.lower(Dashboard.name) == name.lower())):
+        if db.scalar(_name_stmt(name, project_id)):
             raise _name_taken(name) from None
         raise HTTPException(
             status.HTTP_409_CONFLICT, "A chart on this dashboard was just deleted. Try again."
@@ -132,9 +153,13 @@ def _commit(db: Session, name: str) -> None:
 
 @router.get("", response_model=list[DashboardListItem])
 def list_dashboards(
-    db: DbSession, q: Annotated[str | None, Query(max_length=200)] = None
+    db: DbSession,
+    q: Annotated[str | None, Query(max_length=200)] = None,
+    project_id: int | None = None,
 ) -> list[DashboardListItem]:
     stmt = select(Dashboard)
+    if project_id is not None:
+        stmt = stmt.where(Dashboard.project_id == project_id)
     if q and q.strip():
         pattern = f"%{q.strip()}%"
         stmt = stmt.where(or_(Dashboard.name.ilike(pattern), Dashboard.description.ilike(pattern)))
@@ -142,6 +167,7 @@ def list_dashboards(
     return [
         DashboardListItem(
             id=d.id,
+            project_id=d.project_id,
             name=d.name,
             description=d.description,
             chart_count=sum(1 for t in d.layout if t.get("type") == "chart"),
@@ -157,7 +183,7 @@ def create_dashboard(payload: DashboardIn, db: DbSession) -> DashboardOut:
     dashboard = Dashboard()
     _apply(db, dashboard, payload)
     db.add(dashboard)
-    _commit(db, dashboard.name)
+    _commit(db, dashboard.name, dashboard.project_id)
     return _out(db, _get_or_404(db, dashboard.id))
 
 
@@ -170,7 +196,7 @@ def get_dashboard(dashboard_id: int, db: DbSession) -> DashboardOut:
 def update_dashboard(dashboard_id: int, payload: DashboardIn, db: DbSession) -> DashboardOut:
     dashboard = _get_or_404(db, dashboard_id)
     _apply(db, dashboard, payload)
-    _commit(db, dashboard.name)
+    _commit(db, dashboard.name, dashboard.project_id)
     db.expire_all()
     return _out(db, _get_or_404(db, dashboard_id))
 
@@ -182,8 +208,11 @@ def delete_dashboard(dashboard_id: int, db: DbSession) -> Response:
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-def _copy_name(db: Session, name: str) -> str:
-    taken = {n.lower() for n in db.scalars(select(Dashboard.name))}
+def _copy_name(db: Session, name: str, project_id: int) -> str:
+    taken = {
+        n.lower()
+        for n in db.scalars(select(Dashboard.name).where(Dashboard.project_id == project_id))
+    }
     base = f"{name} (copy)"
     candidate, n = base, 2
     while candidate.lower() in taken:
@@ -198,14 +227,15 @@ def _copy_name(db: Session, name: str) -> str:
 def duplicate_dashboard(dashboard_id: int, db: DbSession) -> DashboardOut:
     source = _get_or_404(db, dashboard_id)
     copy = Dashboard(
-        name=_copy_name(db, source.name),
+        project_id=source.project_id,
+        name=_copy_name(db, source.name, source.project_id),
         description=source.description,
         refresh_interval=source.refresh_interval,
         cache_ttl=source.cache_ttl,
     )
     _set_layout(db, copy, [dict(t) for t in source.layout])
     db.add(copy)
-    _commit(db, copy.name)
+    _commit(db, copy.name, copy.project_id)
     return _out(db, _get_or_404(db, copy.id))
 
 
@@ -230,6 +260,6 @@ def add_chart(dashboard_id: int, payload: AddChartIn, db: DbSession) -> Dashboar
         h=NEW_CHART_TILE_H,
     )
     _set_layout(db, dashboard, [*dashboard.layout, tile.model_dump(mode="json")])
-    _commit(db, dashboard.name)
+    _commit(db, dashboard.name, dashboard.project_id)
     db.expire_all()
     return _out(db, _get_or_404(db, dashboard_id))

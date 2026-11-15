@@ -14,9 +14,14 @@ import ConnectionsPage from "./pages/ConnectionsPage.tsx";
 import DashboardsPage from "./pages/DashboardsPage.tsx";
 import DatasetNewPage from "./pages/DatasetNewPage.tsx";
 import DatasetsPage from "./pages/DatasetsPage.tsx";
+import HomePage from "./pages/HomePage.tsx";
 import LoginPage from "./pages/LoginPage.tsx";
 import NotFoundPage from "./pages/NotFoundPage.tsx";
+import ProjectPage from "./pages/ProjectPage.tsx";
 import StatusPage from "./pages/StatusPage.tsx";
+import Breadcrumbs from "./projects/Breadcrumbs.tsx";
+import { innerPath, projectIdOf } from "./projects/paths.ts";
+import ProjectProvider from "./projects/ProjectProvider.tsx";
 import CommandPaletteHost from "./shell/CommandPaletteHost.tsx";
 import Rail from "./shell/Rail.tsx";
 
@@ -64,47 +69,64 @@ export default function App() {
   return <Shell user={state.user} />;
 }
 
+/** The pages a project has, under /projects/:id (and at the old top-level URLs, where
+ * they show every project's items). */
+function pageRoutes(prefix: string) {
+  return (
+    <>
+      <Route path={`${prefix}/sql-lab`} element={lazyPage(<SqlLabPage />, "SQL Lab")} />
+      <Route path={`${prefix}/dashboards`} element={<DashboardsPage />} />
+      <Route path={`${prefix}/dashboards/:id`} element={lazyPage(<DashboardPage />, "dashboard")} />
+      <Route path={`${prefix}/charts`} element={<ChartsPage />} />
+      <Route path={`${prefix}/charts/new`} element={lazyPage(<ChartEditorPage />, "chart editor")} />
+      <Route path={`${prefix}/charts/:id`} element={lazyPage(<ChartEditorPage />, "chart editor")} />
+      <Route path={`${prefix}/datasets`} element={<DatasetsPage />} />
+      <Route path={`${prefix}/datasets/new`} element={<DatasetNewPage />} />
+      <Route path={`${prefix}/datasets/upload`} element={lazyPage(<UploadPage />, "upload")} />
+      <Route path={`${prefix}/datasets/:id`} element={lazyPage(<DatasetEditPage />, "dataset")} />
+      <Route path={`${prefix}/connections`} element={<ConnectionsPage />} />
+      <Route path={`${prefix}/connections/new`} element={<ConnectionFormPage />} />
+      <Route path={`${prefix}/connections/:id/edit`} element={<ConnectionFormPage />} />
+      <Route path={`${prefix}/connections/:id/browse`} element={<BrowsePage />} />
+    </>
+  );
+}
+
 function Shell({ user }: { user: CurrentUser }) {
-  // SQL Lab and the chart editor use the full window width and height.
   const path = useLocation().pathname;
-  const chartEditor = /^\/charts\/(new|\d+)/.test(path);
-  const fullScreen = path.startsWith("/sql-lab") || chartEditor;
-  const dashboard = /^\/dashboards\/\d+/.test(path);
+  const projectId = projectIdOf(path);
+  // SQL Lab and the chart editor use the full window width and height.
+  const inner = innerPath(path);
+  const chartEditor = /^\/charts\/(new|\d+)/.test(inner);
+  const fullScreen = inner.startsWith("/sql-lab") || chartEditor;
+  const dashboard = /^\/dashboards\/\d+/.test(inner);
 
   return (
     <TooltipProvider delayDuration={300}>
-      <div className="app-shell">
-        <Rail username={user.username} />
+      <ProjectProvider id={projectId}>
+        <div className="app-shell">
+          <Rail username={user.username} />
 
-        <main className={fullScreen ? `page-full${chartEditor ? " page-chart" : ""}` : dashboard ? "page-wide" : "page"}>
-          {/* Keyed by path: a crash on one page doesn't stick when navigating away, and each
-              page fades in and rises 12px when it opens. */}
-          <ErrorBoundary key={path}>
-            <PageTransition key={path} className="page-transition">
-              <Routes>
-                <Route path="/" element={<Navigate to="/dashboards" replace />} />
-                <Route path="/sql-lab" element={lazyPage(<SqlLabPage />, "SQL Lab")} />
-                <Route path="/dashboards" element={<DashboardsPage />} />
-                <Route path="/dashboards/:id" element={lazyPage(<DashboardPage />, "dashboard")} />
-                <Route path="/charts" element={<ChartsPage />} />
-                <Route path="/charts/new" element={lazyPage(<ChartEditorPage />, "chart editor")} />
-                <Route path="/charts/:id" element={lazyPage(<ChartEditorPage />, "chart editor")} />
-                <Route path="/datasets" element={<DatasetsPage />} />
-                <Route path="/datasets/new" element={<DatasetNewPage />} />
-                <Route path="/datasets/upload" element={lazyPage(<UploadPage />, "upload")} />
-                <Route path="/datasets/:id" element={lazyPage(<DatasetEditPage />, "dataset")} />
-                <Route path="/status" element={<StatusPage />} />
-                <Route path="/connections" element={<ConnectionsPage />} />
-                <Route path="/connections/new" element={<ConnectionFormPage />} />
-                <Route path="/connections/:id/edit" element={<ConnectionFormPage />} />
-                <Route path="/connections/:id/browse" element={<BrowsePage />} />
-                <Route path="*" element={<NotFoundPage />} />
-              </Routes>
-            </PageTransition>
-          </ErrorBoundary>
-        </main>
-      </div>
-      <CommandPaletteHost />
+          <main className={fullScreen ? `page-full${chartEditor ? " page-chart" : ""}` : dashboard ? "page-wide" : "page"}>
+            <Breadcrumbs />
+            {/* Keyed by path: a crash on one page doesn't stick when navigating away, and each
+                page fades in and rises 12px when it opens. */}
+            <ErrorBoundary key={path}>
+              <PageTransition key={path} className="page-transition">
+                <Routes>
+                  <Route path="/" element={<HomePage />} />
+                  <Route path="/projects/:projectId" element={<ProjectPage />} />
+                  {pageRoutes("/projects/:projectId")}
+                  {pageRoutes("")}
+                  <Route path="/status" element={<StatusPage />} />
+                  <Route path="*" element={<NotFoundPage />} />
+                </Routes>
+              </PageTransition>
+            </ErrorBoundary>
+          </main>
+        </div>
+        <CommandPaletteHost />
+      </ProjectProvider>
       <Toaster />
     </TooltipProvider>
   );

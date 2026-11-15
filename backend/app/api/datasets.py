@@ -15,6 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.connections import get_connection_or_404, saved_connection_details
+from app.api.projects import resolve_project
 from app.charts.usage import GROUP, TIME, QueryUsage, query_usage, used_by_message
 from app.datasets import (
     COUNT_METRIC,
@@ -133,8 +134,12 @@ def ensure_time_columns(db: Session, dataset_id: int) -> Dataset:
     return get_dataset_or_404(db, dataset_id)
 
 
-def _check_name_free(db: Session, name: str, dataset_id: int | None = None) -> None:
-    stmt = select(Dataset.id).where(func.lower(Dataset.name) == name.lower())
+def _check_name_free(
+    db: Session, name: str, project_id: int, dataset_id: int | None = None
+) -> None:
+    stmt = select(Dataset.id).where(
+        func.lower(Dataset.name) == name.lower(), Dataset.project_id == project_id
+    )
     if dataset_id is not None:
         stmt = stmt.where(Dataset.id != dataset_id)
     if db.scalar(stmt) is not None:
@@ -166,6 +171,7 @@ def _warnings(dataset: Dataset) -> list[str]:
 def _list_item_fields(dataset: Dataset) -> dict[str, object]:
     return {
         "id": dataset.id,
+        "project_id": dataset.project_id,
         "name": dataset.name,
         "description": dataset.description,
         "connection_id": dataset.connection_id,
@@ -339,6 +345,7 @@ def list_datasets(
     db: DbSession,
     q: Annotated[str | None, Query(max_length=200)] = None,
     connection_id: int | None = None,
+    project_id: int | None = None,
 ) -> list[DatasetListItem]:
     stmt = select(Dataset).options(
         selectinload(Dataset.connection),
@@ -358,6 +365,8 @@ def list_datasets(
         )
     if connection_id is not None:
         stmt = stmt.where(Dataset.connection_id == connection_id)
+    if project_id is not None:
+        stmt = stmt.where(Dataset.project_id == project_id)
     stmt = stmt.order_by(Dataset.updated_at.desc(), Dataset.id.desc())
     return [DatasetListItem(**_list_item_fields(d)) for d in db.scalars(stmt)]
 
@@ -371,8 +380,10 @@ def list_datasets(
 def create_dataset(payload: DatasetCreate, db: DbSession) -> DatasetOut:
     """Create a dataset and read its columns. Nothing is saved if that fails."""
     name = payload.name.strip()
-    _check_name_free(db, name)
     conn = get_connection_or_404(db, payload.connection_id)
+    project_id = resolve_project(db, payload.project_id, conn.project_id, "The connection")
+    _check_name_free(db, name, project_id)
+    db.commit()  # keep a default project created just now
     details = saved_connection_details(conn)
     source = DatasetSource(
         payload.kind,
@@ -391,6 +402,7 @@ def create_dataset(payload: DatasetCreate, db: DbSession) -> DatasetOut:
     stats = detect_number_stats(details, source, detected)
 
     dataset = Dataset(
+        project_id=project_id,
         name=name,
         description=_clean(payload.description),
         connection_id=payload.connection_id,
@@ -424,7 +436,7 @@ def dismiss_note(dataset_id: int, note_id: str, db: DbSession) -> Response:
 def update_dataset(dataset_id: int, payload: DatasetUpdate, db: DbSession) -> DatasetOut:
     dataset = get_dataset_or_404(db, dataset_id)
     name = payload.name.strip()
-    _check_name_free(db, name, dataset_id)
+    _check_name_free(db, name, dataset.project_id, dataset_id)
 
     if payload.sql is not None and dataset.kind != "sql":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Only SQL datasets have SQL")

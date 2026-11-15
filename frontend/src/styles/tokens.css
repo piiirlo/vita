@@ -1,112 +1,131 @@
 /*
- * "Observatory" design tokens. Every color in the app comes from here: components use these
- * variables (or the Tailwind utilities mapped to them in index.css), never literal colors.
- * Light on :root, dark on [data-theme="dark"] (set on <html> before first paint, see
- * index.html and src/theme/).
+ * Design tokens (Part 14: Ink, Paper, Clay; design/projects-prototype.html). Every color in
+ * the app comes from here: components use these variables (or the Tailwind utilities mapped
+ * to them in index.css), never literal colors. Light on :root, dark on [data-theme="dark"]
+ * (set on <html> before first paint, see index.html and src/theme/), and the .paper scope
+ * for cards made of Paper.
  */
 
+/* The three colors: Ink 60% (page, panels), Paper 30% (folders, tiles, chart cards), Clay
+   10% (primary actions, the top value in a chart). The theme blocks map them to roles. */
+:root {
+  --ink: #17211f;
+  --ink-2: #1e2a27;
+  --ink-3: #263430;
+  --paper: #eee6d3;
+  --paper-2: #dacfb6;
+  --paper-3: #f7f2e7;
+  --clay: #e4683a;
+  --sage: #6e7f77;
+  --on-paper: #17211f;
+  --on-paper-muted: #4a524e;
+}
+
+/* Light: derived from the same colors (Paper page, Ink text and hero cards). */
 :root {
   color-scheme: light;
 
   /* surfaces */
-  --bg: #f3f6f4;
-  --bg-dots: rgba(91, 110, 44, 0.16);
-  --surface: #ffffff;
-  --surface-raised: #ffffff;
-  --surface-sunken: #eaeee9;
-  /* dark cards: hero number, query stream, SQL editor */
-  --surface-ink: #1b2010;
-  --rail-bg: rgba(255, 255, 255, 0.7);
-  --capsule-bg: rgba(255, 255, 255, 0.85);
-  --overlay: rgba(27, 32, 16, 0.38);
+  --bg: #eee6d3;
+  --bg-dots: rgba(23, 33, 31, 0.07);
+  --surface: #f7f2e7;
+  --surface-raised: #fffcf5;
+  --surface-sunken: #e6dcc6;
+  /* dark cards: hero number, query stream */
+  --surface-ink: var(--ink);
+  --rail-bg: rgba(247, 242, 231, 0.82);
+  --capsule-bg: rgba(247, 242, 231, 0.9);
+  --overlay: rgba(23, 33, 31, 0.45);
+  /* the color of cards made of Paper (folders, dashboard tiles, chart cards: see .paper) */
+  --paper-card: var(--paper-3);
 
   /* text */
-  --text: #1b2010;
-  --text-muted: #5f6658;
-  --text-faint: #676d60; /* was #6f7568: 4.37:1 on --bg */
+  --text: #17211f;
+  --text-muted: #4a524e;
+  --text-faint: #565e5a;
   /* text on --surface-ink */
-  --ink-text: #f3f6f4;
-  --ink-muted: #b3bca0;
-  --ink-border: rgba(243, 246, 244, 0.12);
+  --ink-text: #f1ede3;
+  --ink-muted: #a3ada8;
+  --ink-border: rgba(238, 230, 211, 0.14);
   /* status colors on --surface-ink (big number: conditional color, change vs previous period) */
-  --ink-danger: #ff8f84;
-  --ink-success: #c3d47a;
-  --ink-warning: #ffc36b;
+  --ink-danger: #ff8fa6;
+  --ink-success: #9fd3a8;
+  --ink-warning: #f2c35b;
 
   /* lines */
-  --border: rgba(27, 32, 16, 0.1);
-  --border-strong: rgba(27, 32, 16, 0.16);
-  --border-hover: rgba(27, 32, 16, 0.35);
-  --hover: rgba(91, 110, 44, 0.08);
-  --selected: rgba(255, 90, 34, 0.08);
+  --border: rgba(23, 33, 31, 0.12);
+  --border-strong: rgba(23, 33, 31, 0.2);
+  --border-hover: rgba(23, 33, 31, 0.42);
+  --hover: rgba(23, 33, 31, 0.05);
+  --selected: rgba(228, 104, 58, 0.1);
 
-  /* the one loud color */
-  --accent: #ff5a22;
-  --accent-fg: #1b2010; /* text ON orange: always dark */
-  --accent-text: #c2410c; /* orange-ish text on light backgrounds */
-  --accent-soft: rgba(255, 90, 34, 0.12);
-  /* links: olive in light mode, soft orange in dark (from the mockups) */
-  --link: #5b6e2c;
-  --link-hover: #3e4b1d;
-  --glow: 0 0 0 1px rgba(255, 90, 34, 0.12), 0 24px 60px -30px rgba(255, 90, 34, 0.4);
-  --glow-border: rgba(255, 90, 34, 0.55);
-  /* #FF5A22 is only 2.86:1 on the light page; the deeper orange passes 3:1 */
+  /* Clay: the one loud color */
+  --accent: var(--clay);
+  --accent-fg: var(--ink); /* text ON Clay: always Ink */
+  --accent-text: #a3401a; /* Clay-ish text on Paper */
+  --accent-soft: rgba(228, 104, 58, 0.15);
+  --link: #a3401a;
+  --link-hover: #7a2f12;
+  --glow: 0 0 0 1px rgba(228, 104, 58, 0.14), 0 24px 60px -30px rgba(228, 104, 58, 0.4);
+  --glow-border: rgba(228, 104, 58, 0.55);
+  /* Clay is only ~2.6:1 on Paper; the deeper Clay passes 3:1 */
   --focus-ring: var(--accent-text);
 
   /* the active rail item / selected pill is inverted */
-  --inverse-bg: #1b2010;
-  --inverse-fg: #f3f6f4;
+  --inverse-bg: var(--ink);
+  --inverse-fg: #f1ede3;
 
-  /* status */
-  --success: #5b6e2c;
-  --success-bg: rgba(125, 141, 57, 0.1);
-  --success-border: rgba(91, 110, 44, 0.3);
-  --danger: #c62828;
-  --danger-bg: rgba(198, 40, 40, 0.07);
-  --danger-border: rgba(198, 40, 40, 0.3);
+  /* status: danger is a raspberry red, clearly not Clay (and always icon + "Error") */
+  --success: #2a6342;
+  --success-bg: rgba(46, 107, 71, 0.1);
+  --success-border: rgba(46, 107, 71, 0.32);
+  --danger: #a81d48;
+  --danger-bg: rgba(168, 29, 72, 0.08);
+  --danger-border: rgba(168, 29, 72, 0.32);
   /* error icon for plain-CSS alerts (same circle-alert as lucide), in --danger */
-  --icon-error: url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2718%27 height=%2718%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27%23C62828%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3E%3Ccircle cx=%2712%27 cy=%2712%27 r=%2710%27/%3E%3Cline x1=%2712%27 x2=%2712%27 y1=%278%27 y2=%2712%27/%3E%3Cline x1=%2712%27 x2=%2712.01%27 y1=%2716%27 y2=%2716%27/%3E%3C/svg%3E");
-  --warning-text: #8a4b0a;
-  --warning-bg: rgba(255, 176, 32, 0.12);
-  --warning-border: rgba(196, 120, 12, 0.35);
+  --icon-error: url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2718%27 height=%2718%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27%23A81D48%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3E%3Ccircle cx=%2712%27 cy=%2712%27 r=%2710%27/%3E%3Cline x1=%2712%27 x2=%2712%27 y1=%278%27 y2=%2712%27/%3E%3Cline x1=%2712%27 x2=%2712.01%27 y1=%2716%27 y2=%2716%27/%3E%3C/svg%3E");
+  --warning-text: #6f4c00;
+  --warning-bg: rgba(242, 195, 91, 0.2);
+  --warning-border: rgba(160, 112, 0, 0.38);
 
-  /* data series (charts, legends, share bars) */
-  /* 10 clearly different hues (checked by scripts/contrast.mjs: 3:1 on cards, CIEDE2000 >= 15
-     between any two). Orange is a touch deeper than --accent so it reaches 3:1 on white. */
-  --series-1: #f0541c; /* orange */
-  --series-2: #6e7d2e; /* olive */
-  --series-3: #3e4b1d; /* dark olive */
-  --series-4: #2f6fa0; /* slate blue */
-  --series-5: #9a7a12; /* ochre */
-  --series-6: #6a4f8f; /* dusk violet */
-  --series-7: #2a8c86; /* teal */
-  --series-8: #a8445e; /* berry */
-  --series-9: #7d8796; /* stone grey */
-  --series-10: #1c2a44; /* night blue */
-  /* pivot table heat scale (olive tint over the card; text stays --text) */
-  --heat-1: rgba(110, 125, 46, 0.08);
-  --heat-2: rgba(110, 125, 46, 0.16);
-  --heat-3: rgba(110, 125, 46, 0.26);
-  --heat-4: rgba(110, 125, 46, 0.38);
-  --heat-5: rgba(110, 125, 46, 0.52);
-  --chart-grid: rgba(27, 32, 16, 0.07);
+  /* data series: charts are always drawn on Paper (see .paper), in both themes. Ink, Clay,
+     Sage first (the prototype), then 7 more clearly different hues (scripts/contrast.mjs:
+     3:1 on Paper, CIEDE2000 >= 15 between any two, 18 for neighbors). */
+  --series-1: #17211f; /* ink */
+  --series-2: #cf5a2c; /* clay, deepened to 3:1 on Paper */
+  --series-3: #6e7f77; /* sage */
+  --series-4: #2f6f9a; /* lake blue */
+  --series-5: #8e6b0e; /* ochre */
+  --series-6: #6b4f8f; /* violet */
+  --series-7: #2a7f62; /* teal green */
+  --series-8: #a3405e; /* berry */
+  --series-9: #8b5a3c; /* umber */
+  --series-10: #4e6a2e; /* moss */
+  /* pivot table heat scale (a Sage tint over Paper; text stays --text) */
+  --heat-1: rgba(110, 127, 119, 0.1);
+  --heat-2: rgba(110, 127, 119, 0.2);
+  --heat-3: rgba(110, 127, 119, 0.32);
+  --heat-4: rgba(110, 127, 119, 0.46);
+  --heat-5: rgba(110, 127, 119, 0.6);
+  --chart-grid: rgba(23, 33, 31, 0.08);
 
-  /* code (SQL editor sits on --surface-ink in light mode too) */
-  --code-bg: var(--surface-ink);
-  --code-text: #e3e7e1;
-  --code-keyword: #ff7a47;
-  --code-function: #b5c566;
-  --code-string: #e8c99b;
-  --code-number: #ffb08a;
-  --code-comment: #8c977a;
-  --code-line-number: #848f6c; /* was #6f7a5c: 3.66:1 on the ink panel */
-  --code-line-active: rgba(243, 246, 244, 0.05);
-  --code-selection: rgba(255, 90, 34, 0.25);
+  /* code (the SQL editor sits on Ink in both themes) */
+  --code-bg: var(--ink);
+  --code-text: #f7f2e7;
+  --code-keyword: #f29a73;
+  --code-function: #a9c7b7;
+  --code-string: #e8d29b;
+  --code-number: #f7bc9f;
+  --code-comment: #8f9c96;
+  --code-line-number: #85928c;
+  --code-line-active: rgba(238, 230, 211, 0.05);
+  --code-selection: rgba(228, 104, 58, 0.28);
 
-  --shadow: rgba(27, 32, 16, 0.14);
+  --shadow: rgba(23, 33, 31, 0.18);
 
-  /* type */
-  --font-ui: "Space Grotesk Variable", "Space Grotesk", system-ui, sans-serif;
+  /* type: Bricolage Grotesque for titles, Instrument Sans for UI, JetBrains Mono for numbers */
+  --font-display: "Bricolage Grotesque Variable", "Bricolage Grotesque", system-ui, sans-serif;
+  --font-ui: "Instrument Sans Variable", "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, monospace;
 
   /* shape */
@@ -121,85 +140,98 @@
   --dur-slow: 250ms;
 }
 
+/* Dark: the prototype (Ink page and panels). */
 [data-theme="dark"] {
   color-scheme: dark;
 
-  --bg: #10130b;
-  --bg-dots: rgba(181, 197, 102, 0.13);
-  --surface: #171c0f;
-  --surface-raised: #1d2313;
-  --surface-sunken: #0b0d07;
-  --surface-ink: #1d2313;
-  --rail-bg: rgba(23, 28, 15, 0.75);
-  --capsule-bg: rgba(23, 28, 15, 0.85);
-  --overlay: rgba(0, 0, 0, 0.55);
+  --bg: var(--ink);
+  --bg-dots: rgba(238, 230, 211, 0.05);
+  --surface: var(--ink-2);
+  --surface-raised: var(--ink-3);
+  --surface-sunken: #121a18;
+  --surface-ink: var(--ink-3);
+  --rail-bg: rgba(23, 33, 31, 0.86);
+  --capsule-bg: rgba(30, 42, 39, 0.88);
+  --overlay: rgba(8, 12, 11, 0.72);
+  --paper-card: var(--paper);
 
-  --text: #f3f6f4;
-  --text-muted: #a3ab95;
-  --text-faint: #8e967f;
-  --ink-text: #f3f6f4;
-  --ink-muted: #b3bca0;
-  --ink-border: rgba(243, 246, 244, 0.1);
-  --ink-danger: #ff8f84;
-  --ink-success: #c3d47a;
-  --ink-warning: #ffc36b;
+  --text: #f1ede3;
+  --text-muted: #a3ada8;
+  --text-faint: #96a19c;
+  --ink-text: #f1ede3;
+  --ink-muted: #a3ada8;
+  --ink-border: rgba(238, 230, 211, 0.14);
 
-  --border: rgba(243, 246, 244, 0.08);
-  --border-strong: rgba(243, 246, 244, 0.16);
-  --border-hover: rgba(243, 246, 244, 0.35);
-  --hover: rgba(243, 246, 244, 0.06);
-  --selected: rgba(255, 90, 34, 0.12);
+  --border: rgba(238, 230, 211, 0.14);
+  --border-strong: rgba(238, 230, 211, 0.27);
+  --border-hover: rgba(238, 230, 211, 0.45);
+  --hover: rgba(238, 230, 211, 0.07);
+  --selected: rgba(228, 104, 58, 0.14);
 
-  --accent: #ff5a22;
-  --accent-fg: #10130b;
-  --accent-text: #ff8a5c;
-  --accent-soft: rgba(255, 90, 34, 0.16);
-  --link: #ff8a5c;
-  --link-hover: #ffb08f;
-  --glow: 0 0 0 1px rgba(255, 90, 34, 0.15), 0 24px 70px -30px rgba(255, 90, 34, 0.45);
-  --glow-border: rgba(255, 90, 34, 0.6);
+  --accent-text: #f29a73;
+  --accent-soft: rgba(228, 104, 58, 0.17);
+  --link: #f29a73;
+  --link-hover: #f7bc9f;
+  --glow: 0 0 0 1px rgba(228, 104, 58, 0.16), 0 24px 70px -30px rgba(228, 104, 58, 0.45);
+  --glow-border: rgba(228, 104, 58, 0.6);
   --focus-ring: var(--accent);
 
-  --inverse-bg: #f3f6f4;
-  --inverse-fg: #10130b;
+  --inverse-bg: var(--paper);
+  --inverse-fg: var(--ink);
 
-  --success: #b5c566;
-  --success-bg: rgba(181, 197, 102, 0.1);
-  --success-border: rgba(181, 197, 102, 0.3);
-  --danger: #ff6b5e;
-  --danger-bg: rgba(255, 107, 94, 0.1);
-  --danger-border: rgba(255, 107, 94, 0.35);
-  --icon-error: url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2718%27 height=%2718%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27%23FF6B5E%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3E%3Ccircle cx=%2712%27 cy=%2712%27 r=%2710%27/%3E%3Cline x1=%2712%27 x2=%2712%27 y1=%278%27 y2=%2712%27/%3E%3Cline x1=%2712%27 x2=%2712.01%27 y1=%2716%27 y2=%2716%27/%3E%3C/svg%3E");
-  --warning-text: #ffc36b;
-  --warning-bg: rgba(255, 176, 32, 0.1);
-  --warning-border: rgba(255, 176, 32, 0.3);
-
-  --series-1: #ff5a22; /* orange */
-  --series-2: #b5c566; /* olive */
-  --series-3: #6f8235; /* dark olive */
-  --series-4: #4f86c6; /* slate blue */
-  --series-5: #e8c04a; /* ochre */
-  --series-6: #c2b0ec; /* lavender */
-  --series-7: #3fa89f; /* teal */
-  --series-8: #e0789a; /* berry */
-  --series-9: #dcd3bf; /* sand */
-  --series-10: #8a6a4a; /* umber */
-  --heat-1: rgba(181, 197, 102, 0.08);
-  --heat-2: rgba(181, 197, 102, 0.15);
-  --heat-3: rgba(181, 197, 102, 0.23);
-  --heat-4: rgba(181, 197, 102, 0.32);
-  --heat-5: rgba(181, 197, 102, 0.42);
-  --chart-grid: rgba(243, 246, 244, 0.07);
+  --success: #8fc79a;
+  --success-bg: rgba(143, 199, 154, 0.1);
+  --success-border: rgba(143, 199, 154, 0.32);
+  --danger: #ff8fa6;
+  --danger-bg: rgba(255, 143, 166, 0.1);
+  --danger-border: rgba(255, 143, 166, 0.36);
+  --icon-error: url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2718%27 height=%2718%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27%23FF8FA6%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3E%3Ccircle cx=%2712%27 cy=%2712%27 r=%2710%27/%3E%3Cline x1=%2712%27 x2=%2712%27 y1=%278%27 y2=%2712%27/%3E%3Cline x1=%2712%27 x2=%2712.01%27 y1=%2716%27 y2=%2716%27/%3E%3C/svg%3E");
+  --warning-text: #f2c35b;
+  --warning-bg: rgba(242, 195, 91, 0.1);
+  --warning-border: rgba(242, 195, 91, 0.32);
 
   --code-bg: var(--surface-sunken);
-  --code-line-active: rgba(243, 246, 244, 0.04);
+  --code-line-active: rgba(238, 230, 211, 0.04);
 
-  --shadow: rgba(0, 0, 0, 0.5);
+  --shadow: rgba(0, 0, 0, 0.55);
 }
 
-/* Legacy names used by App.css until round 2 replaces it. */
+/* Cards made of Paper (folders, dashboard tiles, chart cards): Ink on Paper in both themes.
+   Everything inside reads these roles; charts too (ChartView and the ECharts theme read
+   the tokens from a .paper element: charts are always drawn on Paper). */
+.paper {
+  --surface: var(--paper-card);
+  --surface-raised: var(--paper-3);
+  --surface-sunken: var(--paper-2);
+  --text: var(--on-paper);
+  --text-muted: var(--on-paper-muted);
+  --text-faint: #535b57;
+  --border: rgba(23, 33, 31, 0.12);
+  --border-strong: rgba(23, 33, 31, 0.22);
+  --border-hover: rgba(23, 33, 31, 0.42);
+  --hover: rgba(23, 33, 31, 0.06);
+  --selected: rgba(228, 104, 58, 0.12);
+  --accent-text: #9c3c17;
+  --link: #9c3c17;
+  --link-hover: #74290d;
+  --focus-ring: #9c3c17;
+  --inverse-bg: var(--ink);
+  --inverse-fg: #f1ede3;
+  --success: #2a6342;
+  --success-bg: rgba(42, 99, 66, 0.1);
+  --danger: #a3173f;
+  --danger-bg: rgba(163, 23, 63, 0.08);
+  --warning-text: #664500;
+  --warning-bg: rgba(242, 195, 91, 0.22);
+  --chart-grid: rgba(23, 33, 31, 0.09);
+  --shadow: rgba(23, 33, 31, 0.2);
+  color: var(--text);
+}
+
+/* Legacy names used by App.css (repeated on .paper so they follow its roles). */
 :root,
-[data-theme="dark"] {
+[data-theme="dark"],
+.paper {
   --muted: var(--text-muted);
   --primary: var(--accent-text);
   --primary-hover: var(--accent-text);

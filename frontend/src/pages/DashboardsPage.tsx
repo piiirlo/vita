@@ -17,6 +17,7 @@ import EmptyState from "../components/EmptyState.tsx";
 import { Button } from "../components/ui/button.tsx";
 import { Input } from "../components/ui/input.tsx";
 import PageHeader from "../shell/PageHeader.tsx";
+import { projectPath } from "../projects/paths.ts";
 
 export default function DashboardsPage() {
   usePageTitle("Dashboards");
@@ -49,7 +50,7 @@ export default function DashboardsPage() {
 
   async function create(name: string, description: string) {
     const created = await createDashboard({ name, description: description || null, layout: [], refresh_interval: "off" });
-    void navigate(`/dashboards/${created.id}?edit=1`);
+    void navigate(projectPath(`/dashboards/${created.id}?edit=1`));
   }
 
   async function duplicate(d: DashboardListItem) {
@@ -116,7 +117,7 @@ export default function DashboardsPage() {
           {dashboards.map((d, index) => (
             <article key={d.id} className="list-card card-hover stagger-item" data-enter={Math.min(index, 12)}>
               <span className="eyebrow">Space</span>
-              <Link to={`/dashboards/${d.id}`} className="list-card-title">
+              <Link to={projectPath(`/dashboards/${d.id}`)} className="list-card-title">
                 {d.name}
               </Link>
               {d.description && <p className="list-card-desc">{d.description}</p>}

@@ -202,6 +202,9 @@ class ChartIn(BaseModel):
     description: str | None = None
     viz_type: VizType
     params: ChartParams  # params.query.dataset_id is the chart's dataset
+    # None = the dataset's project. A chart only uses datasets of its own project; it
+    # never moves to another project (ignored on update).
+    project_id: int | None = None
 
 
 class ChartDashboardRef(BaseModel):
@@ -211,6 +214,7 @@ class ChartDashboardRef(BaseModel):
 
 class ChartOut(BaseModel):
     id: int
+    project_id: int
     name: str
     description: str | None
     dataset_id: int

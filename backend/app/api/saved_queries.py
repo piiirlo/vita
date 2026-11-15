@@ -5,6 +5,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.connections import get_connection_or_404
+from app.api.projects import resolve_project, same_project
 from app.db import get_db
 from app.models import SavedQuery
 from app.schemas.saved_queries import SavedQueryIn, SavedQueryOut
@@ -22,8 +23,13 @@ def _get_or_404(db: Session, query_id: int) -> SavedQuery:
 
 
 def _apply(db: Session, saved: SavedQuery, payload: SavedQueryIn) -> None:
+    owner = None
     if payload.connection_id is not None:
-        get_connection_or_404(db, payload.connection_id)
+        owner = get_connection_or_404(db, payload.connection_id).project_id
+    if saved.project_id is None:
+        saved.project_id = resolve_project(db, payload.project_id, owner, "The connection")
+    else:
+        same_project(owner, saved.project_id, "The connection")
     saved.name = payload.name.strip()
     saved.description = (payload.description or "").strip() or None
     saved.connection_id = payload.connection_id
@@ -35,6 +41,7 @@ def list_saved_queries(
     db: DbSession,
     q: Annotated[str | None, Query(max_length=200)] = None,
     connection_id: int | None = None,
+    project_id: int | None = None,
 ) -> list[SavedQuery]:
     stmt = select(SavedQuery).options(selectinload(SavedQuery.connection))
     if q and q.strip():
@@ -48,6 +55,8 @@ def list_saved_queries(
         )
     if connection_id is not None:
         stmt = stmt.where(SavedQuery.connection_id == connection_id)
+    if project_id is not None:
+        stmt = stmt.where(SavedQuery.project_id == project_id)
     stmt = stmt.order_by(SavedQuery.updated_at.desc(), SavedQuery.id.desc())
     return list(db.scalars(stmt))
 

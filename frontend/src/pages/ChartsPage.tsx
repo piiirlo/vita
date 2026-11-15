@@ -11,6 +11,7 @@ import EmptyState from "../components/EmptyState.tsx";
 import { Button } from "../components/ui/button.tsx";
 import { Input } from "../components/ui/input.tsx";
 import PageHeader from "../shell/PageHeader.tsx";
+import { projectPath } from "../projects/paths.ts";
 
 
 export default function ChartsPage() {
@@ -61,7 +62,7 @@ export default function ChartsPage() {
                 onChange={(e) => setSearch(e.target.value)}
               />
             <Button asChild variant="primary">
-              <Link to="/charts/new">New chart</Link>
+              <Link to={projectPath("/charts/new")}>New chart</Link>
             </Button>
           </>
         }
@@ -79,7 +80,7 @@ export default function ChartsPage() {
             title="No charts yet"
             action={
               <Button asChild variant="primary">
-                <Link to="/charts/new">New chart</Link>
+                <Link to={projectPath("/charts/new")}>New chart</Link>
               </Button>
             }
           >
@@ -102,7 +103,7 @@ export default function ChartsPage() {
             {charts.map((c, index) => (
               <tr key={c.id} className="stagger-item" data-enter={Math.min(index, 12)}>
                 <td>
-                  <Link to={`/charts/${c.id}`} className="row-title">
+                  <Link to={projectPath(`/charts/${c.id}`)} className="row-title">
                     {c.name}
                   </Link>
                   {c.description && <div className="muted small">{c.description}</div>}
@@ -111,11 +112,11 @@ export default function ChartsPage() {
                   <span className="tag">{vizLabel(c.viz_type)}</span>
                 </td>
                 <td>
-                  <Link to={`/datasets/${c.dataset_id}`}>{c.dataset_name}</Link>
+                  <Link to={projectPath(`/datasets/${c.dataset_id}`)}>{c.dataset_name}</Link>
                 </td>
                 <td title={new Date(c.updated_at).toLocaleString()}>{relativeTime(c.updated_at)}</td>
                 <td className="actions">
-                  <Link to={`/charts/${c.id}`} className="button">
+                  <Link to={projectPath(`/charts/${c.id}`)} className="button">
                     Edit
                   </Link>
                   <button className="danger" onClick={() => setToDelete(c)}>

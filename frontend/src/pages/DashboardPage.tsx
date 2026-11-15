@@ -40,6 +40,8 @@ import { errorText, relativeTime } from "../datasets/format.ts";
 import { usePageTitle } from "../components/usePageTitle.ts";
 import { toast } from "../components/toast.ts";
 import EmptyState from "../components/EmptyState.tsx";
+import { projectPath } from "../projects/paths.ts";
+import { useCrumbTitle } from "../projects/projectContext.ts";
 
 type Draft = { name: string; layout: DashboardTile[] };
 
@@ -57,6 +59,7 @@ export default function DashboardPage() {
   const [lastUpdated, setLastUpdated] = useState(() => Date.now());
 
   usePageTitle(dashboard?.name ?? "Dashboard");
+  useCrumbTitle(dashboard?.name);
   const narrow = useMediaQuery(NARROW_QUERY);
   const pageVisible = usePageVisible();
   const now = useNow(15_000);
@@ -200,7 +203,7 @@ export default function DashboardPage() {
     return (
       <div className="page-pad">
         <p className="alert alert-error">{loadError}</p>
-        <Link to="/dashboards">Back to dashboards</Link>
+        <Link to={projectPath("/dashboards")}>Back to dashboards</Link>
       </div>
     );
   }
@@ -225,10 +228,11 @@ export default function DashboardPage() {
   const tiles = draft?.layout ?? dashboard.layout;
   const charts = { ...dashboard.charts, ...addedCharts };
 
-  // Big numbers are the ink "hero" cards; every tile enters with a short stagger.
+  // Tiles are Paper cards, big numbers the ink "hero" cards; every tile enters with a short
+  // stagger.
   const tileClass = (tile: DashboardTile) =>
     `dash-tile dash-tile-${tile.type} tile-enter${
-      tile.type === "chart" && charts[tile.chart_id]?.viz_type === "big_number" ? " dash-tile-hero" : ""
+      tile.type === "chart" && charts[tile.chart_id]?.viz_type === "big_number" ? " dash-tile-hero" : " paper"
     }`;
 
   const renderTile = (tile: DashboardTile) =>
@@ -253,7 +257,7 @@ export default function DashboardPage() {
       <header className="dash-header">
         <div className="dash-heading">
           <span className="eyebrow">
-            <Link to="/dashboards" className="crumb">
+            <Link to={projectPath("/dashboards")} className="crumb">
               Dashboards
             </Link>{" "}
             / {editing ? "Editing" : "Space"}

@@ -5,10 +5,11 @@ from typing import Annotated
 from cryptography.fernet import InvalidToken
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import Connection as SAConnection
-from sqlalchemy import Inspector, inspect, select
+from sqlalchemy import Inspector, inspect, or_, select
 from sqlalchemy.exc import IntegrityError, NoSuchTableError
 from sqlalchemy.orm import Session
 
+from app.api.projects import resolve_project
 from app.browsing import read_columns
 from app.crypto import encrypt_password
 from app.db import get_db
@@ -113,14 +114,19 @@ def _inspector(details: ConnectionDetails) -> Iterator[Inspector]:
 
 
 @router.get("", response_model=list[ConnectionOut])
-def list_connections(db: DbSession) -> list[Connection]:
-    return list(db.scalars(select(Connection).order_by(Connection.name)))
+def list_connections(db: DbSession, project_id: int | None = None) -> list[Connection]:
+    """With `project_id`: that project's connections and the built-in ones."""
+    stmt = select(Connection)
+    if project_id is not None:
+        stmt = stmt.where(or_(Connection.project_id == project_id, Connection.builtin.is_not(None)))
+    return list(db.scalars(stmt.order_by(Connection.name)))
 
 
 @router.post("", response_model=ConnectionOut, status_code=status.HTTP_201_CREATED)
 def create_connection(payload: ConnectionCreate, db: DbSession) -> Connection:
     conn = Connection(
-        **payload.model_dump(exclude={"password"}),
+        **payload.model_dump(exclude={"password", "project_id"}),
+        project_id=resolve_project(db, payload.project_id),
         # Empty password = no password (NULL), not an encrypted empty string.
         password_encrypted=encrypt_password(payload.password) if payload.password else None,
     )

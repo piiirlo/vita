@@ -10,11 +10,22 @@ body {
   font-family: var(--font-ui);
   color: var(--text);
   background-color: var(--bg);
-  /* the faint "observatory" dot grid */
-  background-image: radial-gradient(var(--bg-dots) 1px, transparent 1px);
-  background-size: 28px 28px;
+  font-size: 15px;
+  line-height: 1.5;
+  /* a faint Clay glow in the top left corner (the prototype) */
+  background-image: radial-gradient(900px 500px at 8% -10%, var(--accent-soft), transparent 60%);
+  background-repeat: no-repeat;
   background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Titles use the display face (Bricolage Grotesque). */
+h1,
+h2,
+h3,
+.font-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.015em;
 }
 
 /* Numbers, SQL, type labels and small uppercase labels use the mono face. */

@@ -12,6 +12,7 @@ import {
 import { usePageTitle } from "../components/usePageTitle.ts";
 import PageHeader from "../shell/PageHeader.tsx";
 import { Button } from "../components/ui/button.tsx";
+import { projectPath } from "../projects/paths.ts";
 
 // The diagram (and dagre) load only when someone opens it.
 const SchemaDiagram = lazy(() => import("../browse/SchemaDiagram.tsx"));
@@ -91,7 +92,7 @@ export default function BrowsePage() {
       <PageHeader
         eyebrow={
           <>
-            <Link to="/connections" className="crumb">
+            <Link to={projectPath("/connections")} className="crumb">
               Connections
             </Link>{" "}
             / Browse
@@ -100,7 +101,7 @@ export default function BrowsePage() {
         title={connection?.data?.name ?? "…"}
         actions={
           <Button asChild>
-            <Link to={`/connections/${id}/edit`}>Edit connection</Link>
+            <Link to={projectPath(`/connections/${id}/edit`)}>Edit connection</Link>
           </Button>
         }
       />

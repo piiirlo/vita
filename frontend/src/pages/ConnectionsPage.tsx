@@ -16,6 +16,7 @@ import ConfirmDialog from "../components/ConfirmDialog.tsx";
 import { toast } from "../components/toast.ts";
 import { Button } from "../components/ui/button.tsx";
 import PageHeader from "../shell/PageHeader.tsx";
+import { projectPath } from "../projects/paths.ts";
 
 export default function ConnectionsPage() {
   usePageTitle("Connections");
@@ -75,7 +76,7 @@ export default function ConnectionsPage() {
         title="Connections"
         actions={
           <Button asChild variant="primary">
-            <Link to="/connections/new">Add connection</Link>
+            <Link to={projectPath("/connections/new")}>Add connection</Link>
           </Button>
         }
       />
@@ -86,7 +87,7 @@ export default function ConnectionsPage() {
           {inUse && (
             <>
               {" "}
-              <Link to="/datasets">Go to datasets</Link>
+              <Link to={projectPath("/datasets")}>Go to datasets</Link>
             </>
           )}
         </p>
@@ -98,7 +99,7 @@ export default function ConnectionsPage() {
           icon={Network}
           title="No connections yet"
           action={
-            <Link to="/connections/new" className="button primary">
+            <Link to={projectPath("/connections/new")} className="button primary">
               Add connection
             </Link>
           }
@@ -125,7 +126,7 @@ export default function ConnectionsPage() {
               return (
                 <tr key={conn.id} className="stagger-item" data-enter={Math.min(index, 12)}>
                   <td>
-                    <Link to={`/connections/${conn.id}/browse`} className="row-title">{conn.name}</Link>
+                    <Link to={projectPath(`/connections/${conn.id}/browse`)} className="row-title">{conn.name}</Link>
                     {conn.builtin === "uploads" && (
                       <span className="tag tag-builtin" title="Managed by Vita: the tables of your uploaded files (read-only)">
                         Uploads
@@ -145,12 +146,12 @@ export default function ConnectionsPage() {
                     <button onClick={() => void handleTest(conn)} disabled={testing === conn.id}>
                       {testing === conn.id ? "Testing…" : "Test"}
                     </button>
-                    <Link to={`/connections/${conn.id}/browse`} className="button">
+                    <Link to={projectPath(`/connections/${conn.id}/browse`)} className="button">
                       Browse
                     </Link>
                     {!conn.builtin && (
                       <>
-                        <Link to={`/connections/${conn.id}/edit`} className="button">
+                        <Link to={projectPath(`/connections/${conn.id}/edit`)} className="button">
                           Edit
                         </Link>
                         <button className="danger" onClick={() => setToDelete(conn)}>

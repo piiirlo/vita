@@ -15,6 +15,8 @@ export type ExtraOptions = Record<string, unknown>;
 /** A saved connection as returned by the API. Never contains the password. */
 export type Connection = {
   id: number;
+  /** The project it belongs to (null: the built-in Uploads connection). */
+  project_id?: number | null;
   name: string;
   db_type: DbType;
   host: string;
@@ -147,14 +149,71 @@ export async function fetchHealth(): Promise<HealthResponse> {
   return body;
 }
 
+// ---------- current project ----------
+
+let currentProject: number | null = null;
+
+/** The project the pages are in (ProjectProvider sets it from the URL; null outside one,
+ * e.g. the old top-level pages). Lists then ask only for its items, and new items go in it. */
+export function setCurrentProject(id: number | null) {
+  currentProject = id;
+}
+export const getCurrentProject = () => currentProject;
+
+/** Adds `project_id=` to a list URL when in a project. */
+function withProject(path: string): string {
+  if (currentProject === null) return path;
+  return `${path}${path.includes("?") ? "&" : "?"}project_id=${currentProject}`;
+}
+
+/** Adds `project_id` to a create payload when in a project. */
+function inProject<T extends object>(input: T): T & { project_id?: number } {
+  return currentProject === null ? input : { ...input, project_id: currentProject };
+}
+
+// ---------- projects ----------
+
+export type ProjectSource = "database" | "file";
+
+export type Project = {
+  id: number;
+  name: string;
+  description: string | null;
+  dashboard_count: number;
+  dataset_count: number;
+  chart_count: number;
+  connection_count: number;
+  saved_query_count: number;
+  /** Where its data comes from: a connected database, an uploaded file, or both. */
+  sources: ProjectSource[];
+  /** The most recently changed dashboards (at most 3). */
+  dashboards: { id: number; name: string; chart_count: number }[];
+  created_at: string;
+  updated_at: string;
+};
+
+export const listProjects = () => request<Project[]>("/api/projects");
+
+export const getProject = (id: number) => request<Project>(`/api/projects/${id}`);
+
+export const createProject = (name: string) =>
+  request<Project>("/api/projects", { method: "POST", body: json({ name }) });
+
+export const renameProject = (id: number, name: string) =>
+  request<Project>(`/api/projects/${id}`, { method: "PUT", body: json({ name }) });
+
+/** Deletes everything in the project; `confirm` must be its name. */
+export const deleteProject = (id: number, confirm: string) =>
+  request<void>(`/api/projects/${id}?confirm=${encodeURIComponent(confirm)}`, { method: "DELETE" });
+
 // ---------- connections ----------
 
-export const listConnections = () => request<Connection[]>("/api/connections");
+export const listConnections = () => request<Connection[]>(withProject("/api/connections"));
 
 export const getConnection = (id: number) => request<Connection>(`/api/connections/${id}`);
 
 export const createConnection = (input: ConnectionInput) =>
-  request<Connection>("/api/connections", { method: "POST", body: json(input) });
+  request<Connection>("/api/connections", { method: "POST", body: json(inProject(input)) });
 
 /** An empty password keeps the saved one. */
 export const updateConnection = (id: number, input: ConnectionInput) =>
@@ -248,6 +307,8 @@ export function listQueryHistory(params: { connectionId?: number; limit?: number
 
 export type SavedQuery = {
   id: number;
+  /** The project it belongs to (null: the built-in Uploads connection). */
+  project_id?: number | null;
   name: string;
   description: string | null;
   connection_id: number | null;
@@ -266,13 +327,13 @@ export type SavedQueryInput = {
 
 export function listSavedQueries(q?: string) {
   const search = q?.trim() ? `?q=${encodeURIComponent(q.trim())}` : "";
-  return request<SavedQuery[]>(`/api/saved-queries${search}`);
+  return request<SavedQuery[]>(withProject(`/api/saved-queries${search}`));
 }
 
 export const getSavedQuery = (id: number) => request<SavedQuery>(`/api/saved-queries/${id}`);
 
 export const createSavedQuery = (input: SavedQueryInput) =>
-  request<SavedQuery>("/api/saved-queries", { method: "POST", body: json(input) });
+  request<SavedQuery>("/api/saved-queries", { method: "POST", body: json(inProject(input)) });
 
 export const updateSavedQuery = (id: number, input: SavedQueryInput) =>
   request<SavedQuery>(`/api/saved-queries/${id}`, { method: "PUT", body: json(input) });
@@ -370,6 +431,8 @@ export type MetricInput = {
 
 export type DatasetListItem = {
   id: number;
+  /** The project it belongs to (null: the built-in Uploads connection). */
+  project_id?: number | null;
   name: string;
   description: string | null;
   connection_id: number;
@@ -443,7 +506,7 @@ export function listDatasets(q?: string) {
   const params = new URLSearchParams();
   if (q) params.set("q", q);
   const query = params.toString();
-  return request<DatasetListItem[]>(`/api/datasets${query ? `?${query}` : ""}`);
+  return request<DatasetListItem[]>(withProject(`/api/datasets${query ? `?${query}` : ""}`));
 }
 
 export const getDataset = (id: number) => request<Dataset>(`/api/datasets/${id}`);
@@ -453,7 +516,7 @@ export const dismissDatasetNote = (datasetId: number, noteId: string) =>
 
 /** Throws ApiError; when the SQL or table fails, `detail` is a QueryErrorDetail. */
 export const createDataset = (input: DatasetCreateInput) =>
-  request<Dataset>("/api/datasets", { method: "POST", body: json(input) });
+  request<Dataset>("/api/datasets", { method: "POST", body: json(inProject(input)) });
 
 export const updateDataset = (id: number, input: DatasetUpdateInput) =>
   request<Dataset>(`/api/datasets/${id}`, { method: "PUT", body: json(input) });
@@ -601,6 +664,8 @@ export type ChartParams = { query: ChartQuery; display: Record<string, unknown> 
 
 export type SavedChart = {
   id: number;
+  /** The project it belongs to (null: the built-in Uploads connection). */
+  project_id?: number | null;
   name: string;
   description: string | null;
   dataset_id: number;
@@ -637,13 +702,13 @@ export function listCharts(q?: string) {
   const params = new URLSearchParams();
   if (q) params.set("q", q);
   const query = params.toString();
-  return request<SavedChart[]>(`/api/charts${query ? `?${query}` : ""}`);
+  return request<SavedChart[]>(withProject(`/api/charts${query ? `?${query}` : ""}`));
 }
 
 export const getChart = (id: number) => request<SavedChart>(`/api/charts/${id}`);
 
 export const createChart = (input: ChartInput) =>
-  request<SavedChart>("/api/charts", { method: "POST", body: json(input) });
+  request<SavedChart>("/api/charts", { method: "POST", body: json(inProject(input)) });
 
 export const updateChart = (id: number, input: ChartInput) =>
   request<SavedChart>(`/api/charts/${id}`, { method: "PUT", body: json(input) });
@@ -663,6 +728,8 @@ export type DashboardChartInfo = { id: number; name: string; viz_type: VizType }
 
 export type DashboardListItem = {
   id: number;
+  /** The project it belongs to (null: the built-in Uploads connection). */
+  project_id?: number | null;
   name: string;
   description: string | null;
   chart_count: number;
@@ -691,13 +758,13 @@ export function listDashboards(q?: string) {
   const params = new URLSearchParams();
   if (q) params.set("q", q);
   const query = params.toString();
-  return request<DashboardListItem[]>(`/api/dashboards${query ? `?${query}` : ""}`);
+  return request<DashboardListItem[]>(withProject(`/api/dashboards${query ? `?${query}` : ""}`));
 }
 
 export const getDashboard = (id: number) => request<Dashboard>(`/api/dashboards/${id}`);
 
 export const createDashboard = (input: DashboardInput) =>
-  request<Dashboard>("/api/dashboards", { method: "POST", body: json(input) });
+  request<Dashboard>("/api/dashboards", { method: "POST", body: json(inProject(input)) });
 
 export const updateDashboard = (id: number, input: DashboardInput) =>
   request<Dashboard>(`/api/dashboards/${id}`, { method: "PUT", body: json(input) });
@@ -839,7 +906,7 @@ export function uploadFile(
 ): Promise<UploadPreview> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", target ? `/api/uploads?dataset_id=${target.datasetId}&mode=${target.mode}` : "/api/uploads");
+    xhr.open("POST", target ? `/api/uploads?dataset_id=${target.datasetId}&mode=${target.mode}` : withProject("/api/uploads"));
     xhr.setRequestHeader("X-File-Name", encodeURIComponent(file.name));
     xhr.setRequestHeader("Content-Type", "application/octet-stream");
     xhr.upload.onprogress = (e) => e.lengthComputable && onProgress?.(e.loaded / e.total);

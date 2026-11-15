@@ -3,7 +3,7 @@ import { colorRules, ruleFor, ruleText } from "./colorRules.ts";
 import { lazy, Suspense, useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import type { ChartDataResult, Dataset } from "../api.ts";
 import { CountUp } from "../components/motion.tsx";
-import { cssVar } from "../lib/cssVar.ts";
+import { paperVar as cssVar } from "../lib/cssVar.ts";
 import { useTheme } from "../theme/theme.ts";
 import { changeRatio, hasTimeAxis, metricFormatter, type Coverage } from "./display.ts";
 import EChart from "./EChart.tsx";

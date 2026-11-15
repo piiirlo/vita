@@ -122,6 +122,7 @@ def run_import(upload_id: int, payload: ImportIn, session_factory: sessionmaker[
             target_table=target.table_name if target else None,
         )
         token = upload.token
+        project_id = upload.project_id
 
     def update(**fields: Any) -> None:
         with session_factory() as db:
@@ -135,7 +136,9 @@ def run_import(upload_id: int, payload: ImportIn, session_factory: sessionmaker[
     try:
         table, kept, rows = _load(job, payload, update)
         if job.mode == "create":
-            dataset_id = _create_dataset(session_factory, payload.dataset_name.strip(), table, kept)
+            dataset_id = _create_dataset(
+                session_factory, payload.dataset_name.strip(), table, kept, project_id
+            )
         else:
             assert job.target_dataset_id is not None
             dataset_id = _refresh_dataset(session_factory, job.target_dataset_id)
@@ -289,7 +292,11 @@ def _uploads_connection(db: Session) -> Connection:
 
 
 def _create_dataset(
-    session_factory: sessionmaker[Session], name: str, table: str, kept: list[ColumnOption]
+    session_factory: sessionmaker[Session],
+    name: str,
+    table: str,
+    kept: list[ColumnOption],
+    project_id: int,
 ) -> int:
     """A table dataset on the new table: columns synced, the first date column as time."""
     try:
@@ -300,6 +307,7 @@ def _create_dataset(
             detected = detect_columns(details, source)
             stats = detect_number_stats(details, source, detected)
             dataset = Dataset(
+                project_id=project_id,
                 name=name,
                 connection_id=conn.id,
                 kind="table",

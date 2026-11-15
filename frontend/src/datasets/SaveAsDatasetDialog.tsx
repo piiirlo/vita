@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import { ApiError, createDataset, isQueryErrorDetail, type Dataset } from "../api.ts";
 import { errorText } from "./format.ts";
 import { Modal, ModalActions } from "../components/ui/dialog.tsx";
+import { projectPath } from "../projects/paths.ts";
 
 type Props = {
   connectionId: number;
@@ -61,7 +62,7 @@ export default function SaveAsDatasetDialog({ connectionId, sql, initialName, on
             <button type="button" onClick={onClose}>
               Close
             </button>
-            <Link to={`/datasets/${created.id}`} className="button primary">
+            <Link to={projectPath(`/datasets/${created.id}`)} className="button primary">
               Open dataset
             </Link>
           </ModalActions>

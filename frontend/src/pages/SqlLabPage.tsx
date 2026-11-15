@@ -40,6 +40,7 @@ import { usePageTitle } from "../components/usePageTitle.ts";
 import { toast } from "../components/toast.ts";
 import EmptyState from "../components/EmptyState.tsx";
 import ConfirmDialog from "../components/ConfirmDialog.tsx";
+import { projectPath } from "../projects/paths.ts";
 
 setupMonaco();
 
@@ -408,7 +409,7 @@ export default function SqlLabPage() {
         <EmptyState
           title="SQL Lab needs a database connection first"
           action={
-            <Link to="/connections/new" className="button primary">
+            <Link to={projectPath("/connections/new")} className="button primary">
               Add a connection
             </Link>
           }

@@ -15,6 +15,8 @@ import TestResultMessage from "../components/TestResultMessage.tsx";
 import { usePageTitle } from "../components/usePageTitle.ts";
 import { toast } from "../components/toast.ts";
 import PageHeader from "../shell/PageHeader.tsx";
+import { projectPath } from "../projects/paths.ts";
+import { useCrumbTitle } from "../projects/projectContext.ts";
 
 /** Form values are kept as strings; converted when submitting. */
 type FormState = {
@@ -101,6 +103,7 @@ export default function ConnectionFormPage() {
   const isEdit = editId !== null;
   const navigate = useNavigate();
   usePageTitle(isEdit ? "Edit connection" : "New connection");
+  useCrumbTitle(isEdit ? "Edit connection" : "New connection");
 
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [savedHasPassword, setSavedHasPassword] = useState(false);
@@ -191,7 +194,7 @@ export default function ConnectionFormPage() {
       if (editId !== null) await updateConnection(editId, input);
       else await createConnection(input);
       toast.success(`Saved "${input.name}".`);
-      void navigate("/connections");
+      void navigate(projectPath("/connections"));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setBusy(null);
@@ -204,7 +207,7 @@ export default function ConnectionFormPage() {
     <div className="narrow">
       <PageHeader
         eyebrow={
-          <Link to="/connections" className="crumb">
+          <Link to={projectPath("/connections")} className="crumb">
             Connections
           </Link>
         }
@@ -348,7 +351,7 @@ export default function ConnectionFormPage() {
             {busy === "test" ? "Testing…" : "Test connection"}
           </button>
           <span className="spacer" />
-          <Link to="/connections" className="button">
+          <Link to={projectPath("/connections")} className="button">
             Cancel
           </Link>
           <button type="submit" className="primary" disabled={busy !== null}>

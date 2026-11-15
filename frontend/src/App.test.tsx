@@ -35,6 +35,7 @@ function mockBackend({ loggedIn = false } = {}) {
       if (url === "/api/auth/me") return json({ username: "admin" });
       if (url === "/api/charts") return json([]);
       if (url === "/api/dashboards") return json([]);
+      if (url === "/api/projects") return json([]);
       return json({ detail: `unexpected ${method} ${url}` }, 404);
     }),
   );
@@ -97,11 +98,11 @@ describe("login", () => {
     expect(screen.getByLabelText("Password")).toHaveValue("");
   });
 
-  it("goes to the dashboards when logged in and opening /", async () => {
+  it("opens the projects when logged in and opening / (Part 14: home = projects)", async () => {
     mockBackend({ loggedIn: true });
     const router = renderApp("/");
-    expect(await screen.findByRole("heading", { name: "Dashboards" })).toBeInTheDocument();
-    expect(router.state.location.pathname).toBe("/dashboards");
+    expect(await screen.findByRole("heading", { name: "Your projects" })).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/");
   });
 
   it("returns to the login page when the session ends, and logs out from the user menu", async () => {

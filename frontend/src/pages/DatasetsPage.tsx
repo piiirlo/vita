@@ -10,6 +10,7 @@ import { Button } from "../components/ui/button.tsx";
 import { Input } from "../components/ui/input.tsx";
 import PageHeader from "../shell/PageHeader.tsx";
 import { ACCEPTED_FILES, setPendingFile, useFileDrop } from "../uploads/fileDrop.ts";
+import { projectPath } from "../projects/paths.ts";
 
 export default function DatasetsPage() {
   usePageTitle("Datasets");
@@ -23,7 +24,7 @@ export default function DatasetsPage() {
   // A file picked here or dropped anywhere on the page goes to the upload page.
   const openUpload = (file: File) => {
     setPendingFile(file);
-    void navigate("/datasets/upload");
+    void navigate(projectPath("/datasets/upload"));
   };
   const dragging = useFileDrop(openUpload);
 
@@ -63,7 +64,7 @@ export default function DatasetsPage() {
               <FileUp size={16} aria-hidden /> Upload file
             </Button>
             <Button asChild variant="primary">
-              <Link to="/datasets/new">New dataset</Link>
+              <Link to={projectPath("/datasets/new")}>New dataset</Link>
             </Button>
           </>
         }
@@ -103,11 +104,11 @@ export default function DatasetsPage() {
             title="No datasets yet"
             action={
               <Button asChild variant="primary">
-                <Link to="/datasets/new">New dataset</Link>
+                <Link to={projectPath("/datasets/new")}>New dataset</Link>
               </Button>
             }
           >
-            Pick a table, save a query from <Link to="/sql-lab">SQL Lab</Link>, or drop a CSV or Excel file here.
+            Pick a table, save a query from <Link to={projectPath("/sql-lab")}>SQL Lab</Link>, or drop a CSV or Excel file here.
           </EmptyState>
         ))}
 
@@ -127,7 +128,7 @@ export default function DatasetsPage() {
             {datasets.map((d, index) => (
               <tr key={d.id} className="stagger-item" data-enter={Math.min(index, 12)}>
                 <td>
-                  <Link to={`/datasets/${d.id}`} className="row-title">
+                  <Link to={projectPath(`/datasets/${d.id}`)} className="row-title">
                     {d.name}
                   </Link>
                   {d.description && <div className="muted small">{d.description}</div>}
@@ -144,7 +145,7 @@ export default function DatasetsPage() {
                 <td className="num">{d.column_count}</td>
                 <td title={new Date(d.updated_at).toLocaleString()}>{relativeTime(d.updated_at)}</td>
                 <td className="actions">
-                  <Link to={`/datasets/${d.id}`} className="button">
+                  <Link to={projectPath(`/datasets/${d.id}`)} className="button">
                     Edit
                   </Link>
                   <button className="danger" onClick={() => setToDelete(d)}>

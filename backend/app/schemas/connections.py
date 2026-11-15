@@ -36,6 +36,8 @@ class PasswordChange(BaseModel):
 
 class ConnectionCreate(ConnectionFields):
     name: str = Field(min_length=1, max_length=100)
+    # None = the default project (API clients from before projects).
+    project_id: int | None = None
     # Empty or missing means the connection has no password.
     password: str | None = None
 
@@ -56,6 +58,8 @@ class ConnectionOut(ConnectionFields):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    # None = the built-in Uploads connection, shared by every project.
+    project_id: int | None = None
     name: str
     has_password: bool
     # "uploads": the built-in Uploads connection (read-only in the UI, can't be edited).

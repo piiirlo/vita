@@ -17,13 +17,42 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db import Base
 
 
+class Project(Base):
+    """A project (shown as a folder): owns its connections, uploads, datasets, saved
+    queries, charts and dashboards. Everything from before projects is in "My workspace"."""
+
+    __tablename__ = "projects"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+def _project_fk(nullable: bool = False) -> Mapped[Any]:
+    return mapped_column(
+        ForeignKey("projects.id", ondelete="RESTRICT"), index=True, nullable=nullable
+    )
+
+
 class Connection(Base):
     """A saved connection to a user's database (not the Vita metadata DB)."""
 
     __tablename__ = "connections"
+    __table_args__ = (
+        UniqueConstraint("project_id", "name", name="uq_connections_project_name"),
+        CheckConstraint(
+            "builtin IS NOT NULL OR project_id IS NOT NULL", name="ck_connections_project"
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(100), unique=True)
+    # NULL only for the built-in Uploads connection (shared by every project).
+    project_id: Mapped[int | None] = _project_fk(nullable=True)
+    name: Mapped[str] = mapped_column(String(100))
     db_type: Mapped[str] = mapped_column(String(20))  # "postgresql" | "mysql"
     host: Mapped[str] = mapped_column(String(255))
     port: Mapped[int]
@@ -75,6 +104,7 @@ class SavedQuery(Base):
     __tablename__ = "saved_queries"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = _project_fk()
     name: Mapped[str] = mapped_column(String(200))
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     # SET NULL keeps the query when its connection is deleted.
@@ -107,10 +137,12 @@ class Dataset(Base):
             " OR (kind = 'sql' AND sql IS NOT NULL AND schema IS NULL AND table_name IS NULL)",
             name="ck_datasets_kind_fields",
         ),
+        UniqueConstraint("project_id", "name", name="uq_datasets_project_name"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(200), unique=True)
+    project_id: Mapped[int] = _project_fk()
+    name: Mapped[str] = mapped_column(String(200))
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     # RESTRICT: a connection can't be deleted while datasets use it.
     connection_id: Mapped[int] = mapped_column(
@@ -213,9 +245,11 @@ class Chart(Base):
     """A saved chart: a dataset, a chart type, and params = {query, display}."""
 
     __tablename__ = "charts"
+    __table_args__ = (UniqueConstraint("project_id", "name", name="uq_charts_project_name"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(200), unique=True)
+    project_id: Mapped[int] = _project_fk()
+    name: Mapped[str] = mapped_column(String(200))
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     # RESTRICT: a dataset can't be deleted while charts use it.
     dataset_id: Mapped[int] = mapped_column(
@@ -239,9 +273,11 @@ class Dashboard(Base):
     """A dashboard: a grid layout of chart and text tiles (see app/schemas/dashboards.py)."""
 
     __tablename__ = "dashboards"
+    __table_args__ = (UniqueConstraint("project_id", "name", name="uq_dashboards_project_name"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(200), unique=True)
+    project_id: Mapped[int] = _project_fk()
+    name: Mapped[str] = mapped_column(String(200))
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     # List of tiles; the source of truth for what the dashboard shows.
     layout: Mapped[list[dict[str, Any]]] = mapped_column(JSON)
@@ -338,6 +374,7 @@ class Upload(Base):
     __tablename__ = "uploads"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = _project_fk()
     token: Mapped[str] = mapped_column(String(64), unique=True)
     file_name: Mapped[str] = mapped_column(String(255))
     file_size: Mapped[int] = mapped_column(BigInteger)

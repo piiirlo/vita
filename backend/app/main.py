@@ -11,6 +11,7 @@ from app.api import (
     dashboards,
     datasets,
     health,
+    projects,
     query,
     saved_queries,
     uploads,
@@ -41,6 +42,9 @@ app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 
 # Everything else requires a logged-in user.
 login_required = [Depends(auth.require_user)]
+app.include_router(
+    projects.router, prefix="/api/projects", tags=["projects"], dependencies=login_required
+)
 app.include_router(
     connections.router, prefix="/api/connections", tags=["connections"], dependencies=login_required
 )

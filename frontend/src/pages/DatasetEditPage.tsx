@@ -23,6 +23,8 @@ import { toast } from "../components/toast.ts";
 import PageHeader from "../shell/PageHeader.tsx";
 import { Button } from "../components/ui/button.tsx";
 import { Notice } from "../components/ui/alert.tsx";
+import { projectPath } from "../projects/paths.ts";
+import { useCrumbTitle } from "../projects/projectContext.ts";
 
 type TabName = "columns" | "metrics" | "preview";
 
@@ -115,6 +117,7 @@ export default function DatasetEditPage() {
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   usePageTitle(dataset?.name ?? "Dataset");
+  useCrumbTitle(dataset?.name);
   const [previewKey, setPreviewKey] = useState(0);
 
   const loaded = useCallback((data: Dataset) => {
@@ -156,7 +159,7 @@ export default function DatasetEditPage() {
     return (
       <div>
         <p className="alert alert-error">{loadError}</p>
-        <Link to="/datasets">Back to datasets</Link>
+        <Link to={projectPath("/datasets")}>Back to datasets</Link>
       </div>
     );
   }
@@ -244,7 +247,7 @@ export default function DatasetEditPage() {
       <PageHeader
         eyebrow={
           <>
-            <Link to="/datasets" className="crumb">
+            <Link to={projectPath("/datasets")} className="crumb">
               Datasets
             </Link>{" "}
             / {dataset.kind === "table" ? "Table" : "SQL"}
@@ -256,11 +259,11 @@ export default function DatasetEditPage() {
             <Button variant="danger" onClick={() => setConfirmDelete(true)}>
               Delete
             </Button>
-            <Button onClick={() => void navigate("/sql-lab", { state: openDatasetInSqlLab(dataset) })}>
+            <Button onClick={() => void navigate(projectPath("/sql-lab"), { state: openDatasetInSqlLab(dataset) })}>
               Open in SQL Lab
             </Button>
             <Button asChild variant="primary">
-              <Link to={`/charts/new?dataset=${dataset.id}`}>Create chart</Link>
+              <Link to={projectPath(`/charts/new?dataset=${dataset.id}`)}>Create chart</Link>
             </Button>
           </>
         }
@@ -381,7 +384,7 @@ export default function DatasetEditPage() {
       {tab === "preview" && <PreviewTab datasetId={dataset.id} title={dataset.name} reloadKey={previewKey} />}
 
       {confirmDelete && (
-        <DeleteDatasetDialog dataset={dataset} onDeleted={() => void navigate("/datasets")} onCancel={() => setConfirmDelete(false)} />
+        <DeleteDatasetDialog dataset={dataset} onDeleted={() => void navigate(projectPath("/datasets"))} onCancel={() => setConfirmDelete(false)} />
       )}
     </div>
   );

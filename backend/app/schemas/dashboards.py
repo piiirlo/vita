@@ -57,6 +57,9 @@ class DashboardIn(BaseModel):
     description: str | None = None
     layout: list[Tile] = Field(default_factory=list, max_length=MAX_TILES)
     refresh_interval: RefreshInterval = "off"
+    # None = the default project. Its tiles show only charts of its own project (ignored on
+    # update: a dashboard never moves to another project).
+    project_id: int | None = None
     # Cache lifetime for every tile, in seconds (0 = off); None = each chart's own.
     cache_ttl: int | None = Field(default=None, ge=0, le=MAX_CACHE_TTL)
 
@@ -78,6 +81,7 @@ class DashboardChartInfo(BaseModel):
 
 class DashboardListItem(BaseModel):
     id: int
+    project_id: int
     name: str
     description: str | None
     chart_count: int
@@ -87,6 +91,7 @@ class DashboardListItem(BaseModel):
 
 class DashboardOut(BaseModel):
     id: int
+    project_id: int
     name: str
     description: str | None
     layout: list[Tile]

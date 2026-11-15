@@ -3,6 +3,7 @@ import {
   ChartLine,
   CodeXml,
   Database,
+  Folder,
   KeyRound,
   LayoutDashboard,
   LogOut,
@@ -32,8 +33,12 @@ import {
 import { Tooltip } from "../components/ui/tooltip.tsx";
 import { useMediaQuery } from "../dashboards/hooks.ts";
 import { cn } from "../lib/cn.ts";
+import { innerPath, sectionOf } from "../projects/paths.ts";
+import { useProject } from "../projects/projectContext.ts";
 import { useTheme, type ThemePreference } from "../theme/theme.ts";
 
+// Pages of a project (relative to /projects/:id; "" = the project page with its dashboards),
+// and the same pages at the old top-level URLs (every project's items).
 const NAV = [
   { to: "/dashboards", label: "Dashboards", icon: LayoutDashboard },
   { to: "/sql-lab", label: "SQL Lab", icon: CodeXml },
@@ -53,13 +58,29 @@ const itemClass = (active: boolean) =>
       : "border-transparent text-muted hover:border-border-hover hover:bg-hover hover:text-text",
   );
 
-/** The slim icon rail (left); a bottom bar on phones. */
+/** The slim icon rail (left); a bottom bar on phones. Inside a project its links stay in the
+ * project; on the home page there is only "Projects". */
 export default function Rail({ username }: { username: string }) {
   const phone = useMediaQuery(PHONE_QUERY);
   const side = phone ? "top" : "right";
   const theme = useTheme();
   const ThemeIcon = theme.resolved === "dark" ? Sun : Moon;
   const { pathname } = useLocation();
+  const project = useProject();
+  const home = pathname === "/";
+  const base = project ? `/projects/${project.id}` : "";
+  const inner = project ? innerPath(pathname) : pathname;
+  const nav = home
+    ? []
+    : NAV.map((item) => ({
+        ...item,
+        // In a project, "Dashboards" is the project page (its dashboards and data).
+        href: project && item.to === "/dashboards" ? base : base + item.to,
+        active:
+          project && item.to === "/dashboards"
+            ? ["home", "dashboards"].includes(sectionOf(inner))
+            : inner === item.to || inner.startsWith(item.to + "/"),
+      }));
 
   return (
     <nav
@@ -72,7 +93,7 @@ export default function Rail({ username }: { username: string }) {
     >
       <Tooltip content="Vita" side={side}>
         <Link
-          to="/dashboards"
+          to="/"
           aria-label="Vita home"
           className="hidden h-10 w-10 items-center justify-center rounded-control bg-accent text-xl font-bold text-accent-fg no-underline hover:no-underline md:mb-[18px] md:flex"
         >
@@ -80,15 +101,20 @@ export default function Rail({ username }: { username: string }) {
         </Link>
       </Tooltip>
 
-      {NAV.map(({ to, label, icon: Icon }) => {
-        // className must be a string here: the tooltip trigger (asChild) merges class names
-        // as strings, so NavLink's function form would break.
-        const active = pathname === to || pathname.startsWith(to + "/");
+      <Tooltip content="Projects" side={side}>
+        <NavLink to="/" end aria-label="Projects" className={itemClass(home)}>
+          <Folder size={20} strokeWidth={1.7} aria-hidden />
+        </NavLink>
+      </Tooltip>
+      {!home && <span className="rail-divider" aria-hidden />}
+
+      {nav.map(({ to, href, label, icon: Icon, active }) => {
+        // className must be a string: the tooltip trigger (asChild) merges class names as strings.
         return (
           <Tooltip key={to} content={label} side={side}>
-            <NavLink to={to} aria-label={label} className={itemClass(active)}>
+            <Link to={href} aria-label={label} className={itemClass(active)} aria-current={active ? "page" : undefined}>
               <Icon size={20} strokeWidth={1.7} aria-hidden />
-            </NavLink>
+            </Link>
           </Tooltip>
         );
       })}

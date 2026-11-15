@@ -2,7 +2,7 @@
  * the CSS variables stay the single source of colors. Charts animate in (lines draw, bars
  * grow) unless the user prefers reduced motion. */
 import * as echarts from "echarts/core";
-import { cssVar } from "../lib/cssVar.ts";
+import { paperVar as cssVar } from "../lib/cssVar.ts";
 import type { ResolvedTheme } from "../theme/theme.ts";
 
 export const SERIES_COUNT = 10;

@@ -10,6 +10,7 @@ import { CancelledError, type QueuedTask } from "./queue.ts";
 import { DashboardContext, loadTileData, type TileData } from "./tileData.ts";
 import TileMenu from "./TileMenu.tsx";
 import { Modal, ModalActions } from "../components/ui/dialog.tsx";
+import { projectPath } from "../projects/paths.ts";
 
 type Props = {
   tile: ChartTileSpec;
@@ -108,7 +109,7 @@ export default function ChartTile({ tile, info, editing, onRemove }: Props) {
                 disabled: !data,
                 onSelect: () => data && downloadCsv(csvFilename(name), toCsv(data.main.columns.map((c) => c.name), data.main.rows)),
               },
-              { label: "Edit chart", to: `/charts/${tile.chart_id}?dashboard=${dashboardId}` },
+              { label: "Edit chart", to: projectPath(`/charts/${tile.chart_id}?dashboard=${dashboardId}`) },
             ]}
           />
         )}
