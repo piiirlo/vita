@@ -2364,9 +2364,6 @@ button[aria-pressed="true"] {
   flex-shrink: 0;
 }
 
-.dash-tile-hero .chart-notice {
-  color: var(--ink-muted);
-}
 
 /* the chart's own title (Customize > Title), above the preview */
 .chart-preview-title {
@@ -2410,9 +2407,6 @@ button[aria-pressed="true"] {
   margin: 6px auto 0;
 }
 
-.dash-tile-hero .empty-range-icon {
-  color: var(--ink-muted);
-}
 
 .chart-error {
   margin: 0 0 10px;
@@ -2837,32 +2831,6 @@ button[aria-pressed="true"] {
   font-size: clamp(24px, 26cqmin, 140px);
 }
 
-.dash-tile-hero .big-number-value.is-danger,
-.dash-tile-hero .big-number-value.is-danger .big-number-frac,
-.dash-tile-hero .big-number-status.is-danger,
-.dash-tile-hero .big-number-change.is-down {
-  color: var(--ink-danger);
-}
-
-.dash-tile-hero .big-number-value.is-success,
-.dash-tile-hero .big-number-value.is-success .big-number-frac,
-.dash-tile-hero .big-number-status.is-success,
-.dash-tile-hero .big-number-change.is-up {
-  color: var(--ink-success);
-}
-
-.dash-tile-hero .big-number-value.is-warning,
-.dash-tile-hero .big-number-value.is-warning .big-number-frac,
-.dash-tile-hero .big-number-status.is-warning {
-  color: var(--ink-warning);
-}
-
-.dash-tile-hero .big-number-change,
-.dash-tile-hero .big-number-change-label,
-.dash-tile-hero .big-number-trend-dates {
-  color: var(--ink-muted);
-}
-
 .dash-tile-body .chart-empty {
   font-size: 14px;
 }
@@ -2872,31 +2840,10 @@ button[aria-pressed="true"] {
   padding: 10px 12px;
 }
 
-/* the ink "hero" card for big numbers */
+/* Big number tiles: a Paper card like every other tile (Part 14), number in Ink, decimals
+ * in Clay (.paper .big-number-frac); the hero layout (padding, rule, meta line) stays. */
 .dash-tile-hero {
-  background: var(--surface-ink);
-  border-color: var(--surface-ink);
-  color: var(--ink-text);
   overflow: hidden;
-}
-
-[data-theme="dark"] .dash-tile-hero {
-  border-color: var(--border);
-}
-
-/* Same title style as every other tile; only the color follows the ink card. */
-.dash-tile-hero .dash-tile-title {
-  color: var(--ink-text);
-}
-
-.dash-tile-hero .dash-tile-header button.icon {
-  color: var(--ink-muted);
-}
-
-.dash-tile-hero .dash-tile-header button.icon:hover {
-  color: var(--ink-text);
-  border-color: var(--ink-border);
-  background: transparent;
 }
 
 .dash-tile-hero .dash-tile-body {
@@ -2905,26 +2852,14 @@ button[aria-pressed="true"] {
 
 /* (Position: the same classes as in the editor; centered by default.) */
 
-.dash-tile-hero .big-number-value {
-  color: var(--ink-text);
-}
-
-.dash-tile-hero .big-number-frac {
-  color: var(--accent);
-}
-
-.dash-tile-hero .big-number-subtitle,
-.dash-tile-hero .chart-empty {
-  color: var(--ink-muted);
+/* Clay decimals (the prototype), deepened a little to reach 3:1 on Paper. */
+.paper .big-number-frac {
+  color: var(--clay-on-paper);
 }
 
 /* No data: a muted "-" (never 0) and the reason under it. */
 .big-number-value.is-empty {
   color: var(--text-muted);
-}
-
-.dash-tile-hero .big-number-value.is-empty {
-  color: var(--ink-muted);
 }
 
 .big-number-empty .chart-empty {
@@ -2935,13 +2870,13 @@ button[aria-pressed="true"] {
   position: relative;
   padding-top: 12px;
   font-size: 11px;
-  color: var(--ink-muted);
+  color: var(--text-muted);
 }
 
 .hero-meta .scan-line {
   top: 0;
   bottom: auto;
-  background: var(--ink-border);
+  background: var(--border-strong);
 }
 
 /* Hero rule: a plain hairline. When a value arrives, a short accent sweep runs across it once
@@ -2962,7 +2897,7 @@ button[aria-pressed="true"] {
   left: 0;
   right: 0;
   height: 1px;
-  background: var(--ink-border);
+  background: var(--border-strong);
 }
 
 .hero-sweep {
@@ -2996,14 +2931,6 @@ button[aria-pressed="true"] {
   }
 }
 
-.dash-tile-hero .dash-drag-handle {
-  background: transparent;
-  border-color: var(--ink-border);
-}
-
-.dash-tile-hero .dash-tile-error {
-  background: var(--surface);
-}
 
 /* skeletons shaped like the chart */
 .tile-skeleton {
@@ -3033,10 +2960,6 @@ button[aria-pressed="true"] {
   max-height: 64px;
   width: 70%;
   border-radius: 12px;
-}
-
-.dash-tile-hero .skeleton {
-  background: var(--ink-border);
 }
 
 .dash-tile-error {
@@ -4316,10 +4239,6 @@ button.tile-menu-item {
   color: var(--text-muted);
 }
 
-.dash-tile-hero .gauge-target {
-  color: var(--ink-muted);
-}
-
 /* pivot table */
 .pivot {
   flex: 1;
@@ -4470,10 +4389,6 @@ button.tile-menu-item {
   margin: 6px 0 0;
   font-size: 12px;
   color: var(--text-muted);
-}
-
-.dash-tile-hero .pivot-footnote {
-  color: var(--ink-muted);
 }
 
 /* ---------- Part 12: file uploads ---------- */

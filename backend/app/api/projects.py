@@ -3,6 +3,7 @@ charts and dashboards. Other routers use `resolve_project` to place new items an
 references inside one project (a chart only uses its project's datasets, a dashboard only
 its project's charts)."""
 
+import json
 import logging
 from typing import Annotated, Literal
 
@@ -22,7 +23,7 @@ from app.models import (
     SavedQuery,
     Upload,
 )
-from app.schemas.projects import ProjectDashboard, ProjectIn, ProjectOut
+from app.schemas.projects import ProjectDashboard, ProjectIn, ProjectOut, SetupDraftIn
 from app.uploads.datasets import is_upload_dataset
 from app.uploads.importer import drop_table as drop_upload_table
 
@@ -121,6 +122,7 @@ def _out(db: Session, project: Project) -> ProjectOut:
             )
             for d in dashboards
         ],
+        setup_draft=project.setup_draft,
         created_at=project.created_at,
         updated_at=project.updated_at,
     )
@@ -182,6 +184,30 @@ def update_project(project_id: int, payload: ProjectIn, db: DbSession) -> Projec
     _commit(db, name)
     db.refresh(project)
     return _out(db, project)
+
+
+# Way more than a draft needs (it holds choices and a query, not data).
+MAX_DRAFT_BYTES = 200_000
+
+
+@router.put("/{project_id}/setup-draft", response_model=ProjectOut)
+def save_setup_draft(project_id: int, payload: SetupDraftIn, db: DbSession) -> ProjectOut:
+    """Keep the unfinished setup wizard, to resume it later."""
+    project = project_or_404(db, project_id)
+    if len(json.dumps(payload.draft)) > MAX_DRAFT_BYTES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "The setup draft is too big.")
+    project.setup_draft = payload.draft
+    db.commit()
+    db.refresh(project)
+    return _out(db, project)
+
+
+@router.delete("/{project_id}/setup-draft", status_code=status.HTTP_204_NO_CONTENT)
+def clear_setup_draft(project_id: int, db: DbSession) -> Response:
+    project = project_or_404(db, project_id)
+    project.setup_draft = None
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -54,11 +54,19 @@ const rowsText = (n: number) => `${n.toLocaleString("en-US")} ${n === 1 ? "row" 
 /** File -> preview -> dataset (or new data for an uploaded dataset: Replace file / Append
  * file). Everything is detected; "Adjust how the file is read" holds the details and opens by
  * itself when something looks wrong. */
-export default function UploadPage() {
+export default function UploadPage({
+  embedded = false,
+  onCreated,
+}: {
+  /** Shown inside the setup wizard: no page header; a new dataset calls onCreated. */
+  embedded?: boolean;
+  onCreated?(datasetId: number): void;
+} = {}) {
   const [params] = useSearchParams();
-  const target = useMemo(() => targetOf(params), [params]);
-  usePageTitle(target ? (target.mode === "replace" ? "Replace file" : "Append file") : "Upload file");
-  useCrumbTitle(target ? (target.mode === "replace" ? "Replace file" : "Append file") : "Upload file");
+  const target = useMemo(() => (embedded ? null : targetOf(params)), [params, embedded]);
+  const pageName = target ? (target.mode === "replace" ? "Replace file" : "Append file") : "Upload file";
+  usePageTitle(embedded ? undefined : pageName);
+  useCrumbTitle(embedded ? undefined : pageName);
   const navigate = useNavigate();
   const [targetDataset, setTargetDataset] = useState<Dataset | null>(null);
   const [confirmReplace, setConfirmReplace] = useState(false);
@@ -158,6 +166,7 @@ export default function UploadPage() {
       }
       if (job.status === "done" && job.dataset_id !== null) {
         if (job.bad_values.length) {
+          // (also in the wizard: the report says which values were left empty)
           setPhase({ kind: "report", job });
         } else {
           const rows = rowsText(job.row_count ?? 0);
@@ -168,7 +177,8 @@ export default function UploadPage() {
                 ? `Appended ${rows} to "${preview.dataset_name}".`
                 : `Created the dataset "${datasetName.trim()}" (${rows}).`,
           );
-          void navigate(projectPath(`/datasets/${job.dataset_id}`));
+          if (onCreated) onCreated(job.dataset_id);
+          else void navigate(projectPath(`/datasets/${job.dataset_id}`));
         }
       } else {
         setPhase({ kind: "failed", message: job.error ?? "The import failed." });
@@ -195,7 +205,19 @@ export default function UploadPage() {
   const fileColumns = targetDataset?.columns.filter((c) => !c.is_missing).map((c) => c.name) ?? [];
 
   return (
-    <div className="upload-page">
+    <div className={`upload-page${embedded ? " upload-embedded" : ""}`}>
+      {embedded ? (
+        phase.kind === "preview" && (
+          <div className="upload-embedded-actions">
+            <strong className="mono small">{preview?.file_name}</strong>
+            <span className="spacer" />
+            <Button onClick={startOver}>Choose another file</Button>
+            <Button variant="primary" disabled={!canCreate} onClick={() => void create()}>
+              {actionLabel}
+            </Button>
+          </div>
+        )
+      ) : (
       <PageHeader
         eyebrow={
           <>
@@ -236,6 +258,7 @@ export default function UploadPage() {
           )
         }
       />
+      )}
 
       <input
         ref={inputRef}
@@ -318,9 +341,15 @@ export default function UploadPage() {
               </li>
             ))}
           </ul>
-          <Button variant="primary" onClick={() => void navigate(projectPath(`/datasets/${phase.job.dataset_id}`))}>
-            Open the dataset
-          </Button>
+          {onCreated ? (
+            <Button variant="primary" onClick={() => onCreated(phase.job.dataset_id!)}>
+              Continue
+            </Button>
+          ) : (
+            <Button variant="primary" onClick={() => void navigate(projectPath(`/datasets/${phase.job.dataset_id}`))}>
+              Open the dataset
+            </Button>
+          )}
         </section>
       )}
 

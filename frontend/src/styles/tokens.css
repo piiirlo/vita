@@ -16,6 +16,8 @@
   --paper-2: #dacfb6;
   --paper-3: #f7f2e7;
   --clay: #e4683a;
+  /* Clay deepened a little to reach 3:1 on Paper: big number decimals, the Clay chart series */
+  --clay-on-paper: #cf5a2c;
   --sage: #6e7f77;
   --on-paper: #17211f;
   --on-paper-muted: #4a524e;
@@ -31,7 +33,7 @@
   --surface: #f7f2e7;
   --surface-raised: #fffcf5;
   --surface-sunken: #e6dcc6;
-  /* dark cards: hero number, query stream */
+  /* Ink panels in the light theme (SQL editor frame) */
   --surface-ink: var(--ink);
   --rail-bg: rgba(247, 242, 231, 0.82);
   --capsule-bg: rgba(247, 242, 231, 0.9);
@@ -47,10 +49,6 @@
   --ink-text: #f1ede3;
   --ink-muted: #a3ada8;
   --ink-border: rgba(238, 230, 211, 0.14);
-  /* status colors on --surface-ink (big number: conditional color, change vs previous period) */
-  --ink-danger: #ff8fa6;
-  --ink-success: #9fd3a8;
-  --ink-warning: #f2c35b;
 
   /* lines */
   --border: rgba(23, 33, 31, 0.12);
@@ -92,7 +90,7 @@
      Sage first (the prototype), then 7 more clearly different hues (scripts/contrast.mjs:
      3:1 on Paper, CIEDE2000 >= 15 between any two, 18 for neighbors). */
   --series-1: #17211f; /* ink */
-  --series-2: #cf5a2c; /* clay, deepened to 3:1 on Paper */
+  --series-2: var(--clay-on-paper); /* clay */
   --series-3: #6e7f77; /* sage */
   --series-4: #2f6f9a; /* lake blue */
   --series-5: #8e6b0e; /* ochre */

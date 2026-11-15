@@ -311,3 +311,21 @@ def test_migration_moves_everything_into_my_workspace(
                 assert new["project_id"] == expected, table
         links = db.execute(text("SELECT dashboard_id, chart_id FROM dashboard_charts")).all()
         assert [tuple(r) for r in links] == [(1, 1)]
+
+
+def test_the_setup_draft_is_kept_until_cleared(client: TestClient) -> None:
+    project = new_project(client, "Sales")
+    assert client.get(f"/api/projects/{project}").json()["setup_draft"] is None
+    draft = {"step": "query", "source": "db", "connection_id": 3, "sql": "SELECT 1"}
+    saved = client.put(f"/api/projects/{project}/setup-draft", json={"draft": draft})
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["setup_draft"] == draft
+    assert client.get("/api/projects").json()[0]["setup_draft"] == draft
+    too_big = {"sql": "x" * 300_000}
+    assert (
+        client.put(f"/api/projects/{project}/setup-draft", json={"draft": too_big}).status_code
+        == 400
+    )
+    assert client.delete(f"/api/projects/{project}/setup-draft").status_code == 204
+    assert client.get(f"/api/projects/{project}").json()["setup_draft"] is None
+    assert client.put("/api/projects/999/setup-draft", json={"draft": {}}).status_code == 404

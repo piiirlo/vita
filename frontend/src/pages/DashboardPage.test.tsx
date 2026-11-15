@@ -244,11 +244,13 @@ describe("Dashboard page", () => {
     const bar = screen.getByTestId("tile-c3");
     expect(within(hero).getByText("Total revenue")).toHaveClass("dash-tile-title");
     expect(bar.querySelector(".dash-tile-title")).not.toBeNull();
-    // No hero-only typography: the hero rule may only change the color.
+    // No hero-only typography (Part 14: no hero-only colors either: big numbers are Paper
+    // cards like every other tile).
     const appCss = await readSource("App.css");
     const heroTitleRule = /\.dash-tile-hero \.dash-tile-title \{([^}]*)\}/.exec(appCss)?.[1] ?? "";
     expect(heroTitleRule).not.toMatch(/text-transform|font-family|letter-spacing|font-size/);
-    expect(heroTitleRule).toMatch(/color:/);
+    expect(hero.closest(".dash-tile")).toHaveClass("paper");
+    expect(bar.closest(".dash-tile")).toHaveClass("paper");
     // Loaded: a one-time decorative sweep, not the endless "loading" line.
     expect(within(hero).getByTestId("hero-sweep")).toBeInTheDocument();
     expect(within(hero).queryByTestId("hero-loading-line")).not.toBeInTheDocument();

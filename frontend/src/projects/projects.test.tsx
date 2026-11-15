@@ -7,6 +7,7 @@ import { createChart, listCharts, setCurrentProject, type Project } from "../api
 import App from "../App.tsx";
 import { AuthProvider } from "../auth/AuthContext.tsx";
 import { innerPath, projectIdOf, projectPath, sectionOf } from "./paths.ts";
+import { readSource } from "../test/readSource.ts";
 import { plural, sourceLabel } from "./text.ts";
 
 function json(body: unknown, status = 200): Response {
@@ -91,16 +92,42 @@ describe("home: projects as folders", () => {
     renderApp("/");
     expect(await screen.findByRole("heading", { name: "Your projects" })).toBeInTheDocument();
     expect(await screen.findByText("2 projects · 2 dashboards")).toBeInTheDocument();
-    const sales = screen.getByRole("button", { name: "Sales 2024, 2 dashboards" });
+    const sales = screen.getByRole("button", { name: "Sales 2024, 2 dashboards" }).closest(".folder") as HTMLElement;
     expect(within(sales).getByText("Overview")).toBeInTheDocument(); // a paper per dashboard
     expect(within(sales).getByText("Database")).toBeInTheDocument();
-    const ops = screen.getByRole("button", { name: "Ops, 0 dashboards" });
+    const ops = screen.getByRole("button", { name: "Ops, 0 dashboards" }).closest(".folder") as HTMLElement;
     expect(within(ops).getByText("No dashboards yet")).toBeInTheDocument();
     expect(within(ops).getByText("No data yet")).toBeInTheDocument();
     // The rail has only "Projects" here.
     const rail = screen.getByRole("navigation", { name: "Main" });
     expect(within(rail).getByRole("link", { name: "Projects" })).toHaveAttribute("aria-current", "page");
     expect(within(rail).queryByRole("link", { name: "Charts" })).not.toBeInTheDocument();
+  });
+
+  it("opens a dashboard from its paper, and the project from anywhere else on the folder", async () => {
+    mockBackend();
+    const router = renderApp("/");
+    const paper = await screen.findByRole("link", { name: "Channels deep dive, a dashboard in Sales 2024" });
+    expect(paper).toHaveAttribute("href", "/projects/1/dashboards/6");
+    expect(paper).toHaveClass("folder-paper"); // focusable: keyboard users get the same front state
+    fireEvent.click(screen.getByRole("button", { name: "Sales 2024, 2 dashboards" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/projects/1"));
+  });
+
+  it("fans the papers out on hover and brings one paper to the front (workflow-folders reference)", async () => {
+    const css = await readSource("styles/projects.css");
+    // The papers take the pointer (the layer around them doesn't).
+    expect(/\.folder-paper \{[^}]*pointer-events: auto/.test(css)).toBe(true);
+    expect(/\.folder-paper \{[^}]*transform 0\.4s var\(--fan-ease\)/.test(css)).toBe(true);
+    expect(css).toContain("--fan-ease: cubic-bezier(0.2, 0.8, 0.2, 1)");
+    // Folder hovered or focused: sideways, up 16px, turned more.
+    const fanned = /\.folder:hover \.folder-paper,\n\.folder:focus-within \.folder-paper \{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(fanned).toContain("translateX(calc(var(--x) * 1.35)) translateY(-16px) rotate(calc(var(--r) * 1.5))");
+    // One paper hovered or focused: on top, straight, up 28px, 1.04, a stronger shadow.
+    const front = /\.folder \.folder-paper:hover,\n\.folder \.folder-paper:focus-visible \{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(front).toContain("z-index: 10;");
+    expect(front).toContain("translateY(-28px) rotate(0deg) scale(1.04)");
+    expect(front).toContain("box-shadow:");
   });
 
   it("creates a project (the name is required and unique) and opens it", async () => {
@@ -118,7 +145,8 @@ describe("home: projects as folders", () => {
 
     fireEvent.change(within(dialog).getByLabelText("Project name"), { target: { value: "Marketing" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Create project" }));
-    await waitFor(() => expect(router.state.location.pathname).toBe("/projects/9"));
+    // A new project starts with its setup.
+    await waitFor(() => expect(router.state.location.pathname).toBe("/projects/9/setup"));
     expect(calls.filter((c) => c.method === "POST").map((c) => c.body)).toEqual([{ name: "sales 2024" }, { name: "Marketing" }]);
   });
 });
@@ -155,8 +183,8 @@ describe("a project", () => {
     renderApp("/projects/2");
     expect(await screen.findByText("No data in this project yet")).toBeInTheDocument();
     expect(screen.getByText("Connect a database or upload a file to build your first chart.")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Connect a database" })).toHaveAttribute("href", "/projects/2/connections/new");
-    expect(screen.getByRole("link", { name: "Upload a file" })).toHaveAttribute("href", "/projects/2/datasets/upload");
+    expect(screen.getByRole("link", { name: "Get started" })).toHaveAttribute("href", "/projects/2/setup");
+    expect(screen.getByRole("link", { name: "Connect data" })).toHaveAttribute("href", "/projects/2/setup");
     expect(screen.queryByRole("button", { name: "New dashboard" })).not.toBeInTheDocument();
   });
 

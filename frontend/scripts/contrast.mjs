@@ -98,12 +98,7 @@ const PAIRS = [
   ["accent text on raised", "--accent-text", ["--bg", "--surface-raised"], NORMAL],
   ["text on orange (primary button)", "--accent-fg", ["--accent"], NORMAL],
   ["active rail item / tooltip", "--inverse-fg", ["--inverse-bg"], NORMAL],
-  ["hero: number on ink", "--ink-text", ["--surface-ink"], NORMAL],
-  ["hero: labels on ink", "--ink-muted", ["--surface-ink"], NORMAL],
-  ["hero: decimals (large) on ink", "--accent", ["--surface-ink"], LARGE],
-  ["hero: below-target value / change on ink", "--ink-danger", ["--surface-ink"], NORMAL],
-  ["hero: above-target value / change on ink", "--ink-success", ["--surface-ink"], NORMAL],
-  ["hero: warning-rule value on ink", "--ink-warning", ["--surface-ink"], NORMAL],
+  ["text on ink (SQL editor gutter)", "--ink-muted", ["--surface-ink"], NORMAL],
   ["warning-rule value / table cell on card", "--warning-text", ["--bg", "--surface"], NORMAL],
   ["big number: below-target value / change on card", "--danger", ["--bg", "--surface"], NORMAL],
   ["big number: above-target value / change on card", "--success", ["--bg", "--surface"], NORMAL],
@@ -144,6 +139,7 @@ const SERIES = Array.from({ length: 10 }, (_, i) => `--series-${i + 1}`);
 const PAPER_PAIRS = SERIES.map((token) => [`chart ${token.slice(2)} on Paper`, token, ["--bg", "--surface"], UI]);
 
 PAPER_PAIRS.push(["text on Clay on Paper", "--accent-fg", ["--accent"], NORMAL]);
+PAPER_PAIRS.push(["big number decimals (large) in Clay on Paper", "--clay-on-paper", ["--bg", "--surface"], LARGE]);
 const MIN_DELTA_E = 15;
 const MIN_DELTA_E_NEIGHBORS = 18;
 
@@ -194,8 +190,8 @@ function deltaE(c1, c2) {
 let failed = 0;
 for (const [theme, vars] of THEMES) {
   console.log(`\n${theme}`);
-  // Paper cards hold no SQL, rail or hero: only their own pairs.
-  const onPaper = PAIRS.filter(([what]) => !/SQL|rail|hero/.test(what));
+  // Paper cards hold no SQL, rail or ink: only their own pairs.
+  const onPaper = PAIRS.filter(([what]) => !/SQL|rail|ink/.test(what));
   for (const [what, fg, stack, min] of theme.startsWith("paper") ? [...onPaper, ...PAPER_PAIRS] : PAIRS) {
     let bg = parse(resolve(vars, vars[stack[0]]));
     for (const layer of stack.slice(1)) bg = over(parse(resolve(vars, vars[layer])), bg);

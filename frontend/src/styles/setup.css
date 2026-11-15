@@ -1,0 +1,431 @@
+/* Part 14: the setup wizard and a dashboard's "Add a chart" (design/projects-prototype.html).
+   Imported after projects.css (same layer). */
+
+.setup-page {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding-top: 8px;
+}
+.wizard-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 30px;
+  padding: 0;
+  list-style: none;
+}
+.wizard-steps li {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 14px 8px 8px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 14px;
+}
+.wizard-steps li > span:first-child {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font: 500 12px var(--font-mono);
+  background: var(--surface-raised);
+}
+.wizard-steps li.on {
+  color: var(--text);
+  border-color: var(--accent);
+}
+.wizard-steps li.on > span:first-child {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+.wizard-steps li.done {
+  color: var(--text);
+}
+.wizard-steps li.done > span:first-child {
+  background: var(--paper);
+  color: var(--ink);
+}
+/* in the chart editor's header row (the Chart step) */
+.chart-editor-header .wizard-steps {
+  margin: 0;
+}
+.chart-editor-header .wizard-steps li {
+  padding: 4px 10px 4px 4px;
+  font-size: 13px;
+}
+.chart-editor-header .wizard-steps li > span:first-child {
+  width: 22px;
+  height: 22px;
+}
+
+.setup-panel {
+  padding: 28px;
+  border-radius: 24px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  animation: v-pop 0.35s var(--ease-out) both;
+}
+.setup-panel h2 {
+  margin: 0 0 6px;
+  font: 700 26px/1.15 var(--font-display);
+  letter-spacing: -0.015em;
+}
+.setup-panel .lead {
+  margin: 0 0 24px;
+  color: var(--text-muted);
+}
+.setup-foot {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 26px;
+}
+.setup-foot .spacer {
+  flex: 1;
+}
+
+.choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}
+button.choice {
+  height: auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 16px;
+  padding: 22px;
+  border-radius: 20px;
+  border: 1.5px solid var(--border-strong);
+  background: var(--surface-raised);
+  text-align: left;
+  white-space: normal;
+}
+button.choice:hover {
+  border-color: var(--border-hover);
+  background: var(--surface-raised);
+}
+button.choice[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: linear-gradient(160deg, var(--accent-soft), var(--surface-raised));
+}
+button.choice:active:not(:disabled) {
+  transform: none;
+}
+.choice-icon {
+  flex: none;
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: var(--paper);
+  color: var(--ink);
+}
+.choice strong {
+  display: block;
+  margin-bottom: 4px;
+  font: 600 18px var(--font-display);
+}
+.choice small {
+  color: var(--text-muted);
+  font-size: 13.5px;
+}
+
+/* labels: small mono uppercase (the prototype's fields) */
+.field > span:first-child {
+  display: block;
+  margin-bottom: 6px;
+  font: 12px var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.setup-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+  margin-top: 22px;
+}
+.setup-form input,
+.setup-form select,
+.setup-narrow select,
+.save-dataset input {
+  width: 100%;
+  height: 44px;
+}
+.setup-test {
+  align-self: end;
+}
+.setup-test button {
+  width: 100%;
+}
+.setup-narrow {
+  display: block;
+  max-width: 420px;
+  margin-bottom: 16px;
+}
+button.sand,
+.button.sand,
+button.sand:hover,
+.button.sand:hover {
+  background: var(--paper);
+  border-color: var(--paper);
+  color: var(--ink);
+}
+button.sand:hover,
+.button.sand:hover {
+  filter: brightness(1.04);
+}
+.setup-ok {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 18px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: var(--accent-soft);
+  border: 1px solid var(--glow-border);
+  animation: v-pop 0.3s var(--ease-out) both;
+}
+.setup-ok-check {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+.setup-upload {
+  margin-top: 22px;
+}
+.upload-embedded-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.upload-embedded-actions .spacer {
+  flex: 1;
+}
+
+.explore {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 20px;
+}
+.explore-table-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 460px;
+  overflow: auto;
+}
+button.explore-table {
+  height: auto;
+  justify-content: space-between;
+  padding: 11px 14px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background: none;
+  text-align: left;
+}
+button.explore-table:hover {
+  background: var(--surface-raised);
+  border-color: transparent;
+}
+button.explore-table[aria-pressed="true"] {
+  background: var(--paper);
+  color: var(--ink);
+}
+button.explore-table:active:not(:disabled) {
+  transform: none;
+}
+.explore-table small {
+  font: 12px var(--font-mono);
+  opacity: 0.8;
+}
+.explore-columns {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  overflow: auto;
+}
+.explore-columns table,
+.setup-results table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.explore-columns th,
+.setup-results th {
+  text-align: left;
+  padding: 12px 14px;
+  font: 500 11px var(--font-mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: var(--surface-raised);
+}
+.explore-columns td {
+  padding: 11px 14px;
+  border-top: 1px solid var(--border);
+}
+.type-chip {
+  padding: 3px 8px;
+  border-radius: 6px;
+  font: 500 12px var(--font-mono);
+  background: var(--surface-raised);
+}
+.type-chip.is-time {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.explore-relations {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.explore-relations span {
+  padding: 5px 10px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+}
+
+.start {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.setup-editor {
+  overflow: hidden;
+  border-radius: 16px;
+  border: 1px solid var(--border-strong);
+  background: var(--code-bg);
+}
+.setup-editor-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px 10px 16px;
+  border-bottom: 1px solid var(--ink-border);
+  font: 500 12px var(--font-mono);
+  color: var(--ink-muted);
+}
+.setup-editor textarea {
+  display: block;
+  width: 100%;
+  min-height: 170px;
+  padding: 16px;
+  border: 0;
+  border-radius: 0;
+  outline: 0;
+  resize: vertical;
+  background: transparent;
+  font: 400 14.5px/1.7 var(--font-mono);
+  color: var(--code-text);
+}
+.setup-editor textarea:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+.setup-results {
+  margin-top: 18px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  overflow: hidden;
+  animation: v-pop 0.3s var(--ease-out) both;
+}
+.setup-results-meta {
+  display: flex;
+  gap: 16px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  font: 500 12px var(--font-mono);
+  color: var(--text-muted);
+}
+.setup-results-meta b {
+  color: var(--accent-text);
+  font-weight: 500;
+}
+.setup-results-scroll {
+  overflow: auto;
+}
+.setup-results th {
+  background: transparent;
+}
+.setup-results td {
+  padding: 9px 16px;
+  border-top: 1px solid var(--border);
+  white-space: nowrap;
+}
+.setup-results .n {
+  text-align: right;
+  font-family: var(--font-mono);
+}
+.save-dataset {
+  display: block;
+  max-width: 420px;
+  margin-top: 18px;
+}
+.setup-resume {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: -14px 0 28px;
+  color: var(--text-muted);
+}
+
+/* ---------- the chart builder (Part 13's editor), in the prototype's look ---------- */
+
+.chart-editor-side {
+  background: var(--surface);
+}
+.chart-controls .section-title,
+.customize-group .section-title {
+  font: 700 16px/1.2 var(--font-display);
+  letter-spacing: -0.01em;
+}
+.chart-controls details.editor-section {
+  background: var(--surface-raised);
+  border-radius: 20px;
+}
+/* chosen chart type / option: Clay outline on a Clay tint (the prototype's types) */
+.viz-picker button.active,
+.segmented button.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+  font-weight: 600;
+}
+.chart-canvas.paper {
+  border: 0;
+  border-radius: 22px;
+}
+.chart-preview-title {
+  font: 700 20px/1.2 var(--font-display);
+}
+.chart-editor-header .spacer {
+  flex: 1;
+}
+
+@media (max-width: 820px) {
+  .explore {
+    grid-template-columns: 1fr;
+  }
+  .setup-panel {
+    padding: 20px;
+  }
+}

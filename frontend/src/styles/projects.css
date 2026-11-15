@@ -117,24 +117,36 @@ button.pill.small,
   grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
   gap: 56px 30px;
 }
-.folder,
-.folder:hover {
+.folder {
   position: relative;
-  display: block;
   height: 252px;
   margin-top: 22px;
+  animation: v-pop 0.45s var(--ease-out) both;
+  /* the fan-out (workflow-folders reference) */
+  --fan-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+/* The whole folder (tab included) opens the project; the papers sit above it. */
+button.folder-open,
+button.folder-open:hover {
+  position: absolute;
+  z-index: 0;
+  left: 0;
+  right: 0;
+  top: -30px;
+  bottom: 0;
+  height: auto;
   padding: 0;
   border: 0;
-  border-radius: 0;
+  border-radius: 22px;
   background: none;
-  text-align: left;
   cursor: pointer;
 }
-.folder {
-  animation: v-pop 0.45s var(--ease-out) both;
-}
-.folder:active:not(:disabled) {
+button.folder-open:active:not(:disabled) {
   transform: none;
+}
+.folder-back,
+.folder-front {
+  pointer-events: none;
 }
 .folder-back {
   position: absolute;
@@ -156,7 +168,7 @@ button.pill.small,
   position: absolute;
   inset: 0;
   z-index: 1;
-  pointer-events: none;
+  pointer-events: none; /* the layer lets clicks through to the folder... */
 }
 .folder-paper {
   position: absolute;
@@ -167,17 +179,37 @@ button.pill.small,
   margin-left: -29%;
   padding: 11px 11px 0;
   overflow: hidden;
+  z-index: var(--z, 1);
+  pointer-events: auto; /* ...but each paper takes the pointer (it opens its dashboard) */
   transform-origin: 50% 100%;
   transform: translateX(var(--x)) rotate(var(--r));
-  transition: transform 0.4s var(--ease-out);
+  transition:
+    transform 0.4s var(--fan-ease),
+    box-shadow 0.4s var(--fan-ease);
   background: var(--paper-3);
   color: var(--on-paper);
+  text-decoration: none;
   border-radius: 10px;
   box-shadow: 0 -4px 16px -6px rgba(23, 33, 31, 0.4);
 }
+a.folder-paper:hover {
+  color: var(--on-paper);
+  text-decoration: none;
+}
+.folder-paper.empty {
+  pointer-events: none;
+}
+/* Hovering (or tabbing into) a folder fans the papers out: sideways, up 16px, more turned. */
 .folder:hover .folder-paper,
-.folder:focus-visible .folder-paper {
+.folder:focus-within .folder-paper {
   transform: translateX(calc(var(--x) * 1.35)) translateY(-16px) rotate(calc(var(--r) * 1.5));
+}
+/* One paper hovered or focused comes to the front: straight, up 28px, a bit bigger. */
+.folder .folder-paper:hover,
+.folder .folder-paper:focus-visible {
+  z-index: 10;
+  transform: translateX(calc(var(--x) * 1.35)) translateY(-28px) rotate(0deg) scale(1.04);
+  box-shadow: 0 18px 30px -12px rgba(23, 33, 31, 0.55);
 }
 .folder-paper b {
   display: block;

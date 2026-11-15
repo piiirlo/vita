@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUpToLine, Plus, RefreshCw, Type } from "lucide-react";
 import { Link, useParams, useSearchParams } from "react-router";
 import {
+  getCurrentProject,
   getDashboard,
   updateDashboard,
   type Dashboard,
@@ -226,13 +227,17 @@ export default function DashboardPage() {
     );
 
   const tiles = draft?.layout ?? dashboard.layout;
+  const inProject = getCurrentProject() !== null;
+  // "Add a chart": a dataset or new SQL, then the chart editor; the chart lands in the first
+  // free spot of this dashboard.
+  const addChartPath = projectPath(`/dashboards/${dashboard.id}/add-chart`);
   const charts = { ...dashboard.charts, ...addedCharts };
 
-  // Tiles are Paper cards, big numbers the ink "hero" cards; every tile enters with a short
-  // stagger.
+  // Every tile is a Paper card (big numbers too, with the hero layout); every tile enters
+  // with a short stagger.
   const tileClass = (tile: DashboardTile) =>
-    `dash-tile dash-tile-${tile.type} tile-enter${
-      tile.type === "chart" && charts[tile.chart_id]?.viz_type === "big_number" ? " dash-tile-hero" : " paper"
+    `dash-tile dash-tile-${tile.type} paper tile-enter${
+      tile.type === "chart" && charts[tile.chart_id]?.viz_type === "big_number" ? " dash-tile-hero" : ""
     }`;
 
   const renderTile = (tile: DashboardTile) =>
@@ -256,12 +261,21 @@ export default function DashboardPage() {
     <div className="dashboard-page">
       <header className="dash-header">
         <div className="dash-heading">
-          <span className="eyebrow">
-            <Link to={projectPath("/dashboards")} className="crumb">
-              Dashboards
-            </Link>{" "}
-            / {editing ? "Editing" : "Space"}
-          </span>
+          {/* In a project the breadcrumbs say where this is. */}
+          {(!inProject || editing) && (
+            <span className="eyebrow">
+              {inProject ? (
+                "Editing"
+              ) : (
+                <>
+                  <Link to={projectPath("/dashboards")} className="crumb">
+                    Dashboards
+                  </Link>{" "}
+                  / {editing ? "Editing" : "Space"}
+                </>
+              )}
+            </span>
+          )}
           <div className="dash-title-row">
             {editing ? (
               <input
@@ -346,9 +360,10 @@ export default function DashboardPage() {
                   ))}
                 </select>
               </label>
-              <Button variant="primary" onClick={edit}>
-                Edit
-              </Button>
+              <Button onClick={edit}>Edit</Button>
+              <Link to={addChartPath} className="button primary pill">
+                <Plus size={17} strokeWidth={2.4} aria-hidden /> Add a chart
+              </Link>
             </>
           )}
         </div>
@@ -357,9 +372,19 @@ export default function DashboardPage() {
 
       <DashboardContext.Provider value={context}>
         {tiles.length === 0 ? (
-          <EmptyState title="This dashboard is empty">
-            {editing ? "Use “Add chart” and “Add text” above." : "Click “Edit” to add charts and text."}
-          </EmptyState>
+          editing ? (
+            <EmptyState title="This dashboard is empty">Use “Add chart” and “Add text” above.</EmptyState>
+          ) : (
+            <div className="empty-dash">
+              <strong>This dashboard is empty</strong>
+              Write a query or pick a dataset, then build your first chart.
+              <div className="get-started">
+                <Link to={addChartPath} className="button primary pill">
+                  <Plus size={17} strokeWidth={2.4} aria-hidden /> Add a chart
+                </Link>
+              </div>
+            </div>
+          )
         ) : narrow && !editing ? (
           <div className="dash-stack">
             {stackOrder(tiles).map((tile, index) => (

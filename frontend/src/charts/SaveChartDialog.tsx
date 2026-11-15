@@ -16,6 +16,9 @@ type Props = {
   onDashboards?: { id: number; name: string }[];
   /** A dashboard must be picked ("Add to dashboard"). */
   requireDashboard?: boolean;
+  /** Where saving puts the chart, already decided (setup, a dashboard's "Add a chart"): shown
+   * instead of the dashboard picker. */
+  placement?: string;
   submitLabel?: string;
   onSave(name: string, description: string, target: DashboardTarget): Promise<void>;
   onCancel(): void;
@@ -30,6 +33,7 @@ export default function SaveChartDialog({
   initialDescription = "",
   onDashboards = [],
   requireDashboard = false,
+  placement,
   submitLabel,
   onSave,
   onCancel,
@@ -104,13 +108,18 @@ export default function SaveChartDialog({
           On {onDashboards.map((d) => d.name).join(", ")}: {onDashboards.length === 1 ? "it shows" : "they show"} the saved chart.
         </p>
       )}
-      {!requireDashboard && (
+      {placement && (
+        <p className="muted small" role="note">
+          {placement}
+        </p>
+      )}
+      {!requireDashboard && !placement && (
         <label className="checkbox">
           <input type="checkbox" checked={adding} onChange={(e) => setAdding(e.target.checked)} />
           Add to a dashboard
         </label>
       )}
-      {adding && (
+      {adding && !placement && (
         <fieldset className="dashboard-picker">
           <legend className="sr-only">Dashboard</legend>
           <input

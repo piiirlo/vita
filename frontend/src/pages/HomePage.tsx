@@ -1,6 +1,6 @@
 import { Plus } from "lucide-react";
 import { useEffect, useState, type CSSProperties } from "react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { createProject, listProjects, type Project } from "../api.ts";
 import { ErrorAlert } from "../components/ui/alert.tsx";
 import { SkeletonLines } from "../components/ui/skeleton.tsx";
@@ -41,7 +41,8 @@ export default function HomePage() {
   async function create(name: string) {
     const project = await createProject(name);
     setCreating(false);
-    void navigate(projectHome(project.id));
+    // A new project starts with its setup (Connect data, Explore, Query, Chart).
+    void navigate(`${projectHome(project.id)}/setup`);
   }
 
   const dashboards = (projects ?? []).reduce((sum, p) => sum + p.dashboard_count, 0);
@@ -93,48 +94,58 @@ export default function HomePage() {
   );
 }
 
+/** A project as a folder. Hovering it fans its dashboards out; a paper (one dashboard) comes
+ * to the front on hover or focus and opens that dashboard; anywhere else opens the project.
+ * The folder is a wrapper (not a button) so the papers can be links of their own. */
 function Folder({ project, index, onOpen }: { project: Project; index: number; onOpen(): void }) {
   const papers = project.dashboards.slice(0, 3);
   const fan = FAN[papers.length] ?? [];
   return (
-    <button
-      type="button"
-      className="folder paper"
-      style={{ animationDelay: `${index * 60}ms` }}
-      onClick={onOpen}
-      aria-label={`${project.name}, ${plural(project.dashboard_count, "dashboard")}`}
-    >
+    <div className="folder paper" style={{ animationDelay: `${index * 60}ms` }}>
+      {/* The whole folder opens the project; papers sit above it and open their dashboard. */}
+      <button
+        type="button"
+        className="folder-open"
+        onClick={onOpen}
+        aria-label={`${project.name}, ${plural(project.dashboard_count, "dashboard")}`}
+      />
       <span className="folder-back" aria-hidden>
         <span className="folder-tab" />
       </span>
-      <span className="folder-papers" aria-hidden>
+      <span className="folder-papers">
         {papers.length ? (
           papers.map((d, i) => (
-            <span key={d.id} className="folder-paper" style={{ "--x": `${fan[i]!.x}px`, "--r": `${fan[i]!.r}deg`, zIndex: fan[i]!.z } as CSSProperties}>
+            <Link
+              key={d.id}
+              to={`${projectHome(project.id)}/dashboards/${d.id}`}
+              className="folder-paper"
+              aria-label={`${d.name}, a dashboard in ${project.name}`}
+              style={{ "--x": `${fan[i]!.x}px`, "--r": `${fan[i]!.r}deg`, "--z": fan[i]!.z } as CSSProperties}
+            >
               <b>{d.name}</b>
-              <span className="folder-mini">
+              <span className="folder-mini" aria-hidden>
                 <span className="o" />
                 <span />
                 <span className="w" />
               </span>
-            </span>
+            </Link>
           ))
         ) : (
-          <span className="folder-paper empty" style={{ "--x": "0px", "--r": "0deg" } as CSSProperties}>
+          <span className="folder-paper empty" aria-hidden style={{ "--x": "0px", "--r": "0deg" } as CSSProperties}>
             No dashboards yet
           </span>
         )}
       </span>
-      <span className="folder-front">
+      <span className="folder-front" aria-hidden>
         <span className="folder-name">{project.name}</span>
         <span className="folder-row">
           <span>{plural(project.dashboard_count, "dashboard")}</span>
           <span className="folder-src">
-            {project.sources.length > 0 && <i aria-hidden />}
+            {project.sources.length > 0 && <i />}
             {sourceLabel(project.sources)}
           </span>
         </span>
       </span>
-    </button>
+    </div>
   );
 }

@@ -1,4 +1,4 @@
-import { Database, FileText, MoreHorizontal, Pencil, Plus, Table2, Trash2, Upload } from "lucide-react";
+import { Database, FileText, MoreHorizontal, Pencil, Plus, Table2, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import {
@@ -19,7 +19,7 @@ import { usePageTitle } from "../components/usePageTitle.ts";
 import { errorText } from "../datasets/format.ts";
 import DeleteProjectDialog from "../projects/DeleteProjectDialog.tsx";
 import NameDialog from "../projects/NameDialog.tsx";
-import { projectPath } from "../projects/paths.ts";
+import { projectHome, projectPath } from "../projects/paths.ts";
 import { useProject } from "../projects/projectContext.ts";
 import { plural } from "../projects/text.ts";
 
@@ -65,15 +65,12 @@ export default function ProjectPage() {
     toast.success("Project renamed");
   }
 
+  const setupPath = `${projectHome(ctx.id)}/setup`;
+  const draft = project?.setup_draft ?? null;
   const getStarted = (
     <div className="get-started">
-      <Link to={projectPath("/connections/new")} className="button primary pill">
-        <Database size={17} aria-hidden />
-        Connect a database
-      </Link>
-      <Link to={projectPath("/datasets/upload")} className="button ghost pill">
-        <Upload size={17} aria-hidden />
-        Upload a file
+      <Link to={setupPath} className="button primary pill">
+        {draft ? "Resume setup" : "Get started"}
       </Link>
     </div>
   );
@@ -91,8 +88,8 @@ export default function ProjectPage() {
           )}
         </div>
         {data && !hasData && (
-          <Link to={projectPath("/connections/new")} className="button primary pill">
-            Connect data
+          <Link to={setupPath} className="button primary pill">
+            {draft ? "Resume setup" : "Connect data"}
           </Link>
         )}
         {project && (
@@ -116,6 +113,14 @@ export default function ProjectPage() {
 
       {error && <ErrorAlert>{error}</ErrorAlert>}
       {!data && !error && <SkeletonLines lines={3} label="Loading the project…" className="max-w-xl" />}
+      {data && hasData && draft && (
+        <p className="setup-resume" role="note">
+          The setup isn't finished.
+          <Link to={setupPath} className="button ghost pill small">
+            Resume setup
+          </Link>
+        </p>
+      )}
 
       {data && (
         <>

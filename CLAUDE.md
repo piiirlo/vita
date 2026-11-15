@@ -39,6 +39,9 @@ One part at a time, in order:
     code-like upload columns, readable upload dates); the chart editor (Data / Customize
     redesign, custom SQL metrics, conditional + per-series colors, big number position,
     save to a dashboard); dashboard free placement, auto-fit and Tidy up *(done)*
+14. **Projects** — home = projects as folders; a project owns its connections, uploads,
+    datasets, saved queries, charts and dashboards; the 4-step setup wizard; a dashboard's
+    "Add a chart"; Ink / Paper / Clay design (`design/projects-prototype.html`) *(done)*
 
 **Out of scope for v1:** dashboard filters, multi-user permissions, alerts, scheduled
 reports, chart types beyond the 15 of Part 11.
@@ -159,6 +162,17 @@ This folder may contain the Apache Superset source code. It is **read-only refer
     not logged; `/api/charts` CRUD, params = {query, display}). Charts → datasets FK RESTRICT.
     `tests/test_charts_mysql.py` runs only with `VITA_TEST_MYSQL_HOST` (throwaway mysql:8.4
     container on the compose network; see the file's docstring).
+  - Projects (Part 14): `app/api/projects.py` (`/api/projects`: list with counts, create,
+    rename, `DELETE ?confirm=<exact name>` deletes everything in it and drops its uploaded
+    tables (after the commit) unless another project's dataset reads them;
+    `PUT|DELETE /{id}/setup-draft`: the unfinished wizard as JSON, never passwords).
+    Connections (NULL only for the built-in Uploads one, shared), uploads, datasets, saved
+    queries, charts and dashboards have `project_id` (migration 0014 moved everything into
+    "My workspace"); names are unique **per project**. Lists take `?project_id=`. Creating
+    without one uses the owner's project (a chart: its dataset's) or `default_project_id`
+    (the oldest; "My workspace" is created if none). `resolve_project` / `same_project`
+    keep references inside a project: datasets only on their project's connections, charts
+    only on their project's datasets, dashboards only with their project's charts (400).
   - Dashboards: `app/api/dashboards.py` (`/api/dashboards`: list/get/create/update/delete,
     `/{id}/duplicate`, `/{id}/charts` appends a chart tile). `layout` JSON (schema in
     `app/schemas/dashboards.py`: 24-column grid, 14px rows, chart / text tiles; geometry and
@@ -397,6 +411,22 @@ This folder may contain the Apache Superset source code. It is **read-only refer
     neighbors, identifier quoting); pan/zoom/glide are CSS transforms (reduced motion: none).
     Preview runs `SELECT * … LIMIT 20` through `/api/query`; "Open in SQL Lab" uses router state.
   - Connection tests show `TestResultMessage` (a "Connected" check, or `ErrorAlert`).
+  - Projects (Part 14): `/` = `HomePage` (folders), `/projects/:id` = `ProjectPage`
+    (dashboards + data, rename, delete by typing the name). Every page also lives under
+    `/projects/:id/...` (`pageRoutes(prefix)` in App.tsx; the old top-level URLs still work
+    and show every project's items). `projects/ProjectProvider` (from the URL) calls
+    `setCurrentProject`: api.ts then adds `project_id` to lists and creates; **links use
+    `projectPath("/charts")`** (projects/paths.ts) so they stay in the project. The rail and
+    `Breadcrumbs` follow the project; pages set the last crumb with `useCrumbTitle`.
+    Setup wizard (`pages/SetupPage.tsx` + `src/setup/`): `/projects/:id/setup` = Connect
+    data (a tested connection, or an upload: `UploadPage embedded`) → Explore (tables,
+    columns, Time / Group by marks, relations) → Query (`starterSql.ts`: the picked table
+    joined along foreign keys; Run; "Save this as a dataset", marks applied by
+    `datasetFromQuery.ts`) → Chart = the chart editor with `?setup=1` (saving makes the chart
+    and a new "Overview" dashboard, clears the draft, opens it). The draft is saved on each
+    Continue and with "Save as draft". A dashboard's "Add a chart"
+    (`/dashboards/:id/add-chart`): a dataset or new SQL, then the editor with
+    `?target=<id>` (first free spot). `SaveChartDialog placement` shows the fixed target.
   - App shell (`App.tsx`): login gate (`auth/`: `AuthProvider` in `AuthContext.tsx`,
     `useAuth`/`safeNext` in `auth.ts`). Any API 401 fires `UNAUTHORIZED_EVENT` (api.ts) and
     sends the user to `/login?next=…`. Routes are wrapped in an `ErrorBoundary` keyed by path.
@@ -423,8 +453,9 @@ This folder may contain the Apache Superset source code. It is **read-only refer
   - Contrast: `npm run check:contrast` (`scripts/contrast.mjs`) checks every text/background
     token pair in both themes; add new pairs there when you add tokens. It also checks the
     10 chart series colors (`--series-1..10`): 3:1 on cards and CIEDE2000 ≥ 15 between any
-    two (≥ 18 for neighbors). The first three stay orange / olive / dark olive. Pivot heat
-    cells (`--heat-1..5`, an olive tint) keep `--text` at 4.5:1+.
+    two (≥ 18 for neighbors), checked on Paper (charts are always drawn on Paper: the
+    "paper (light)" / "paper (dark)" themes). The first three stay Ink / Clay / Sage. Pivot
+    heat cells (`--heat-1..5`, a Sage tint) keep `--text` at 4.5:1+.
   - Lint: `npm run lint` (ESLint flat config `eslint.config.js`, type-aware, max 0 warnings).
   - Tests: Vitest + Testing Library (`*.test.ts(x)` next to the code, setup in
     `src/test/setup.ts`). Monaco is mocked with a textarea in page tests.
@@ -450,23 +481,33 @@ This folder may contain the Apache Superset source code. It is **read-only refer
   block other requests. Don't make an endpoint `async def` if it does blocking DB calls
   (`tests/test_concurrency.py` guards this).
 
-## Design ("Observatory")
-Calm, earthy, instrument-like; **one** loud signal color. Mockups: `design/*.dc.html`.
+## Design (Ink, Paper, Clay; Part 14)
+Prototype: `design/projects-prototype.html` (structure, wording, flow and look); older
+mockups in `design/*.dc.html`. **Ink** #17211F 60% (page, panels; surfaces #1E2A27 #263430),
+**Paper** #EEE6D3 30% (folders, tiles, chart cards; #DACFB6 #F7F2E7), **Clay** #E4683A 10%
+(primary actions, highlights). Dark = the prototype; light is derived (a Paper page).
 - **Colors only from tokens** (`frontend/src/styles/tokens.css`): CSS variables on `:root`
   (light) and `[data-theme="dark"]`. No literal colors in components or CSS; Tailwind's own
   palette is disabled, utilities map to tokens (`bg-surface`, `text-muted`, `border-border`,
   `text-accent-text`…). Need a new color? Add a token in both themes + a contrast pair.
-- **Orange** `--accent` (#FF5A22) is for the one primary action per screen, the live dot,
-  focus and highlights. Text **on** orange is always dark (`--accent-fg`), never white.
-  Orange text on light backgrounds uses `--accent-text`; links use `--link` (olive in light,
-  soft orange in dark). Hero big numbers sit on the ink card (`--surface-ink`).
+- **Clay** `--accent` is for the one primary action per screen, the live dot, focus and
+  highlights. Text **on** Clay is always Ink (`--accent-fg`). Clay text uses `--accent-text`.
+  Clay is under 3:1 on Paper, so on Paper it is `--clay-on-paper` (#CF5A2C: big number
+  decimals, the Clay chart series).
+- **Paper cards**: the `.paper` class (tokens.css) re-maps the roles (`--surface`, `--text`,
+  `--danger`…) to Ink on Paper in both themes: folders, every dashboard tile (big numbers
+  too: number in Ink, decimals in Clay; no dark hero cards) and the chart editor's preview.
+  Charts read their colors with `paperVar` (lib/cssVar.ts), never from the page.
 - **Errors never rely on color**: danger color + icon + the word "Error" (`ErrorAlert`, the
   `.alert-error` class, toasts).
 - **Contrast**: text >= 4.5:1, large text (24px+) and UI parts >= 3:1. The light focus ring is
-  `--accent-text` because #FF5A22 is only 2.86:1 on the light page.
-- **Fonts** (bundled with @fontsource, no CDN): Space Grotesk for UI; JetBrains Mono for every
-  number, SQL, type labels and small uppercase labels (`.eyebrow`: 11-12px, .14em tracking).
-- **Shape**: cards 22px (`rounded-card`), controls 12px (`rounded-control`), pills 999px.
+  `--accent-text` (Clay is too light on Paper). Danger is a raspberry red, clearly not Clay.
+- **Fonts** (bundled with @fontsource, no CDN): Bricolage Grotesque for titles (h1-h3,
+  `--font-display`), Instrument Sans for UI; JetBrains Mono for every number, SQL, type
+  labels and small uppercase labels (`.eyebrow`, wizard field labels).
+- **Shape**: cards 22px (`rounded-card`), inputs 12px (`rounded-control`), buttons are pills.
+- Page CSS for Part 14 is in `styles/projects.css` (pills, breadcrumbs, folders, project
+  page) and `styles/setup.css` (wizard, the chart builder's look).
 - **Motion**: UI feedback 150-250 ms, ease `cubic-bezier(.2,.7,.2,1)` (`--ease-out`); page
   enter = fade + 12px rise (`.page-enter`); lists / tiles stagger 70 ms on first mount only
   (`.stagger-item` / `.tile-enter` + `data-enter={index}`, CSS so it composes with the

@@ -20,11 +20,12 @@ export function useProject(): ProjectContextValue | null {
   return useContext(ProjectContext);
 }
 
-/** Show `title` as the last breadcrumb while the page is open (no-op outside a project). */
+/** Show `title` as the last breadcrumb while the page is open (no-op outside a project, and
+ * for undefined: a page shown inside another one leaves the crumb to it). */
 export function useCrumbTitle(title: string | null | undefined) {
   const setCrumb = useContext(ProjectContext)?.setCrumb;
   useEffect(() => {
-    if (!setCrumb) return;
+    if (!setCrumb || title === undefined) return;
     setCrumb(title?.trim() || null);
     return () => setCrumb(null);
   }, [setCrumb, title]);

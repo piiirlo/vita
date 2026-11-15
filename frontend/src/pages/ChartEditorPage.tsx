@@ -2,11 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import {
   addChartToDashboard,
+  clearSetupDraft,
   createChart,
   createDashboard,
   getChart,
   getDashboard,
   getDataset,
+  listDashboards,
   listDatasets,
   updateChart,
   type ChartDataResult,
@@ -46,8 +48,11 @@ import EmptyState from "../components/EmptyState.tsx";
 import UnsavedChangesDialog from "../components/UnsavedChangesDialog.tsx";
 import { useUnsavedChanges } from "../components/useUnsavedChanges.ts";
 import { relativeTime } from "../datasets/format.ts";
-import { projectPath } from "../projects/paths.ts";
-import { useCrumbTitle } from "../projects/projectContext.ts";
+import { projectHome, projectPath } from "../projects/paths.ts";
+import { useCrumbTitle, useProject } from "../projects/projectContext.ts";
+import { freeName, suggestChartName } from "../setup/chartName.ts";
+import { ADD_CHART_STEPS, PROJECT_STEPS } from "../setup/draft.ts";
+import WizardSteps from "../setup/WizardSteps.tsx";
 
 const AUTO_UPDATE_MS = 600;
 
@@ -98,6 +103,14 @@ export default function ChartEditorPage() {
   // Opened from a dashboard tile ("Edit chart"): link back to it.
   const fromDashboardId = Number(search.get("dashboard")) || null;
   const [fromDashboard, setFromDashboard] = useState<{ id: number; name: string } | null>(null);
+  // The Chart step of the setup wizard (?setup=1: saving makes the project's "Overview"
+  // dashboard) or of a dashboard's "Add a chart" (?target=<id>: saving puts it there).
+  const setupMode = chartId === null && search.get("setup") === "1";
+  const targetId = chartId === null ? Number(search.get("target")) || null : null;
+  const wizard = setupMode || targetId !== null;
+  const [wizardTarget, setWizardTarget] = useState<{ id: number; name: string } | null>(null);
+  const [overviewName, setOverviewName] = useState("Overview");
+  const project = useProject();
   const controller = useRef<AbortController | null>(null);
   usePageTitle(chart?.name ?? (chartId === null ? "New chart" : "Chart"));
   useCrumbTitle(chart?.name ?? (chartId === null ? "New chart" : null));
@@ -165,6 +178,21 @@ export default function ChartEditorPage() {
       cancelled = true;
     };
   }, [fromDashboardId]);
+
+  useEffect(() => {
+    if (targetId === null) return;
+    getDashboard(targetId)
+      .then((d) => setWizardTarget({ id: d.id, name: d.name }))
+      .catch(() => undefined);
+  }, [targetId]);
+
+  // Setup: a new "Overview" dashboard ("Overview 2"... when the project has one).
+  useEffect(() => {
+    if (!setupMode) return;
+    listDashboards()
+      .then((list) => setOverviewName(freeName("Overview", list.map((d) => d.name))))
+      .catch(() => undefined);
+  }, [setupMode]);
 
   // ---------- running ----------
 
@@ -270,6 +298,8 @@ export default function ChartEditorPage() {
     setSavedSnapshot(snapshot(created.name, state));
     dirtyRef.current = false; // saved: navigating on is fine (before the re-render says so)
     let dashboard: { id: number; name: string } | null = null;
+    if (setupMode) target = { kind: "new", name: overviewName };
+    else if (targetId !== null) target = { kind: "existing", id: targetId, name: wizardTarget?.name ?? "" };
     if (target) {
       try {
         dashboard = await place(target, created.id);
@@ -277,6 +307,18 @@ export default function ChartEditorPage() {
       } catch (err) {
         toast.error(`Saved "${created.name}", but couldn't add it to the dashboard: ${queryErrorSummary(asError(err))}`);
       }
+    }
+    if (wizard && dashboard) {
+      // The wizard ends on the dashboard.
+      if (setupMode && project) {
+        await clearSetupDraft(project.id).catch(() => undefined);
+        project.reload();
+        toast.success(`Saved. We created the dashboard “${dashboard.name}” in ${project.project?.name ?? "this project"}.`);
+      } else {
+        toast.success(`Added “${created.name}” to ${dashboard.name}.`);
+      }
+      void navigate(projectPath(`/dashboards/${dashboard.id}`), { replace: true });
+      return;
     }
     savedToast(created.name, dashboard);
     if (leaveAfterSaveAs) {
@@ -402,11 +444,26 @@ export default function ChartEditorPage() {
 
       <section className="chart-editor-main">
         <div className="chart-editor-header">
+          {wizard ? (
+            <>
+              <WizardSteps steps={setupMode ? PROJECT_STEPS : ADD_CHART_STEPS} current="chart" />
+              <button
+                type="button"
+                className="ghost pill small"
+                onClick={() => void navigate(setupMode ? `${projectHome(project?.id ?? 0)}/setup` : projectPath(`/dashboards/${targetId}/add-chart`))}
+              >
+                Back
+              </button>
+            </>
+          ) : (
+            <>
           <Link to={projectPath("/charts")} className="crumb">
             Charts
           </Link>
           <span className="crumb">/</span>
-          {chart ? (
+            </>
+          )}
+          {wizard ? null : chart ? (
             <input className="chart-name-input" aria-label="Chart name" value={name} onChange={(e) => setName(e.target.value)} />
           ) : (
             <span className="chart-name">New {typeLabel.toLowerCase()} chart</span>
@@ -421,8 +478,13 @@ export default function ChartEditorPage() {
           <button onClick={() => void run(true)} disabled={results.status === "loading"} title="Run the chart query now (skips the cache)">
             Update chart
           </button>
+          {wizard && (
+            <span className="muted small">
+              Saving adds it to {setupMode ? "a new dashboard in this project" : `“${wizardTarget?.name ?? "the dashboard"}”`}
+            </span>
+          )}
           <button className="primary" onClick={() => void save()}>
-            Save
+            {wizard ? "Save chart" : "Save"}
           </button>
           {chart && <button onClick={() => setSaveDialog(true)}>Save as new</button>}
           {chart && (
@@ -544,7 +606,14 @@ export default function ChartEditorPage() {
         <SaveChartDialog
           title={chart ? "Save chart as new" : "Save chart"}
           askName
-          initialName={chart ? `${chart.name} (copy)` : ""}
+          initialName={chart ? `${chart.name} (copy)` : suggestChartName(state, dataset)}
+          placement={
+            setupMode
+              ? `Saving adds it to a new dashboard “${overviewName}” in ${project?.project?.name ?? "this project"}.`
+              : targetId !== null
+                ? `Saving adds it to “${wizardTarget?.name ?? "the dashboard"}”, in the first free spot.`
+                : undefined
+          }
           initialDescription={chart?.description ?? ""}
           onSave={saveAs}
           onCancel={() => {

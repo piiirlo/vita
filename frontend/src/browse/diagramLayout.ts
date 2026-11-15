@@ -1,6 +1,7 @@
 /** Schema diagram: auto-layout with dagre, search and neighbors. Pure (unit-tested). */
 import { Graph, layout } from "@dagrejs/dagre";
 import type { DbType, SchemaDiagram } from "../api.ts";
+import { quoteIdentifier } from "../lib/sqlIdent.ts";
 
 export const CARD_WIDTH = 230;
 const HEADER_HEIGHT = 40;
@@ -108,10 +109,7 @@ export function searchTables(diagram: SchemaDiagram, query: string): string[] {
     .sort((a, b) => Number(!a.toLowerCase().startsWith(q)) - Number(!b.toLowerCase().startsWith(q)) || a.localeCompare(b));
 }
 
-/** A quoted identifier for the connection's database. */
-export function quoteIdentifier(name: string, dbType: DbType): string {
-  return dbType === "mysql" ? `\`${name.replace(/`/g, "``")}\`` : `"${name.replace(/"/g, '""')}"`;
-}
+export { quoteIdentifier };
 
 /** SELECT * of a table (for Preview and "Open in SQL Lab"). */
 export function selectAllSql(schema: string, table: string, dbType: DbType, limit = 100): string {

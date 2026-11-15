@@ -32,6 +32,7 @@ const DashboardPage = lazy(() => import("./pages/DashboardPage.tsx"));
 // The dataset editor's preview grid (TanStack Table + Virtual) is only needed there.
 const DatasetEditPage = lazy(() => import("./pages/DatasetEditPage.tsx"));
 const UploadPage = lazy(() => import("./pages/UploadPage.tsx"));
+const SetupPage = lazy(() => import("./pages/SetupPage.tsx"));
 
 const lazyPage = (page: ReactNode, what: string) => (
   <Suspense fallback={<SkeletonLines lines={4} label={`Loading ${what}…`} className="page-pad max-w-xl" />}>{page}</Suspense>
@@ -77,6 +78,7 @@ function pageRoutes(prefix: string) {
       <Route path={`${prefix}/sql-lab`} element={lazyPage(<SqlLabPage />, "SQL Lab")} />
       <Route path={`${prefix}/dashboards`} element={<DashboardsPage />} />
       <Route path={`${prefix}/dashboards/:id`} element={lazyPage(<DashboardPage />, "dashboard")} />
+      <Route path={`${prefix}/dashboards/:id/add-chart`} element={lazyPage(<SetupPage mode="add" />, "add a chart")} />
       <Route path={`${prefix}/charts`} element={<ChartsPage />} />
       <Route path={`${prefix}/charts/new`} element={lazyPage(<ChartEditorPage />, "chart editor")} />
       <Route path={`${prefix}/charts/:id`} element={lazyPage(<ChartEditorPage />, "chart editor")} />
@@ -116,6 +118,7 @@ function Shell({ user }: { user: CurrentUser }) {
                 <Routes>
                   <Route path="/" element={<HomePage />} />
                   <Route path="/projects/:projectId" element={<ProjectPage />} />
+                  <Route path="/projects/:projectId/setup" element={lazyPage(<SetupPage mode="project" />, "setup")} />
                   {pageRoutes("/projects/:projectId")}
                   {pageRoutes("")}
                   <Route path="/status" element={<StatusPage />} />

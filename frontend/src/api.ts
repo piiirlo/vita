@@ -188,6 +188,8 @@ export type Project = {
   sources: ProjectSource[];
   /** The most recently changed dashboards (at most 3). */
   dashboards: { id: number; name: string; chart_count: number }[];
+  /** The unfinished setup wizard (see setup/draft.ts); null = none. */
+  setup_draft?: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
 };
@@ -201,6 +203,12 @@ export const createProject = (name: string) =>
 
 export const renameProject = (id: number, name: string) =>
   request<Project>(`/api/projects/${id}`, { method: "PUT", body: json({ name }) });
+
+/** Keep the unfinished setup wizard (never passwords), to resume it later. */
+export const saveSetupDraft = (id: number, draft: object) =>
+  request<Project>(`/api/projects/${id}/setup-draft`, { method: "PUT", body: json({ draft }) });
+
+export const clearSetupDraft = (id: number) => request<void>(`/api/projects/${id}/setup-draft`, { method: "DELETE" });
 
 /** Deletes everything in the project; `confirm` must be its name. */
 export const deleteProject = (id: number, confirm: string) =>

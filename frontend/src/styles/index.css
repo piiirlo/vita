@@ -20,6 +20,7 @@
 @import "./base.css" layer(base);
 @import "../App.css" layer(base);
 @import "./projects.css" layer(base);
+@import "./setup.css" layer(base);
 @import "./components.css" layer(components);
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
