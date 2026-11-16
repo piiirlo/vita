@@ -1,4 +1,5 @@
 import { Component, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { Filter } from "lucide-react";
 import type { ChartTileSpec, DashboardChartInfo, QueryErrorDetail } from "../api.ts";
 import { QueryErrorBody } from "../components/QueryErrorAlert.tsx";
 import { toQueryError } from "../components/queryError.ts";
@@ -9,6 +10,7 @@ import { useInView } from "./hooks.ts";
 import { CancelledError, type QueuedTask } from "./queue.ts";
 import { DashboardContext, loadTileData, type TileData } from "./tileData.ts";
 import TileMenu from "./TileMenu.tsx";
+import { filterLabel } from "./filters.ts";
 import { Modal, ModalActions } from "../components/ui/dialog.tsx";
 import { projectPath } from "../projects/paths.ts";
 
@@ -24,12 +26,16 @@ type Props = {
 export default function ChartTile({ tile, info, editing, onRemove }: Props) {
   const ctx = useContext(DashboardContext);
   if (!ctx) throw new Error("ChartTile must be inside a dashboard");
-  const { queue, datasets, refreshKey, dashboardId, cacheTtl } = ctx;
+  const { queue, datasets, refreshKey, dashboardId, cacheTtl, filters, filtersKey, onCrossSelect, onCrossClear } = ctx;
+  const crossing = filters.cross?.find((f) => f.tile === tile.id);
   // The first load may use the chart-data cache; every reload after it (Refresh, Refresh all,
-  // auto-refresh) asks for fresh data.
+  // auto-refresh) asks for fresh data. A filter change may use the cache.
   const loadedOnce = useRef(false);
   const cacheTtlRef = useRef(cacheTtl);
   cacheTtlRef.current = cacheTtl;
+  const filtersRef = useRef(filters);
+  filtersRef.current = filters;
+  const lastReload = useRef<string | null>(null);
 
   const ref = useRef<HTMLDivElement>(null);
   const inView = useInView(ref);
@@ -49,9 +55,11 @@ export default function ChartTile({ tile, info, editing, onRemove }: Props) {
     const controller = new AbortController();
     let cancelled = false;
     setLoading(true);
-    const refresh = loadedOnce.current;
+    const reload = `${refreshKey}:${ownRefresh}`;
+    const refresh = loadedOnce.current && reload !== lastReload.current;
+    lastReload.current = reload;
     const queued = queue.schedule(
-      () => loadTileData(tile.chart_id, datasets, controller.signal, { cacheTtl: cacheTtlRef.current, refresh }),
+      () => loadTileData(tile.chart_id, datasets, controller.signal, { cacheTtl: cacheTtlRef.current, refresh }, filtersRef.current, tile.id),
       inViewRef.current === true,
     );
     task.current = queued;
@@ -75,7 +83,7 @@ export default function ChartTile({ tile, info, editing, onRemove }: Props) {
       queued.cancel();
       controller.abort();
     };
-  }, [measured, queue, datasets, tile.chart_id, refreshKey, ownRefresh]);
+  }, [measured, queue, datasets, tile.chart_id, tile.id, refreshKey, ownRefresh, filtersKey]);
 
   useEffect(() => {
     if (inView) task.current?.setVisible(true);
@@ -91,8 +99,34 @@ export default function ChartTile({ tile, info, editing, onRemove }: Props) {
         <span className="dash-tile-title" title={name}>
           {name}
         </span>
+        {data && data.filteredBy.length > 0 && (
+          <span
+            className="tile-filtered"
+            data-testid="tile-filtered"
+            role="img"
+            title={`Filtered by ${data.filteredBy.map(filterLabel).join(", ")}`}
+            aria-label={`Filtered by ${data.filteredBy.map(filterLabel).join(", ")}`}
+          >
+            <Filter size={12} aria-hidden />
+          </span>
+        )}
+        {crossing && !editing && (
+          <span className="tile-crossing" data-testid="tile-crossing">
+            Filtering
+            {onCrossClear && (
+              <button type="button" onClick={() => onCrossClear(tile.id)} aria-label={`Stop filtering by ${name}`} title="Stop filtering the other charts">
+                ×
+              </button>
+            )}
+          </span>
+        )}
         {loading && data && <span className="live-dot" role="status" aria-label="Refreshing" />}
         <span className="spacer" />
+        {data && data.notFilteredBy.length > 0 && (
+          <span className="tile-unfiltered" data-testid="tile-unfiltered">
+            Not filtered by {data.notFilteredBy.map(filterLabel).join(", ")}
+          </span>
+        )}
         {!loading && data?.main.cached_at && data.state.vizType !== "big_number" && (
           <span className="tile-cached mono" title="From the chart-data cache; Refresh queries again" data-testid="tile-cached">
             cached {relativeTime(data.main.cached_at)}
@@ -133,7 +167,15 @@ export default function ChartTile({ tile, info, editing, onRemove }: Props) {
           </div>
         ) : data ? (
           <TileErrorBoundary key={data.loadedAt}>
-            <ChartView state={data.state} result={data.main} trend={data.trend} previous={data.previous} total={data.total} dataset={data.dataset} />
+            <ChartView
+              state={data.state}
+              result={data.main}
+              trend={data.trend}
+              previous={data.previous}
+              total={data.total}
+              dataset={data.dataset}
+              onSelect={onCrossSelect && !editing ? (selection) => onCrossSelect(tile.id, selection) : undefined}
+            />
             {data.state.vizType === "big_number" && (
               <div className="hero-meta">
                 {loading ? (

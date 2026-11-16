@@ -4,6 +4,7 @@ import { categoryLabel, formatNumber, toNumber } from "./format.ts";
 import { metricFormatter } from "./display.ts";
 import { metricName, outputLabel, type ChartState } from "./model.ts";
 import { cellRule, ruleMarker } from "./colorRules.ts";
+import { crossSelection, type OnCrossSelect } from "./crossSelect.ts";
 
 type Sort = { index: number; desc: boolean } | null;
 
@@ -21,10 +22,13 @@ export default function TableChart({
   state,
   result,
   dataset,
+  onSelect,
 }: {
   state: ChartState;
   result: ChartDataResult;
   dataset: Dataset | null;
+  /** Cross-filtering: a row of a grouped table selects its dimension values. */
+  onSelect?: OnCrossSelect;
 }) {
   const [sort, setSort] = useState<Sort>(null);
   const { query, display } = state;
@@ -67,6 +71,10 @@ export default function TableChart({
     return sort.desc ? sorted.reverse() : sorted;
   }, [result.rows, sort]);
 
+  // Grouped tables only (raw records have no dimensions to filter on).
+  const dimIndexes = query.columns.length ? [] : query.dimensions.map((d) => [d, result.columns.findIndex((c) => c.name === d)] as const).filter(([, i]) => i >= 0);
+  const selectionOf = (row: unknown[]) => (onSelect && dimIndexes.length ? crossSelection(dimIndexes.map(([d, i]) => [d, row[i]]), dataset) : null);
+
   function toggle(index: number) {
     setSort((s) => (s?.index !== index ? { index, desc: false } : s.desc ? null : { index, desc: true }));
   }
@@ -91,8 +99,18 @@ export default function TableChart({
           </tr>
         </thead>
         <tbody>
-          {rows.map((row, r) => (
-            <tr key={r}>
+          {rows.map((row, r) => {
+            const selection = selectionOf(row);
+            const select = selection && onSelect ? () => onSelect(selection) : undefined;
+            return (
+            <tr
+              key={r}
+              className={select ? "cross-select" : undefined}
+              onClick={select}
+              tabIndex={select ? 0 : undefined}
+              onKeyDown={select ? (e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), select()) : undefined}
+              title={select ? "Filter the other charts on this row" : undefined}
+            >
               {columns.map((c, i) => {
                 // Conditional colors: the tone's text color + ▲ / ▼ (not color alone).
                 const rule = c.metric ? cellRule(state, c.metric, row[i]) : null;
@@ -108,7 +126,8 @@ export default function TableChart({
                 );
               })}
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
     </div>

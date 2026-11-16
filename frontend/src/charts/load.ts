@@ -1,5 +1,5 @@
 /** Loading everything a chart needs to draw (chart editor and dashboard tiles alike). */
-import { fetchChartData, type CacheOptions, type ChartDataResult, type ChartQuery } from "../api.ts";
+import { fetchChartData, type AppliedDashboardFilter, type CacheOptions, type ChartDataResult, type ChartQuery, type RangeKind } from "../api.ts";
 import { localToday, previousRange } from "./display.ts";
 import { chartRequests, type ChartState } from "./model.ts";
 
@@ -13,12 +13,21 @@ export type ChartData = {
   total?: ChartDataResult | null;
 };
 
-/** The big number query for the period before the one `main` covered (null: no comparison). */
-export function previousQuery(state: ChartState, mainQuery: ChartQuery, main: ChartDataResult, today: string): ChartQuery | null {
-  if (state.vizType !== "big_number" || !state.display.compare_previous || !mainQuery.time) return null;
-  const range = previousRange(mainQuery.time.range.kind, main.range_start, main.range_end, today);
+/** The big number query for the period before the one `main` covered (null: no comparison).
+ * `rangeKind`: the range that was used, when a dashboard time filter replaced the chart's. */
+export function previousQuery(
+  state: ChartState,
+  mainQuery: ChartQuery,
+  main: ChartDataResult,
+  today: string,
+  rangeKind?: RangeKind,
+): ChartQuery | null {
+  if (state.vizType !== "big_number" || !state.display.compare_previous) return null;
+  const time = mainQuery.time ?? (rangeKind ? { column: null, grain: null, range: { kind: rangeKind } } : null);
+  if (!time) return null;
+  const range = previousRange(rangeKind ?? time.range.kind, main.range_start, main.range_end, today);
   if (!range) return null;
-  return { ...mainQuery, time: { ...mainQuery.time, grain: null, range: { kind: "custom", start: range.start, end: range.end } } };
+  return { ...mainQuery, time: { ...time, grain: null, range: { kind: "custom", start: range.start, end: range.end } } };
 }
 
 /** What makes a chart need new data: the queries (and whether to compare). Display-only
@@ -30,24 +39,31 @@ export function dataKey(state: ChartState): string {
 }
 
 /** Main result, trend and comparison. `cache`: the chart-data cache lifetime (default: the
- * chart's own `cache_ttl`, else 10 minutes) and whether to skip it ("Refresh"). */
+ * chart's own `cache_ttl`, else 10 minutes) and whether to skip it ("Refresh").
+ * `dashboardFilters`: a dashboard's filters that target this chart (every query gets them;
+ * the comparison takes the period before the dashboard's time range instead of its own). */
 export async function loadChartData(
   state: ChartState,
   signal: AbortSignal,
   cache: CacheOptions = {},
   today = localToday(),
+  dashboardFilters: AppliedDashboardFilter[] = [],
 ): Promise<ChartData> {
   const options: CacheOptions = { cacheTtl: cache.cacheTtl ?? state.display.cache_ttl ?? null, refresh: cache.refresh };
   const requests = chartRequests(state);
   const [main, trend, total] = await Promise.all([
-    fetchChartData(state.vizType, requests.main, signal, options),
-    requests.trend ? fetchChartData("line", requests.trend, signal, options) : Promise.resolve(null),
+    fetchChartData(state.vizType, requests.main, signal, options, dashboardFilters),
+    requests.trend ? fetchChartData("line", requests.trend, signal, options, dashboardFilters) : Promise.resolve(null),
     // A failing donut total only loses the center label.
-    requests.total ? fetchChartData(requests.totalViz ?? "big_number", requests.total, signal, options).catch(() => null) : Promise.resolve(null),
+    requests.total
+      ? fetchChartData(requests.totalViz ?? "big_number", requests.total, signal, options, dashboardFilters).catch(() => null)
+      : Promise.resolve(null),
   ]);
-  const query = previousQuery(state, requests.main, main, today);
+  const timeFilter = dashboardFilters.find((f) => f.kind === "time" && main.dashboard_filters_applied?.includes(f.id));
+  const query = previousQuery(state, requests.main, main, today, timeFilter?.time_range?.kind);
+  const others = dashboardFilters.filter((f) => f.kind !== "time");
   // A failing comparison only loses the comparison, never the chart.
-  const previous = query ? await fetchChartData("big_number", query, signal, options).catch(() => null) : null;
+  const previous = query ? await fetchChartData("big_number", query, signal, options, others).catch(() => null) : null;
   if (signal.aborted) throw new DOMException("Aborted", "AbortError");
   return { main, trend, previous, total };
 }

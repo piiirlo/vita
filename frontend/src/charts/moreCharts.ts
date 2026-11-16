@@ -42,6 +42,8 @@ export type TreemapNode = {
    * the sum of its parts). Undefined when unknown. */
   ownValue?: number | null;
   other: boolean;
+  /** Raw values of the levels down to this box (none for "Other"). */
+  path?: unknown[];
   children?: TreemapNode[];
 };
 
@@ -71,13 +73,13 @@ export function treemapTree(state: ChartState, result: ChartDataResult, dataset:
     const value = toNumber(row[mi]);
     let node = outer.get(key);
     if (!node) {
-      node = { name: other ? seriesLabel(OTHER_LABEL, state.display) : label(row[d0], outerDim), value: null, other };
+      node = { name: other ? seriesLabel(OTHER_LABEL, state.display) : label(row[d0], outerDim), value: null, other, ...(other ? {} : { path: [row[d0]] }) };
       if (innerDim && !other) node.children = [];
       if (own.has(key)) node.ownValue = own.get(key);
       outer.set(key, node);
     }
     if (node.children) {
-      node.children.push({ name: label(row[d1], innerDim!), value, other: false });
+      node.children.push({ name: label(row[d1], innerDim!), value, other: false, path: [row[d0], row[d1]] });
       node.value = (node.value ?? 0) + (value ?? 0);
     } else {
       node.value = (node.value ?? 0) + (value ?? 0);
@@ -119,6 +121,8 @@ export function treemapOption(state: ChartState, result: ChartDataResult, datase
     name: string;
     value: number;
     ownValue?: number | null;
+    /** Raw level values (cross-filtering reads them from a click). */
+    rawPath?: unknown[];
     itemStyle?: { color?: string };
     label?: { color?: string };
     children?: Item[];
@@ -134,8 +138,9 @@ export function treemapOption(state: ChartState, result: ChartDataResult, datase
       name: n.name,
       value: n.value ?? 0,
       ...(n.ownValue !== undefined ? { ownValue: n.ownValue } : {}),
+      ...(n.path ? { rawPath: n.path } : {}),
       ...style,
-      ...(n.children ? { children: n.children.map((c) => ({ name: c.name, value: c.value ?? 0, ...style })) } : {}),
+      ...(n.children ? { children: n.children.map((c) => ({ name: c.name, value: c.value ?? 0, ...(c.path ? { rawPath: c.path } : {}), ...style })) } : {}),
     };
   });
   const text = ctx.tokens?.text;

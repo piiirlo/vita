@@ -1,0 +1,26 @@
+"""Part 15: a dashboard's filter bar (filter definitions and their default values)
+
+Revision ID: 0016
+Revises: 0015
+Create Date: 2026-11-16
+"""
+
+from collections.abc import Sequence
+
+import sqlalchemy as sa
+from alembic import op
+
+revision: str = "0016"
+down_revision: str | None = "0015"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
+
+
+def upgrade() -> None:
+    op.add_column(
+        "dashboards", sa.Column("filters", sa.JSON(), nullable=False, server_default="[]")
+    )
+
+
+def downgrade() -> None:
+    op.drop_column("dashboards", "filters")

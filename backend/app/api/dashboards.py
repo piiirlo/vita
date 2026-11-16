@@ -9,15 +9,16 @@ from sqlalchemy import Select, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from app.api.projects import resolve_project
+from app.api.projects import resolve_project, same_project
 from app.dashboard_grid import GRID_COLUMNS, first_free_spot
 from app.db import get_db
-from app.models import Chart, Dashboard, DashboardChart
+from app.models import Chart, Dashboard, DashboardChart, Dataset
 from app.schemas.dashboards import (
     MAX_TILES,
     AddChartIn,
     ChartTile,
     DashboardChartInfo,
+    DashboardFilterDef,
     DashboardIn,
     DashboardListItem,
     DashboardOut,
@@ -62,6 +63,8 @@ def _out(db: Session, dashboard: Dashboard) -> DashboardOut:
         layout=dashboard.layout,
         refresh_interval=dashboard.refresh_interval,
         cache_ttl=dashboard.cache_ttl,
+        filters=dashboard.filters or [],
+        cross_filtering=dashboard.cross_filtering,
         charts={
             c.id: DashboardChartInfo(id=c.id, name=c.name, viz_type=c.viz_type) for c in charts
         },
@@ -136,6 +139,31 @@ def _apply(db: Session, dashboard: Dashboard, payload: DashboardIn) -> None:
     dashboard.refresh_interval = payload.refresh_interval
     dashboard.cache_ttl = payload.cache_ttl
     _set_layout(db, dashboard, [t.model_dump(mode="json") for t in payload.layout])
+    if payload.filters is not None:
+        _set_filters(db, dashboard, payload.filters)
+    elif dashboard.filters is None:
+        dashboard.filters = []
+    if payload.cross_filtering is not None:
+        dashboard.cross_filtering = payload.cross_filtering
+    elif dashboard.cross_filtering is None:
+        dashboard.cross_filtering = True
+
+
+def _set_filters(db: Session, dashboard: Dashboard, filters: list[DashboardFilterDef]) -> None:
+    """Values filters read their choices from a dataset of the dashboard's own project."""
+    for f in filters:
+        if f.dataset_id is None:
+            continue
+        owner = db.scalar(select(Dataset.project_id).where(Dataset.id == f.dataset_id))
+        if owner is None:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                f'The dataset of the filter "{f.label or f.column}" doesn\'t exist (anymore).',
+            )
+        same_project(
+            owner, dashboard.project_id, f'The dataset of the filter "{f.label or f.column}"'
+        )
+    dashboard.filters = [f.model_dump(mode="json") for f in filters]
 
 
 def _commit(db: Session, name: str, project_id: int) -> None:
@@ -232,6 +260,8 @@ def duplicate_dashboard(dashboard_id: int, db: DbSession) -> DashboardOut:
         description=source.description,
         refresh_interval=source.refresh_interval,
         cache_ttl=source.cache_ttl,
+        filters=list(source.filters or []),
+        cross_filtering=source.cross_filtering,
     )
     _set_layout(db, copy, [dict(t) for t in source.layout])
     db.add(copy)

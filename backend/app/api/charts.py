@@ -14,6 +14,7 @@ from app.api.connections import saved_connection_details
 from app.api.datasets import ensure_time_columns, get_dataset_or_404
 from app.api.projects import resolve_project, same_project
 from app.charts import build_chart_query, cache
+from app.charts.dashboard_filters import merge_dashboard_filters
 from app.db import get_db
 from app.models import Chart, Dashboard, DashboardChart, Dataset
 from app.query import DEFAULT_TIMEOUT_SECONDS, QueryError, run_query
@@ -56,9 +57,13 @@ def chart_data(payload: ChartDataRequest, db: DbSession) -> ChartDataOut:
     Not logged in query_history."""
     dataset = ensure_time_columns(db, payload.query.dataset_id)
     details = saved_connection_details(dataset.connection)
+    # Dashboard filters become part of the query, hence of the SQL and the cache key.
+    merged = merge_dashboard_filters(
+        dataset, details.db_type, payload.query, payload.dashboard_filters
+    )
     try:
         built = build_chart_query(
-            dataset, details.db_type, payload.viz_type, payload.query, today=today()
+            dataset, details.db_type, payload.viz_type, merged.query, today=today()
         )
     except QueryError as error:
         _query_error(error)
@@ -66,6 +71,7 @@ def chart_data(payload: ChartDataRequest, db: DbSession) -> ChartDataOut:
         "sql": built.sql,
         "range_start": built.time_start,
         "range_end": built.time_end - timedelta(days=1) if built.time_end else None,
+        "dashboard_filters_applied": merged.applied,
     }
     connection = dataset.connection
     key = cache.cache_key(connection.id, connection.updated_at, built.sql, built.row_limit)

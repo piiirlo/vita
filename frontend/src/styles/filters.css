@@ -1,0 +1,291 @@
+/* Part 15: the dashboard filter bar, its panels, the filter dialog and tile markers.
+ * Colors only from tokens. Active filters wear the Clay highlight (soft fill + glow border). */
+
+.dfilter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: -6px 0 20px;
+}
+
+.dfilter-bar-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 4px;
+}
+
+.dfilter-wrap {
+  position: relative;
+}
+
+.dfilter {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 12px 0 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out);
+}
+button.dfilter:hover {
+  border-color: var(--border-hover);
+}
+.dfilter.active {
+  background: var(--accent-soft);
+  border-color: var(--glow-border);
+}
+.dfilter-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.dfilter-value {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dfilter-kind {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.dfilter-config {
+  cursor: default;
+  padding-right: 4px;
+}
+.dfilter-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.dfilter-icon:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.dfilter-actions {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+/* The panel under a filter pill. */
+.dfilter-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(320px, calc(100vw - 32px));
+  padding: 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow);
+  animation: dfilter-in var(--dur-fast) var(--ease-out);
+}
+@keyframes dfilter-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+.dfilter-pop .inline-controls input {
+  min-width: 0;
+  flex: 1;
+}
+.dfilter-hint {
+  margin: 0;
+}
+.dfilter-values {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.dfilter-options {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.dfilter-options label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px;
+  border-radius: 8px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.dfilter-options label:hover {
+  background: var(--hover);
+}
+.dfilter-skeleton {
+  display: block;
+  height: 120px;
+}
+.dfilter-pop-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 34px;
+}
+
+/* The filter dialog. */
+.dfilter-kinds,
+.dfilter-targets {
+  border: 0;
+  margin: 0 0 14px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.dfilter-kinds {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+.dfilter-kinds legend,
+.dfilter-targets legend {
+  margin-bottom: 6px;
+}
+.dfilter-kind-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  cursor: pointer;
+}
+.dfilter-kind-choice.selected {
+  border-color: var(--glow-border);
+  background: var(--accent-soft);
+}
+.dfilter-kind-choice input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.dfilter-kind-choice:has(input:focus-visible) {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.dfilter-source {
+  margin-bottom: 12px;
+}
+.dfilter-source label {
+  flex: 1;
+}
+.dfilter-chart-list {
+  list-style: none;
+  margin: 0 0 0 26px;
+  padding: 0;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+/* Tile markers: a small funnel on filtered charts; "Not filtered by …" on hover. */
+.tile-filtered {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.tile-unfiltered {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 50%;
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+.dash-tile:hover .tile-unfiltered,
+.dash-tile:focus-within .tile-unfiltered {
+  opacity: 1;
+}
+@media (hover: none) {
+  .tile-unfiltered {
+    opacity: 1;
+  }
+}
+
+/* Round 2: cross-filtering. A cross filter chip wears the Clay highlight like an active filter;
+ * the tile it comes from says "Filtering"; clickable rows and cells show a pointer. */
+.dfilter-cross {
+  cursor: default;
+  padding-right: 4px;
+  background: var(--accent-soft);
+  border-color: var(--glow-border);
+}
+.tile-crossing {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+  height: 22px;
+  padding: 0 4px 0 10px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.tile-crossing button {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  line-height: 1;
+}
+.tile-crossing button:hover {
+  background: var(--hover);
+}
+.chart-table tr.cross-select,
+.pivot-table td.cross-select {
+  cursor: pointer;
+}
+.chart-table tr.cross-select:hover td,
+.pivot-table td.cross-select:hover {
+  background: var(--hover);
+}
+.cross-switch input {
+  accent-color: var(--accent-text);
+}

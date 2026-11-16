@@ -5,6 +5,7 @@ import type { Coverage } from "./display.ts";
 import { PIVOT_MAX_COLUMNS, type ChartState } from "./model.ts";
 import { cellRule, ruleMarker } from "./colorRules.ts";
 import { PIVOT_MAX_ROWS_SHOWN, pivotLayout } from "./pivotTable.ts";
+import { crossSelection, type OnCrossSelect } from "./crossSelect.ts";
 
 const toggle = (set: ReadonlySet<string>, key: string) => {
   const next = new Set(set);
@@ -25,11 +26,14 @@ export default function PivotTable({
   result,
   dataset,
   coverageFor,
+  onSelect,
 }: {
   state: ChartState;
   result: ChartDataResult;
   dataset: Dataset | null;
   coverageFor?: (ref: string) => Coverage | null;
+  /** Cross-filtering: a cell selects its row and column values (totals: fewer). */
+  onSelect?: OnCrossSelect;
 }) {
   const { query, display } = state;
   const [collapsedRows, setCollapsedRows] = useState<ReadonlySet<string>>(new Set());
@@ -133,10 +137,25 @@ export default function PivotTable({
                 {row.cells.map((c, ci) => {
                   const metric = layout.columns[ci]?.metric;
                   const rule = metric ? cellRule(state, metric, c.value) : null;
+                  const colPath = layout.columns[ci]?.path ?? [];
+                  const selection =
+                    onSelect && c.text
+                      ? crossSelection(
+                          [
+                            ...row.path.map((v, i) => [query.dimensions[i], v] as [string | undefined, unknown]),
+                            ...colPath.map((v, i) => [query.column_dimensions?.[i], v] as [string | undefined, unknown]),
+                          ],
+                          dataset,
+                        )
+                      : null;
+                  const select = selection && onSelect ? () => onSelect(selection) : undefined;
                   return (
                     <td
                       key={ci}
-                      className={`num pivot-cell-${layout.columns[ci]?.kind ?? "leaf"}${c.heat ? ` heat-${c.heat}` : ""}${rule ? ` cell-rule cell-${rule.tone}` : ""}`}
+                      onClick={select}
+                      tabIndex={select ? 0 : undefined}
+                      onKeyDown={select ? (e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), select()) : undefined}
+                      className={`num pivot-cell-${layout.columns[ci]?.kind ?? "leaf"}${select ? " cross-select" : ""}${c.heat ? ` heat-${c.heat}` : ""}${rule ? ` cell-rule cell-${rule.tone}` : ""}`}
                     >
                       {rule && <span aria-hidden>{ruleMarker(rule)} </span>}
                       {c.text}

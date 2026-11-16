@@ -7,7 +7,8 @@ import type { ChartDataResult, Dataset } from "../../api.ts";
 import EChart from "../EChart.tsx";
 import { metricLabel, type ChartState } from "../model.ts";
 import type { DrawContext } from "../options.ts";
-import { WORLD_MAP, unmatchedNotice, worldMapOption, worldMatch } from "./worldMap.ts";
+import { countryRawValues, WORLD_MAP, unmatchedNotice, worldMapOption, worldMatch } from "./worldMap.ts";
+import { countrySelection, type OnCrossSelect } from "../crossSelect.ts";
 
 echarts.use([MapChart]);
 
@@ -26,12 +27,14 @@ export default function WorldMapView({
   dataset,
   drawColors,
   showHints,
+  onSelect,
 }: {
   state: ChartState;
   result: ChartDataResult;
   dataset: Dataset | null;
   drawColors: Pick<DrawContext, "colors" | "labelColor" | "tokens">;
   showHints: boolean;
+  onSelect?: OnCrossSelect;
 }) {
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -46,6 +49,14 @@ export default function WorldMapView({
   }, []);
   const match = useMemo(() => worldMatch(state, result, dataset), [state, result, dataset]);
   const option = useMemo(() => worldMapOption(state, match, dataset, drawColors), [state, match, dataset, drawColors]);
+  const raws = useMemo(() => (onSelect ? countryRawValues(state, result, dataset) : null), [onSelect, state, result, dataset]);
+  const onItemClick =
+    onSelect && raws
+      ? (p: { name?: string }) => {
+          const sel = countrySelection(state.query.dimensions[0], raws.get(p.name ?? "") ?? [], dataset);
+          if (sel) onSelect(sel);
+        }
+      : undefined;
   const notice = showHints ? unmatchedNotice(match.unmatched) : null;
   const metric = state.query.metrics[0];
 
@@ -59,7 +70,7 @@ export default function WorldMapView({
   return (
     <>
       {ready ? (
-        <EChart option={option} label={`World map of ${metric ? metricLabel(metric, dataset) : ""}: ${match.values.size} countries`} />
+        <EChart option={option} onItemClick={onItemClick} label={`World map of ${metric ? metricLabel(metric, dataset) : ""}: ${match.values.size} countries`} />
       ) : (
         <div className="skeleton map-skeleton" role="status" aria-label="Loading the map" />
       )}

@@ -6,7 +6,7 @@ from typing import Annotated, Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.dashboard_grid import GRID_COLUMNS
-from app.schemas.charts import MAX_CACHE_TTL, VizType
+from app.schemas.charts import MAX_CACHE_TTL, DashboardFilterKind, FilterSelection, VizType
 
 MAX_TILE_HEIGHT = 200
 MAX_TILES = 100
@@ -52,6 +52,52 @@ def _unique_tile_ids(layout: list[ChartTile | TextTile]) -> None:
         seen.add(tile.id)
 
 
+MAX_FILTERS = 20
+
+
+class DashboardFilterDef(BaseModel):
+    """A filter in the dashboard's filter bar. By default it targets every chart whose dataset
+    has a column named `column` (time: every chart with a time column); `targets` = an
+    explicit list of chart ids instead."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
+    kind: DashboardFilterKind
+    label: str = Field(default="", max_length=100)
+    # The column (by name) for values / range filters.
+    column: str | None = Field(default=None, max_length=255)
+    # Where a values filter reads its choices from (SELECT DISTINCT column).
+    dataset_id: int | None = None
+    targets: list[int] | None = Field(default=None, max_length=MAX_TILES)
+    default: FilterSelection = Field(default_factory=FilterSelection)
+    # Values filters: other filters (ids) whose current values limit the choices, e.g. City
+    # only offers the cities of the chosen Country.
+    depends_on: list[str] = Field(default_factory=list, max_length=MAX_FILTERS)
+
+    @model_validator(mode="after")
+    def _check(self) -> Self:
+        if self.kind != "time" and not self.column:
+            raise ValueError(f"The {self.kind} filter needs a column")
+        if self.kind == "values" and self.dataset_id is None:
+            raise ValueError("A values filter needs a dataset to read its values from")
+        if self.depends_on and self.kind != "values":
+            raise ValueError("Only values filters can depend on other filters")
+        if self.id in self.depends_on:
+            raise ValueError("A filter can't depend on itself")
+        return self
+
+
+def _check_filters(filters: list[DashboardFilterDef]) -> None:
+    ids = [f.id for f in filters]
+    if len(ids) != len(set(ids)):
+        raise ValueError("Duplicate filter id")
+    for f in filters:
+        unknown = [d for d in f.depends_on if d not in ids]
+        if unknown:
+            raise ValueError(f"Filter {f.id} depends on unknown filters: {', '.join(unknown)}")
+
+
 class DashboardIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     description: str | None = None
@@ -62,10 +108,16 @@ class DashboardIn(BaseModel):
     project_id: int | None = None
     # Cache lifetime for every tile, in seconds (0 = off); None = each chart's own.
     cache_ttl: int | None = Field(default=None, ge=0, le=MAX_CACHE_TTL)
+    # The filter bar (Part 15). Left out by older clients: the saved filters are kept.
+    filters: list[DashboardFilterDef] | None = Field(default=None, max_length=MAX_FILTERS)
+    # Clicking a bar, slice, row... filters the other charts. None = unchanged.
+    cross_filtering: bool | None = None
 
     @model_validator(mode="after")
     def _check_layout(self) -> Self:
         _unique_tile_ids(self.layout)
+        if self.filters:
+            _check_filters(self.filters)
         return self
 
 
@@ -97,6 +149,8 @@ class DashboardOut(BaseModel):
     layout: list[Tile]
     refresh_interval: RefreshInterval
     cache_ttl: int | None
+    filters: list[DashboardFilterDef]
+    cross_filtering: bool
     # Basic info of every chart in the layout, keyed by chart id (JSON keys are strings).
     charts: dict[int, DashboardChartInfo]
     created_at: datetime

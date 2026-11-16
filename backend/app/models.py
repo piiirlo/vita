@@ -11,6 +11,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    true,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -286,6 +287,10 @@ class Dashboard(Base):
     refresh_interval: Mapped[str] = mapped_column(String(10), default="off")
     # Chart-data cache lifetime for every tile (seconds; 0 = off). NULL = each chart's own.
     cache_ttl: Mapped[int | None] = mapped_column(nullable=True)
+    # The filter bar: list of DashboardFilterDef (app/schemas/dashboards.py), defaults included.
+    filters: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list, server_default="[]")
+    # Clicking a chart element filters the other charts (Part 15).
+    cross_filtering: Mapped[bool] = mapped_column(default=True, server_default=true())
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

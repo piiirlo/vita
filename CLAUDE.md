@@ -42,8 +42,10 @@ One part at a time, in order:
 14. **Projects** — home = projects as folders; a project owns its connections, uploads,
     datasets, saved queries, charts and dashboards; the 4-step setup wizard; a dashboard's
     "Add a chart"; Ink / Paper / Clay design (`design/projects-prototype.html`) *(done)*
+15. **Dashboard filters** — filter bar (time range, values, number range), targeting by column
+    name, values in the URL, defaults; cross-filtering; dependent values filters *(done)*
 
-**Out of scope for v1:** dashboard filters, multi-user permissions, alerts, scheduled
+**Out of scope for v1:** multi-user permissions, alerts, scheduled
 reports, chart types beyond the 15 of Part 11.
 
 ## Working rules
@@ -273,6 +275,17 @@ This folder may contain the Apache Superset source code. It is **read-only refer
     layout's vertical compaction ported step for step (migration 0013 stored every layout
     compacted once: tiles are placed freely since, so old dashboards keep their look;
     `frontend/scripts/rgl-compact-check.mjs` prints RGL's own results to compare).
+  - Dashboard filters (Part 15): `app/charts/dashboard_filters.py`. `dashboards.filters` (JSON list
+    of `DashboardFilterDef`: id, kind time / values / range, column, values filters' `dataset_id`,
+    `targets` = chart ids or null = every chart with that column, `default`, `depends_on`) and
+    `cross_filtering` (bool). Chart-data takes `dashboard_filters` (the frontend sends only those
+    targeting the chart); `merge_dashboard_filters` puts them into the ChartQuery **before** the
+    builder (time replaces the chart's own range on its own / the main time column; values =
+    IN, null matches empty; range = >= / <=), skipping what the dataset can't take (missing /
+    hidden column, wrong type); the response lists `dashboard_filters_applied`. The cache key
+    follows (it hashes the SQL). `GET /api/datasets/{id}/values?column=&q=&filters=`: DISTINCT,
+    1000 max, chart cache; `filters` (JSON) = the parents' current values (`values_sql`).
+    A dataset used by a values filter can't be deleted (409 naming the dashboards).
   - Lint/types: `ruff check .`, `ruff format .`, `mypy .` (strict, pydantic plugin; config in
     `pyproject.toml`). sqlglot 30 type hints use `exp.Expr` (the base class), not
     `exp.Expression`.
@@ -405,6 +418,16 @@ This folder may contain the Apache Superset source code. It is **read-only refer
     in `layout.ts`. Narrow screens stack tiles (view mode). The router is a data router
     (`createBrowserRouter` in `main.tsx`) so pages can use `useBlocker`; tests of pages that
     use it need `createMemoryRouter`. "Edit chart" links to `/charts/:id?dashboard=<id>`.
+  - Dashboard filters (Part 15): `dashboards/filters.ts` (pure: URL `f_<id>` = a value that
+    differs from the default, `xf` = cross filters; targeting `targetsChart` / `filtersForChart`;
+    `tileFilterStatus` from the response's applied ids; `parentFilters`; `toggleCross` /
+    `crossFiltersFor`: a tile never gets its own cross filter), `FilterBar.tsx` (pills + panels,
+    Reset / Save as default, cross chips), `FilterDialog.tsx` (edit mode). Tiles reload debounced
+    (`FILTER_DEBOUNCE_MS`) and may use the cache. Cross-filtering: `ChartView onSelect` gets a
+    `CrossSelection` (`charts/crossSelect.ts`, plain columns only, never "col@part") from bar /
+    line / area / combo categories (`cartesianLayout().categories`), pie slices (`raw`), treemap
+    boxes (`rawPath`, no zoom then), map countries (`countryRawValues`), grouped table rows and
+    pivot cells (`PivotRow.path` / `PivotColumn.path`); `EChart onItemClick`.
   - Browse (`src/pages/BrowsePage.tsx`): List or Diagram view (`vita.browse.view`). The
     diagram (`src/browse/SchemaDiagram.tsx`, lazy, with dagre — keep both out of the main
     bundle) lays one schema out with `diagramLayout.ts` (pure: dagre layout, search,

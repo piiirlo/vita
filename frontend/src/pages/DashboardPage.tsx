@@ -7,6 +7,8 @@ import {
   updateDashboard,
   type Dashboard,
   type DashboardChartInfo,
+  type DashboardFilterDef,
+  type FilterSelection,
   type DashboardTile,
   type RefreshInterval,
   type SavedChart,
@@ -19,6 +21,19 @@ import { SearchCapsule } from "../shell/PageHeader.tsx";
 import AddChartDialog from "../dashboards/AddChartDialog.tsx";
 import ChartTile from "../dashboards/ChartTile.tsx";
 import DashboardGrid from "../dashboards/DashboardGrid.tsx";
+import FilterBar from "../dashboards/FilterBar.tsx";
+import FilterDialog from "../dashboards/FilterDialog.tsx";
+import {
+  FILTER_DEBOUNCE_MS,
+  readCrossFilters,
+  readFilterValues,
+  toggleCross,
+  withDefaults,
+  writeCrossFilters,
+  writeFilterValues,
+  type CrossFilter,
+} from "../dashboards/filters.ts";
+import type { CrossSelection } from "../charts/crossSelect.ts";
 import { tidyUp } from "../dashboards/gridTidy.ts";
 import { useMediaQuery, useNow, usePageVisible } from "../dashboards/hooks.ts";
 import {
@@ -44,7 +59,10 @@ import EmptyState from "../components/EmptyState.tsx";
 import { projectPath } from "../projects/paths.ts";
 import { useCrumbTitle } from "../projects/projectContext.ts";
 
-type Draft = { name: string; layout: DashboardTile[] };
+type Draft = { name: string; layout: DashboardTile[]; filters: DashboardFilterDef[] };
+
+const NO_FILTERS: DashboardFilterDef[] = [];
+const NO_CROSS: CrossFilter[] = [];
 
 export default function DashboardPage() {
   const dashboardId = Number(useParams().id);
@@ -55,6 +73,8 @@ export default function DashboardPage() {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [addedCharts, setAddedCharts] = useState<Record<string, DashboardChartInfo>>({});
   const [addingChart, setAddingChart] = useState(false);
+  // The filter being added (null inside) or edited; undefined = the dialog is closed.
+  const [filterDialog, setFilterDialog] = useState<{ def: DashboardFilterDef | null } | undefined>(undefined);
   const [saving, setSaving] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [lastUpdated, setLastUpdated] = useState(() => Date.now());
@@ -68,10 +88,82 @@ export default function DashboardPage() {
   // One request queue and dataset cache per dashboard page.
   const queue = useRef(new RequestQueue(MAX_PARALLEL_TILES)).current;
   const datasets = useRef(new DatasetCache()).current;
-  const context = useMemo<DashboardContextValue>(
-    () => ({ queue, datasets, dashboardId, refreshKey, cacheTtl: dashboard?.cache_ttl ?? null }),
-    [queue, datasets, dashboardId, refreshKey, dashboard?.cache_ttl],
+
+  // ---------- filters ----------
+  // Definitions: the draft's while editing. Values: the URL (f_<id>), else the saved defaults.
+  const filterDefs = draft?.filters ?? dashboard?.filters ?? NO_FILTERS;
+  const searchText = search.toString();
+  const filterValues = useMemo(
+    () => readFilterValues(new URLSearchParams(searchText), filterDefs),
+    [searchText, filterDefs],
   );
+  // Cross filters (a click on a chart element): ?xf=, only while cross-filtering is on.
+  const crossOn = dashboard?.cross_filtering ?? false;
+  const crossFilters = useMemo(
+    () => (crossOn ? readCrossFilters(new URLSearchParams(searchText)) : NO_CROSS),
+    [searchText, crossOn],
+  );
+  // Tiles reload a moment after the last change (typing a number, ticking several values).
+  const valuesKey = JSON.stringify([filterValues, crossFilters]);
+  const [debounced, setDebounced] = useState({ key: valuesKey, values: filterValues, cross: crossFilters });
+  useEffect(() => {
+    if (debounced.key === valuesKey) return;
+    const timer = setTimeout(() => setDebounced({ key: valuesKey, values: filterValues, cross: crossFilters }), FILTER_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [valuesKey, filterValues, crossFilters, debounced.key]);
+  const filtersKey = `${JSON.stringify(filterDefs)}|${debounced.key}`;
+
+  // Stable handlers for the tiles (react-router's setter changes with the location).
+  const setSearchRef = useRef(setSearch);
+  setSearchRef.current = setSearch;
+  const onCrossSelect = useCallback((tile: string, selection: CrossSelection) => {
+    setSearchRef.current((current) => writeCrossFilters(current, toggleCross(readCrossFilters(current), tile, selection)), { replace: true });
+  }, []);
+  const onCrossClear = useCallback((tile: string) => {
+    setSearchRef.current((current) => writeCrossFilters(current, readCrossFilters(current).filter((f) => f.tile !== tile)), { replace: true });
+  }, []);
+
+  const context = useMemo<DashboardContextValue>(
+    () => ({
+      queue,
+      datasets,
+      dashboardId,
+      refreshKey,
+      cacheTtl: dashboard?.cache_ttl ?? null,
+      filters: { defs: filterDefs, values: debounced.values, cross: debounced.cross },
+      filtersKey,
+      ...(crossOn && !draft ? { onCrossSelect, onCrossClear } : {}),
+    }),
+    // filtersKey stands for filterDefs and the debounced values.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [queue, datasets, dashboardId, refreshKey, dashboard?.cache_ttl, filtersKey, crossOn, draft === null],
+  );
+
+  function setFilterValue(id: string, selection: FilterSelection) {
+    setSearch((current) => writeFilterValues(current, filterDefs, { ...readFilterValues(current, filterDefs), [id]: selection }), {
+      replace: true,
+    });
+  }
+
+  function resetFilters() {
+    setSearch((current) => writeCrossFilters(writeFilterValues(current, filterDefs, readFilterValues(new URLSearchParams(), filterDefs)), []), {
+      replace: true,
+    });
+  }
+
+  async function setCrossFiltering(on: boolean) {
+    const saved = await saveSettings({ cross_filtering: on }, "cross-filtering setting");
+    if (saved && !on) setSearch((current) => writeCrossFilters(current, []), { replace: true });
+  }
+
+  async function saveFilterDefaults() {
+    if (!dashboard) return;
+    const saved = await saveSettings({ filters: withDefaults(dashboard.filters, filterValues) }, "default filter values");
+    if (saved) {
+      setSearch((current) => writeFilterValues(current, saved.filters, readFilterValues(current, saved.filters)), { replace: true });
+      toast.success("Saved these filter values as the dashboard's defaults.");
+    }
+  }
 
   // ---------- loading ----------
 
@@ -94,8 +186,15 @@ export default function DashboardPage() {
   // New dashboards open in edit mode (?edit=1).
   useEffect(() => {
     if (dashboard && search.get("edit") === "1") {
-      setDraft({ name: dashboard.name, layout: dashboard.layout });
-      setSearch({}, { replace: true });
+      setDraft({ name: dashboard.name, layout: dashboard.layout, filters: dashboard.filters });
+      setSearch(
+        (current) => {
+          const next = new URLSearchParams(current);
+          next.delete("edit");
+          return next;
+        },
+        { replace: true },
+      );
     }
   }, [dashboard, search, setSearch]);
 
@@ -118,9 +217,13 @@ export default function DashboardPage() {
     return () => clearTimeout(timer);
   }, [intervalMs, pageVisible, editing, lastUpdated, refreshAll]);
 
-  /** Saves the auto-refresh interval or the cache setting (outside edit mode). */
-  async function saveSettings(patch: { refresh_interval?: RefreshInterval; cache_ttl?: number | null }, what: string) {
-    if (!dashboard) return;
+  /** Saves the auto-refresh interval, the cache setting or the filters' defaults (outside edit
+   * mode). Resolves the saved dashboard, or null when it failed. */
+  async function saveSettings(
+    patch: { refresh_interval?: RefreshInterval; cache_ttl?: number | null; filters?: DashboardFilterDef[]; cross_filtering?: boolean },
+    what: string,
+  ): Promise<Dashboard | null> {
+    if (!dashboard) return null;
     try {
       const saved = await updateDashboard(dashboard.id, {
         name: dashboard.name,
@@ -131,8 +234,10 @@ export default function DashboardPage() {
         ...patch,
       });
       setDashboard(saved);
+      return saved;
     } catch (err) {
       toast.error(`Couldn't save the ${what}: ${errorText(err)}`);
+      return null;
     }
   }
 
@@ -141,18 +246,45 @@ export default function DashboardPage() {
   const dirty =
     dashboard !== null &&
     draft !== null &&
-    (draft.name.trim() !== dashboard.name || layoutKey(draft.layout) !== layoutKey(dashboard.layout));
+    (draft.name.trim() !== dashboard.name ||
+      layoutKey(draft.layout) !== layoutKey(dashboard.layout) ||
+      JSON.stringify(draft.filters) !== JSON.stringify(dashboard.filters));
 
   const { blocker, dirtyRef } = useUnsavedChanges(dirty);
 
   function edit() {
     if (!dashboard) return;
-    setDraft({ name: dashboard.name, layout: dashboard.layout });
+    setDraft({ name: dashboard.name, layout: dashboard.layout, filters: dashboard.filters });
   }
 
   function cancel() {
     setDraft(null);
     setAddedCharts({});
+  }
+
+  /** Add or replace a filter in the draft. A new filter starts from the current value of the
+   * one it replaces only when its kind and column didn't change (FilterDialog decides). */
+  function putFilter(def: DashboardFilterDef) {
+    setDraft((d) => {
+      if (!d) return d;
+      const exists = d.filters.some((f) => f.id === def.id);
+      return { ...d, filters: exists ? d.filters.map((f) => (f.id === def.id ? def : f)) : [...d.filters, def] };
+    });
+    setFilterDialog(undefined);
+  }
+
+  function removeFilter(def: DashboardFilterDef) {
+    // Filters that depended on it no longer do.
+    setDraft((d) =>
+      d
+        ? {
+            ...d,
+            filters: d.filters
+              .filter((f) => f.id !== def.id)
+              .map((f) => (f.depends_on?.includes(def.id) ? { ...f, depends_on: f.depends_on.filter((x) => x !== def.id) } : f)),
+          }
+        : d,
+    );
   }
 
   const setLayout = (update: (tiles: DashboardTile[]) => DashboardTile[]) =>
@@ -183,6 +315,7 @@ export default function DashboardPage() {
         layout: draft.layout,
         refresh_interval: dashboard.refresh_interval,
         cache_ttl: dashboard.cache_ttl,
+        filters: draft.filters,
       });
       setDashboard(saved);
       setDraft(null);
@@ -197,6 +330,14 @@ export default function DashboardPage() {
       setSaving(false);
     }
   }
+
+  // The charts on the dashboard (the filter dialog's "Applies to").
+  const layoutForCharts = draft?.layout ?? dashboard?.layout;
+  const filterCharts = useMemo(() => {
+    const info = { ...dashboard?.charts, ...addedCharts };
+    const ids = [...new Set((layoutForCharts ?? []).flatMap((t) => (t.type === "chart" ? [t.chart_id] : [])))];
+    return ids.map((id) => ({ id, name: info[id]?.name ?? `Chart ${id}` }));
+  }, [layoutForCharts, dashboard?.charts, addedCharts]);
 
   // ---------- render ----------
 
@@ -360,6 +501,15 @@ export default function DashboardPage() {
                   ))}
                 </select>
               </label>
+              <label className="inline-label small cross-switch" title="Click a bar, slice, row… to filter the other charts on it">
+                <input
+                  type="checkbox"
+                  role="switch"
+                  checked={dashboard.cross_filtering}
+                  onChange={(e) => void setCrossFiltering(e.target.checked)}
+                />
+                Cross-filter
+              </label>
               <Button onClick={edit}>Edit</Button>
               <Link to={addChartPath} className="button primary pill">
                 <Plus size={17} strokeWidth={2.4} aria-hidden /> Add a chart
@@ -369,6 +519,25 @@ export default function DashboardPage() {
         </div>
       </header>
       {dashboard.description && !editing && <p className="muted dash-description">{dashboard.description}</p>}
+
+      <FilterBar
+        defs={filterDefs}
+        values={filterValues}
+        cross={crossFilters}
+        crossSource={(tile) => {
+          const spec = tiles.find((t) => t.id === tile);
+          return spec?.type === "chart" ? (charts[spec.chart_id]?.name ?? null) : null;
+        }}
+        onCrossRemove={onCrossClear}
+        editing={editing}
+        datasets={datasets}
+        onChange={setFilterValue}
+        onReset={resetFilters}
+        onSaveDefaults={() => void saveFilterDefaults()}
+        onAdd={() => setFilterDialog({ def: null })}
+        onEdit={(def) => setFilterDialog({ def })}
+        onRemove={removeFilter}
+      />
 
       <DashboardContext.Provider value={context}>
         {tiles.length === 0 ? (
@@ -414,6 +583,16 @@ export default function DashboardPage() {
       </DashboardContext.Provider>
 
       {addingChart && <AddChartDialog onPick={addChart} onClose={() => setAddingChart(false)} />}
+      {filterDialog && (
+        <FilterDialog
+          initial={filterDialog.def}
+          others={filterDefs.filter((f) => f.id !== filterDialog.def?.id)}
+          charts={filterCharts}
+          datasets={datasets}
+          onSave={putFilter}
+          onClose={() => setFilterDialog(undefined)}
+        />
+      )}
 
       {blocker.state === "blocked" && (
         <UnsavedChangesDialog

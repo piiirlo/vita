@@ -6,16 +6,20 @@ app.datasets, which uses run_query. The metadata-DB session is closed while thos
 
 import logging
 from dataclasses import asdict
-from typing import Annotated, NoReturn
+from datetime import datetime
+from typing import Annotated, Any, NoReturn
 
 import psycopg
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from pydantic import TypeAdapter, ValidationError
 from sqlalchemy import func, or_, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.connections import get_connection_or_404, saved_connection_details
 from app.api.projects import resolve_project
+from app.charts import cache as chart_cache
+from app.charts.dashboard_filters import MAX_COLUMN_VALUES, values_sql
 from app.charts.usage import GROUP, TIME, QueryUsage, query_usage, used_by_message
 from app.datasets import (
     COUNT_METRIC,
@@ -47,11 +51,12 @@ from app.datasets.timecols import (
 )
 from app.db import get_db
 from app.engines import ConnectionDetails
-from app.models import Chart, Dataset, DatasetColumn, DatasetMetric
-from app.query import QueryError
-from app.schemas.charts import ChartParams
+from app.models import Chart, Dashboard, Dataset, DatasetColumn, DatasetMetric
+from app.query import DEFAULT_TIMEOUT_SECONDS, QueryError, run_query
+from app.schemas.charts import AppliedDashboardFilter, ChartParams
 from app.schemas.datasets import (
     ColumnSettings,
+    ColumnValuesOut,
     DatasetColumnOut,
     DatasetCreate,
     DatasetListItem,
@@ -83,6 +88,16 @@ QUERY_ERROR_RESPONSES: dict[int | str, dict[str, object]] = {
 
 
 # ---------- helpers ----------
+
+
+def dashboards_filtering_on(db: Session, dataset_id: int) -> list[str]:
+    """Names of the dashboards with a values filter reading its choices from this dataset."""
+    names = {
+        d.name
+        for d in db.scalars(select(Dashboard))
+        if any(f.get("dataset_id") == dataset_id for f in d.filters or [])
+    }
+    return sorted(names, key=str.lower)
 
 
 def _query_error(error: QueryError) -> NoReturn:
@@ -539,6 +554,17 @@ def delete_dataset(dataset_id: int, db: DbSession, drop_table: bool = False) -> 
                 "charts": used_by,
             },
         )
+    filtered_by = dashboards_filtering_on(db, dataset.id)
+    if filtered_by:
+        noun = "dashboard" if len(filtered_by) == 1 else "dashboards"
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            {
+                "message": f"This dataset is used by the filters of {len(filtered_by)} {noun}: "
+                f"{', '.join(filtered_by)}. Remove those filters first.",
+                "dashboards": filtered_by,
+            },
+        )
     table = dataset.table_name if drop_table and is_upload_dataset(dataset) else None
     if drop_table and table is None:
         raise HTTPException(
@@ -608,6 +634,68 @@ def preview_dataset(dataset_id: int, db: DbSession) -> PreviewOut:
     except QueryError as error:
         _query_error(error)
     return PreviewOut(**asdict(result), sql=sql)
+
+
+_FILTERS = TypeAdapter(list[AppliedDashboardFilter])
+
+
+@router.get("/{dataset_id}/values", response_model=ColumnValuesOut, responses=QUERY_ERROR_RESPONSES)
+def column_values(
+    dataset_id: int,
+    db: DbSession,
+    column: Annotated[str, Query(min_length=1, max_length=255)],
+    q: Annotated[str | None, Query(max_length=200)] = None,
+    filters: Annotated[str | None, Query(max_length=100_000)] = None,
+    refresh: bool = False,
+) -> ColumnValuesOut:
+    """The distinct values of a column (at most 1000, sorted; `q` = contains, text columns
+    only): the choices of a dashboard values filter. `filters`: a JSON list of dashboard
+    filters (as sent to chart-data) that limit the values: the filters it depends on.
+    Read-only via run_query, cached like chart data (10 minutes)."""
+    try:
+        parent_filters = _FILTERS.validate_json(filters) if filters else []
+    except ValidationError as exc:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, f"Invalid filters: {exc.errors()[0]['msg']}"
+        ) from None
+    dataset = ensure_time_columns(db, dataset_id)
+    details = _details(dataset)
+    try:
+        sql = values_sql(dataset, details.db_type, column, q, parent_filters)
+    except QueryError as error:
+        _query_error(error)
+    connection = dataset.connection
+    key = chart_cache.cache_key(connection.id, connection.updated_at, sql, MAX_COLUMN_VALUES)
+    if not refresh:
+        hit = chart_cache.get(db, key)
+        if hit is not None:
+            return _values_out(column, hit.result, hit.created_at)
+    connection_id = connection.id
+    db.close()
+    try:
+        result = run_query(
+            details, sql, limit=MAX_COLUMN_VALUES, timeout_seconds=DEFAULT_TIMEOUT_SECONDS
+        )
+    except QueryError as error:
+        _query_error(error)
+    raw = asdict(result)
+    try:
+        chart_cache.put(db, key, connection_id, raw, chart_cache.DEFAULT_TTL_SECONDS)
+    except SQLAlchemyError:
+        db.rollback()
+        log.exception("Couldn't cache column values")
+    finally:
+        db.close()
+    return _values_out(column, raw, None)
+
+
+def _values_out(column: str, result: dict[str, Any], cached_at: datetime | None) -> ColumnValuesOut:
+    return ColumnValuesOut(
+        column=column,
+        values=[row[0] for row in result["rows"]],
+        truncated=bool(result["truncated"]),
+        cached_at=cached_at,
+    )
 
 
 @router.get(

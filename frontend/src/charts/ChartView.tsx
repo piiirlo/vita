@@ -6,7 +6,8 @@ import { CountUp } from "../components/motion.tsx";
 import { paperVar as cssVar } from "../lib/cssVar.ts";
 import { useTheme } from "../theme/theme.ts";
 import { changeRatio, hasTimeAxis, metricFormatter, type Coverage } from "./display.ts";
-import EChart from "./EChart.tsx";
+import EChart, { type EChartClick } from "./EChart.tsx";
+import { crossSelection, type OnCrossSelect } from "./crossSelect.ts";
 import { seriesColors } from "./echartsTheme.ts";
 import EmptyRange from "./EmptyRange.tsx";
 import { hasTimeRange } from "./emptyRange.ts";
@@ -14,7 +15,7 @@ import { useTimeExtent } from "./extentCache.ts";
 import { categoryLabel, formatBucket, toNumber } from "./format.ts";
 import { metricLabel, metricName, PIE_MAX_READABLE, type ChartState } from "./model.ts";
 import { funnelOption, gaugeOption, gaugeTargetText, nonAdditive, treemapOption } from "./moreCharts.ts";
-import { cartesianLayout, pieOption, sparklineOption, type DrawContext, type DrawToken } from "./options.ts";
+import { cartesianLayout, pieOption, pieSlices, sparklineOption, type DrawContext, type DrawToken } from "./options.ts";
 import PivotTable from "./PivotTable.tsx";
 import TableChart from "./TableChart.tsx";
 import { isGrain, splitDim } from "./dimensions.ts";
@@ -44,6 +45,9 @@ type Props = {
   total?: ChartDataResult | null;
   /** Editor hints (e.g. "too many slices"); dashboards leave them out. */
   showHints?: boolean;
+  /** Cross-filtering (dashboards): a bar, slice, box, country, table row or pivot cell was
+   * clicked. Only charts grouped by plain columns offer it. */
+  onSelect?: OnCrossSelect;
 };
 
 /** Width of an element (0 until measured, e.g. in tests). Changes are applied once the size
@@ -111,6 +115,7 @@ export default function ChartView({
   onShowAllTime,
   onMakeHorizontal,
   showHints = false,
+  onSelect,
 }: Props) {
   const { vizType, query } = state;
   const [boxRef, width] = useWidth();
@@ -175,13 +180,13 @@ export default function ChartView({
       );
     body = vizType === "big_number" || vizType === "gauge" ? <EmptyBigNumber state={state} dataset={dataset} message={empty} /> : empty;
   } else if (vizType === "table") {
-    body = <TableChart state={state} result={result} dataset={dataset} />;
+    body = <TableChart state={state} result={result} dataset={dataset} onSelect={onSelect} />;
   } else if (vizType === "pie") {
-    body = <PieView state={state} result={result} total={total} dataset={dataset} drawColors={drawColors} showHints={showHints} />;
+    body = <PieView state={state} result={result} total={total} dataset={dataset} drawColors={drawColors} showHints={showHints} onSelect={onSelect} />;
   } else if (vizType === "big_number") {
     body = <BigNumber state={state} result={result} trend={trend} previous={previous} dataset={dataset} coverage={coverage} drawColors={drawColors} />;
   } else if (vizType === "pivot_table") {
-    body = <PivotTable state={state} result={result} dataset={dataset} coverageFor={coverageFor} />;
+    body = <PivotTable state={state} result={result} dataset={dataset} coverageFor={coverageFor} onSelect={onSelect} />;
   } else if (vizType === "heatmap") {
     body = <HeatmapView state={state} result={result} dataset={dataset} drawColors={drawColors} coverageFor={coverageFor} />;
   } else if (vizType === "scatter") {
@@ -191,11 +196,11 @@ export default function ChartView({
   } else if (vizType === "world_map") {
     body = (
       <Suspense fallback={<div className="skeleton map-skeleton" role="status" aria-label="Loading the map" />}>
-        <WorldMapView state={state} result={result} dataset={dataset} drawColors={drawColors} showHints={showHints} />
+        <WorldMapView state={state} result={result} dataset={dataset} drawColors={drawColors} showHints={showHints} onSelect={onSelect} />
       </Suspense>
     );
   } else if (vizType === "treemap") {
-    body = <TreemapView state={state} result={result} total={total} dataset={dataset} drawColors={drawColors} showHints={showHints} />;
+    body = <TreemapView state={state} result={result} total={total} dataset={dataset} drawColors={drawColors} showHints={showHints} onSelect={onSelect} />;
   } else if (vizType === "funnel") {
     body = <FunnelView state={state} result={result} dataset={dataset} drawColors={drawColors} />;
   } else if (vizType === "gauge") {
@@ -217,6 +222,14 @@ export default function ChartView({
       <>
         <EChart
           option={layout!.option}
+          onItemClick={
+            onSelect && !hasTimeAxis(state)
+              ? (p) => {
+                  const sel = crossSelection([[query.dimensions[0], layout!.categories[p.dataIndex]]], dataset);
+                  if (sel) onSelect(sel);
+                }
+              : undefined
+          }
           label={`${CHART_NAMES[vizType] ?? "Chart"} of ${query.metrics.map((m) => metricLabel(m, dataset)).join(", ")}${
             layout!.partial.size ? ` (${vizType === "area" ? "shaded" : "dotted or lighter"}: incomplete period)` : ""
           }`}
@@ -318,6 +331,7 @@ function TreemapView({
   dataset,
   drawColors,
   showHints,
+  onSelect,
 }: {
   state: ChartState;
   result: ChartDataResult;
@@ -325,13 +339,25 @@ function TreemapView({
   dataset: Dataset | null;
   drawColors: DrawColors;
   showHints: boolean;
+  onSelect?: OnCrossSelect;
 }) {
-  const option = useMemo(() => treemapOption(state, result, dataset, { ...drawColors, total }), [state, result, dataset, drawColors, total]);
+  const option = useMemo(() => {
+    const built = treemapOption(state, result, dataset, { ...drawColors, total });
+    // Cross-filtering: a click selects the box instead of zooming into it.
+    return onSelect && Array.isArray(built.series) ? { ...built, series: built.series.map((s) => ({ ...s, nodeClick: false as const })) } : built;
+  }, [state, result, dataset, drawColors, total, onSelect]);
+  const onItemClick = onSelect
+    ? (p: EChartClick) => {
+        const path = (p.data as { rawPath?: unknown[] } | undefined)?.rawPath;
+        const sel = path ? crossSelection(path.map((v, i) => [state.query.dimensions[i], v]), dataset) : null;
+        if (sel) onSelect(sel);
+      }
+    : undefined;
   const metric = state.query.metrics[0];
   const hint = showHints && state.query.dimensions.length === 2 && nonAdditive(state, dataset);
   return (
     <>
-      <EChart option={option} label={`Treemap of ${metric ? metricLabel(metric, dataset) : ""}`} />
+      <EChart option={option} onItemClick={onItemClick} label={`Treemap of ${metric ? metricLabel(metric, dataset) : ""}`} />
       {hint && (
         <p className="chart-notice" role="note">
           <TriangleAlert size={14} aria-hidden />
@@ -500,6 +526,7 @@ function PieView({
   dataset,
   drawColors,
   showHints,
+  onSelect,
 }: {
   state: ChartState;
   result: ChartDataResult;
@@ -507,8 +534,16 @@ function PieView({
   dataset: Dataset | null;
   drawColors: Pick<DrawContext, "colors" | "labelColor">;
   showHints: boolean;
+  onSelect?: OnCrossSelect;
 }) {
   const { resolved } = useTheme();
+  const onItemClick = onSelect
+    ? (p: EChartClick) => {
+        const slice = pieSlices(state, result, dataset)[p.dataIndex];
+        const sel = slice && !slice.other ? crossSelection([[state.query.dimensions[0], slice.raw]], dataset) : null;
+        if (sel) onSelect(sel);
+      }
+    : undefined;
   const option = useMemo(
     () =>
       pieOption(state, result, dataset, {
@@ -524,7 +559,7 @@ function PieView({
   const metric = state.query.metrics[0];
   return (
     <>
-      <EChart option={option} label={`${state.display.donut ? "Donut" : "Pie"} chart of ${metric ? metricLabel(metric, dataset) : ""}`} />
+      <EChart option={option} onItemClick={onItemClick} label={`${state.display.donut ? "Donut" : "Pie"} chart of ${metric ? metricLabel(metric, dataset) : ""}`} />
       {showHints && slices > PIE_MAX_READABLE && (
         <p className="chart-notice" role="note" data-testid="pie-warning">
           <TriangleAlert size={14} aria-hidden />

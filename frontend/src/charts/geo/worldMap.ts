@@ -6,7 +6,7 @@ import { scaleColors } from "../distribution.ts";
 import { toNumber } from "../format.ts";
 import { dimensionLabel, metricLabel, metricName, type ChartState } from "../model.ts";
 import type { DrawContext } from "../options.ts";
-import { matchRows, type CountryMatch } from "./countryMatch.ts";
+import { matchCountry, matchRows, type CountryMatch } from "./countryMatch.ts";
 
 export const WORLD_MAP = "vita-world";
 const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -22,6 +22,20 @@ export function worldMatch(state: ChartState, result: ChartDataResult, dataset: 
       .filter((row) => row[di] !== null && row[di] !== undefined && String(row[di]).trim() !== "")
       .map((row) => ({ name: dimensionLabel(row[di], dim, dataset), value: toNumber(row[mi]) })),
   );
+}
+
+/** Shape key -> the raw values of the rows that matched it (what a click on it filters on). */
+export function countryRawValues(state: ChartState, result: ChartDataResult, dataset: Dataset | null): Map<string, unknown[]> {
+  const dim = state.query.dimensions[0] ?? "";
+  const di = result.columns.findIndex((c) => c.name === dim);
+  const out = new Map<string, unknown[]>();
+  for (const row of result.rows) {
+    const raw = row[di];
+    if (raw === null || raw === undefined || String(raw).trim() === "") continue;
+    const key = matchCountry(dimensionLabel(raw, dim, dataset));
+    if (key) out.set(key, [...(out.get(key) ?? []), raw]);
+  }
+  return out;
 }
 
 /** "3 values couldn't be matched: Yugoslavia, Runion, Narnia" (null when all matched). */

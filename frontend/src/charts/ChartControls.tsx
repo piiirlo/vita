@@ -5,6 +5,7 @@ import SqlMetricEditor from "./SqlMetricEditor.tsx";
 import { COLUMN_MIME } from "./columnKinds.ts";
 import { dropColumn, emptyHint, SECTION_TITLES, sectionsFor, targetsFor, type SectionId } from "./editorSections.ts";
 import { metricNameFor } from "./sqlMetric.ts";
+import { TIME_RANGES } from "./timeRanges.ts";
 import { toast } from "../components/toast.ts";
 import { queryErrorSummary, toQueryError } from "../components/queryError.ts";
 import { dimensionOptions, type DimOption } from "./dimensions.ts";
@@ -65,16 +66,7 @@ type Props = {
   onMetricSaved?(metric: DatasetMetric): void;
 };
 
-const RANGES: { value: RangeKind; label: string }[] = [
-  { value: "none", label: "No filter" },
-  { value: "last_7_days", label: "Last 7 days" },
-  { value: "last_30_days", label: "Last 30 days" },
-  { value: "last_90_days", label: "Last 90 days" },
-  { value: "last_12_months", label: "Last 12 months" },
-  { value: "this_year", label: "This year" },
-  { value: "last_year", label: "Last year" },
-  { value: "custom", label: "Custom…" },
-];
+const RANGES = TIME_RANGES;
 
 const AGGREGATES: { value: Aggregate; label: string; types: GenericType[] | null }[] = [
   { value: "SUM", label: "Sum", types: ["number"] },

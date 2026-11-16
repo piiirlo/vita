@@ -220,3 +220,13 @@ class TimeExtentOut(BaseModel):
     column: str
     min: str | None
     max: str | None
+
+
+class ColumnValuesOut(BaseModel):
+    """The distinct values of a column (a dashboard values filter's choices), sorted."""
+
+    column: str
+    values: list[Any]
+    # More than MAX_COLUMN_VALUES distinct values: search to narrow them down.
+    truncated: bool
+    cached_at: datetime | None = None

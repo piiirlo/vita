@@ -185,7 +185,14 @@ export const BAR_MAX_WIDTH = 48;
 /** Lighter bars for incomplete periods (with a dashed outline, so it isn't color alone). */
 const PARTIAL_OPACITY = 0.45;
 
-export type CartesianLayout = { option: EChartsOption; labels: LabelPlan; seriesNames: string[]; partial: Set<number> };
+export type CartesianLayout = {
+  option: EChartsOption;
+  labels: LabelPlan;
+  seriesNames: string[];
+  partial: Set<number>;
+  /** Raw x values in axis order (a click's dataIndex points here). */
+  categories: unknown[];
+};
 
 /** Combo: how a metric is drawn (default: the first one bars, the others lines; left axis). */
 export function comboSeries(display: DisplayOptions, name: string, index: number): ComboSeries {
@@ -423,7 +430,7 @@ export function cartesianLayout(state: ChartState, result: ChartDataResult, data
     yAxis: horizontal ? { ...categoryAxis, inverse: true } : twoAxes ? [valueAxis, valueAxisFor(1)] : valueAxis,
     series,
   };
-  return { option, labels: plan, seriesNames: ordered.map((s) => s.name), partial };
+  return { option, labels: plan, seriesNames: ordered.map((s) => s.name), partial, categories: pivoted.categories };
 }
 
 /** Incomplete first / last periods of an area chart: a light band with a dashed edge over the
@@ -519,7 +526,8 @@ export function seriesNamesOf(state: ChartState, result: ChartDataResult, datase
 export const OTHER_COLUMN = "__other";
 export const OTHER_LABEL = "Other";
 
-export type PieSlice = { name: string; original: string; value: number | null; other: boolean };
+/** `raw`: the dimension value (undefined for "Other"). */
+export type PieSlice = { name: string; original: string; value: number | null; other: boolean; raw?: unknown };
 
 /** Result rows -> slices, labelled (value labels, renames), sorted, "Other" last. */
 export function pieSlices(state: ChartState, result: ChartDataResult, dataset: Dataset | null): PieSlice[] {
@@ -532,7 +540,7 @@ export function pieSlices(state: ChartState, result: ChartDataResult, dataset: D
   const slices = result.rows.map((row) => {
     const other = oi >= 0 && toNumber(row[oi]) === 1;
     const original = other ? OTHER_LABEL : dimensionLabel(row[di], dim, dataset);
-    return { original, name: seriesLabel(original, state.display), value: toNumber(row[mi]), other };
+    return { original, name: seriesLabel(original, state.display), value: toNumber(row[mi]), other, ...(other ? {} : { raw: row[di] }) };
   });
   const by = state.display.sort ?? "value";
   const main = slices.filter((s) => !s.other);

@@ -166,9 +166,40 @@ class ChartQuery(BaseModel):
     series_limit: int | None = Field(default=DEFAULT_SERIES_LIMIT, ge=1, le=1000)
 
 
+DashboardFilterKind = Literal["time", "values", "range"]
+MAX_FILTER_VALUES = 1000
+
+
+class FilterSelection(BaseModel):
+    """The current value of one dashboard filter (a saved default, or what the URL says).
+    Only the field of the filter's kind is read; an empty selection filters nothing."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    # kind="time": replaces each chart's own time range.
+    time_range: TimeRange | None = None
+    # kind="values": IN these values (null = empty values too).
+    values: list[Scalar | None] | None = Field(default=None, max_length=MAX_FILTER_VALUES)
+    # kind="range": min <= column <= max (either may be open).
+    min: float | None = None
+    max: float | None = None
+
+
+class AppliedDashboardFilter(FilterSelection):
+    """A dashboard filter sent with a chart-data request. The frontend sends only the filters
+    that target the chart; the backend applies those the dataset can take (see
+    app/charts/dashboard_filters.py) and says which in `dashboard_filters_applied`."""
+
+    id: str = Field(min_length=1, max_length=64)
+    kind: DashboardFilterKind
+    column: str | None = Field(default=None, max_length=255)  # None for kind="time"
+
+
 class ChartDataRequest(BaseModel):
     viz_type: VizType
     query: ChartQuery
+    # Dashboard filters, merged into the query (WHERE, or the time range) before building.
+    dashboard_filters: list[AppliedDashboardFilter] = Field(default_factory=list, max_length=50)
     # Cache lifetime in seconds (0 = don't cache); None = the default (10 minutes).
     cache_ttl: int | None = Field(default=None, ge=0, le=MAX_CACHE_TTL)
     # "Refresh": skip the cache (and store the fresh result).
@@ -183,6 +214,8 @@ class ChartDataOut(QueryResultOut):
     range_end: date | None = None
     # Set when the result came from the cache: when it was computed.
     cached_at: datetime | None = None
+    # Ids of the dashboard filters that changed this query (the others didn't apply).
+    dashboard_filters_applied: list[str] = Field(default_factory=list)
 
 
 # ---------- saved charts ----------

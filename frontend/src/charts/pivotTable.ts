@@ -29,7 +29,13 @@ export type PivotSpec = {
 };
 
 /** One column of values: a column slot (leaf combination, a group subtotal or the total) x a metric. */
-export type PivotColumn = { slot: string; kind: "leaf" | "subtotal" | "total"; metric: string };
+export type PivotColumn = {
+  slot: string;
+  kind: "leaf" | "subtotal" | "total";
+  metric: string;
+  /** Raw values of the column dimensions it stands for (fewer for subtotals). */
+  path: unknown[];
+};
 
 export type HeaderCell = {
   label: string;
@@ -54,6 +60,8 @@ export type PivotRow = {
   kind: "group" | "leaf" | "total";
   /** Groups only. */
   collapsed?: boolean;
+  /** Raw values of the row dimensions it stands for (a prefix for groups, [] for the total). */
+  path: unknown[];
   cells: PivotCell[];
 };
 
@@ -160,7 +168,7 @@ export function pivotLayout(result: ChartDataResult, spec: PivotSpec): PivotLayo
   }
   if (totals && c >= 1) slots.push({ path: [], kind: "total", key: "T" });
 
-  const columns: PivotColumn[] = slots.flatMap((s) => metrics.map((m) => ({ slot: s.key, kind: s.kind, metric: metricName(m) })));
+  const columns: PivotColumn[] = slots.flatMap((s) => metrics.map((m) => ({ slot: s.key, kind: s.kind, metric: metricName(m), path: s.path })));
 
   // ---- header rows
   const several = metrics.length > 1;
@@ -265,7 +273,7 @@ export function pivotLayout(result: ChartDataResult, spec: PivotSpec): PivotLayo
   const body: PivotRow[] = [];
   const collapsedRows = spec.collapsedRows ?? new Set<string>();
   if (r === 0) {
-    body.push({ key: "total", label: TOTAL_LABEL, depth: 0, kind: "total", cells: cellsFor([]) });
+    body.push({ key: "total", label: TOTAL_LABEL, depth: 0, kind: "total", path: [], cells: cellsFor([]) });
   } else {
     const leafRows: unknown[][] = [];
     const seen = new Set<string>();
@@ -293,6 +301,7 @@ export function pivotLayout(result: ChartDataResult, spec: PivotSpec): PivotLayo
             depth,
             kind: "group",
             collapsed,
+            path: prefix,
             incomplete: mark(isPartial(rows[depth], prefix[depth])),
             cells: totals ? cellsFor(prefix) : cellsFor(null),
           });
@@ -305,11 +314,12 @@ export function pivotLayout(result: ChartDataResult, spec: PivotSpec): PivotLayo
           label: label(path[r - 1], rows[r - 1]!),
           depth: r - 1,
           kind: "leaf",
+          path,
           incomplete: mark(isPartial(rows[r - 1], path[r - 1])),
           cells: cellsFor(path),
         });
     }
-    if (totals) body.push({ key: "total", label: TOTAL_LABEL, depth: 0, kind: "total", cells: cellsFor([]) });
+    if (totals) body.push({ key: "total", label: TOTAL_LABEL, depth: 0, kind: "total", path: [], cells: cellsFor([]) });
   }
   const hiddenRows = Math.max(0, body.length - PIVOT_MAX_ROWS_SHOWN);
   const last = body[body.length - 1];

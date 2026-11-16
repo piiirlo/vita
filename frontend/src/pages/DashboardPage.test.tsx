@@ -63,6 +63,8 @@ const DASHBOARD: Dashboard = {
   cache_ttl: null,
   refresh_interval: "off",
   charts: Object.fromEntries(Object.entries(CHARTS).map(([id, c]) => [id, { id: Number(id), name: c.name, viz_type: c.viz }])),
+  filters: [],
+  cross_filtering: true,
   created_at: "2026-11-05T10:00:00Z",
   updated_at: "2026-11-05T10:00:00Z",
 };

@@ -20,7 +20,8 @@ ALLOWED_OPERATORS: dict[str, set[str]] = {
     "date": _ALWAYS | _COMPARISON,
     "datetime": _ALWAYS | _COMPARISON,
     "string": _ALWAYS | {"LIKE"},
-    "boolean": {"=", "!=", "IS NULL", "IS NOT NULL"},
+    # IN: dashboard value filters (true, false or empty).
+    "boolean": {"=", "!=", "IN", "IS NULL", "IS NOT NULL"},
     "other": {"=", "!=", "IS NULL", "IS NOT NULL"},
 }
 
