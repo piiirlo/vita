@@ -11,7 +11,8 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.connections import saved_connection_details
-from app.api.datasets import ensure_time_columns, get_dataset_or_404
+from app.api.datasets import ensure_time_columns
+from app.api.datasets_common import get_dataset_or_404
 from app.api.projects import resolve_project, same_project
 from app.charts import build_chart_query, cache
 from app.charts.dashboard_filters import merge_dashboard_filters

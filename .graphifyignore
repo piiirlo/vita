@@ -1,0 +1,8 @@
+superset-reference/
+node_modules/
+backups/
+*.dump
+.env
+graphify-out/
+frontend/dist/
+frontend/public/world*

@@ -1,4 +1,4 @@
-# ruff: noqa: F811  (fixtures imported from test_charts are used as arguments)
+# ruff: noqa: F811  (fixtures imported from chart_helpers are used as arguments)
 """Part 15: dashboard filters merged into chart data, targeting by column, the cache key,
 column values, and saving filters on a dashboard."""
 
@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 import app.api.charts as charts_api
 import app.api.datasets as datasets_api
-from tests.test_charts import (  # noqa: F401  (fixtures)
+from tests.chart_helpers import (  # noqa: F401  (fixtures)
     column_settings,
     connection_id,
     expect,

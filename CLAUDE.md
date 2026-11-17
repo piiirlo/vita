@@ -99,7 +99,12 @@ This folder may contain the Apache Superset source code. It is **read-only refer
     non-empty password → use it, empty → keep the saved one.
   - `app/api/saved_queries.py` — saved queries CRUD (`/api/saved-queries`).
   - `app/datasets/` — datasets logic, no FastAPI imports (the chart builder reuses it);
-    API in `app/api/datasets.py` (`/api/datasets`).
+    API in `app/api/datasets.py` (`/api/datasets`: the router, dataset endpoints,
+    `ensure_time_columns`), split by job into `datasets_common.py` (loading, response shape),
+    `datasets_usage.py` (409s for charts / filters / tables), `datasets_columns.py` (column
+    rules), `datasets_metrics.py` (metric endpoints, included in the router) and
+    `datasets_values.py` (column values). Tests monkeypatch `app.api.datasets.check_pending`
+    / `MAX_COLUMN_VALUES`: keep those used from there.
     `sql.py`: `from_clause` / `select_sql` build SQL with sqlglot only (always-quoted
     identifiers; kind=sql becomes `(<sql>) AS "virtual_table"`, keeping the user's own quoting).
     `checks.py`: SQL dataset check (Part 3 rules + must be a SELECT; warns on ORDER BY/LIMIT)
@@ -290,7 +295,8 @@ This folder may contain the Apache Superset source code. It is **read-only refer
     `pyproject.toml`). sqlglot 30 type hints use `exp.Expr` (the base class), not
     `exp.Expression`.
 - `frontend/` — Vite React TS app (`src/`, pages in `src/pages/`, typed API calls in
-  `src/api.ts`); dev server proxies `/api` to the backend. Routing: react-router.
+  `src/api/<area>.ts`, re-exported by `src/api.ts`; `request()` / `errorText()` / the current
+  project in `src/api/http.ts`); dev server proxies `/api` to the backend. Routing: react-router.
   - SQL Lab = `src/pages/SqlLabPage.tsx` (lazy-loaded) + `src/sqllab/`:
     `SqlEditor.tsx` (Monaco, bundled locally via `monacoSetup.ts` — no CDN; one
     ref-counted SQL completion provider for language id `sql`). `monacoSetup.ts` must keep
@@ -571,3 +577,14 @@ docker compose -f docker-compose.prod.yml up -d --build   # production stack
 ```
 After adding frontend dependencies: `docker compose up -d --build -V frontend`.
 No local Python is required; run Python tooling inside the `backend` container.
+
+## graphify
+
+This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
+
+Rules:
+- When graphify-out/graph.json exists, run `graphify query "<question>"` before your first grep, search or source-file read for a codebase question, and put this rule in every subagent prompt that explores code. Read raw files only for lines the graph or an earlier read already located. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. When the answer is under a Markdown heading, `graphify section "<heading>"` prints that section's text, so the .md need not be opened. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
+- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
+- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
+- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
+- A committed graphify-out/graph.json is rewritten whole on every build, so a large diff to it in a pull request is expected. Do not flag it as churn or suggest skipping the graph rebuild or its hooks.

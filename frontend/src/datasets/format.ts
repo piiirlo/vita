@@ -26,9 +26,8 @@ export function relativeTime(iso: string, now: number = Date.now()): string {
   return new Date(iso).toLocaleDateString();
 }
 
-export function errorText(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
+/** Kept here for existing imports; it lives in api/http.ts. */
+export { errorText } from "../api/http.ts";
 
 /** How dates are written, for text dates and uploaded files: "Day first: DD-MM-YYYY". */
 export const DATE_FORMAT_LABELS: Record<DateOrder, string> = {
