@@ -1,5 +1,5 @@
 /* Part 15: the dashboard filter bar, its panels, the filter dialog and tile markers.
- * Colors only from tokens. Active filters wear the Clay highlight (soft fill + glow border). */
+ * Colors only from tokens. Filters are Ignara chips; an active one is the inverted thumb. */
 
 .dfilter-bar {
   display: flex;
@@ -27,28 +27,29 @@
   height: 36px;
   padding: 0 12px 0 14px;
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-pill);
+  border-radius: 12px;
   background: var(--surface);
   color: var(--text);
   font: inherit;
-  font-size: 14px;
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
   transition:
-    border-color var(--dur-fast) var(--ease-out),
-    background var(--dur-fast) var(--ease-out);
+    border-color var(--dur-fast) var(--ease-std),
+    background var(--dur-fast) var(--ease-std),
+    color var(--dur-fast) var(--ease-std);
 }
 button.dfilter:hover {
-  border-color: var(--border-hover);
+  background: var(--surface-2);
 }
 .dfilter.active {
   background: var(--accent-soft);
   border-color: var(--glow-border);
 }
 .dfilter-label {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 600;
   color: var(--text-muted);
 }
 .dfilter-value {
@@ -100,16 +101,16 @@ button.dfilter:hover {
   gap: 10px;
   width: min(320px, calc(100vw - 32px));
   padding: 14px;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-control);
+  border: 0;
+  border-radius: var(--radius-menu);
   background: var(--surface-raised);
-  box-shadow: var(--shadow);
-  animation: dfilter-in var(--dur-fast) var(--ease-out);
+  box-shadow: var(--panel-shadow);
+  animation: dfilter-in 320ms var(--ease-back);
 }
 @keyframes dfilter-in {
   from {
     opacity: 0;
-    transform: translateY(-4px);
+    transform: translateY(-6px) scale(0.97);
   }
 }
 .dfilter-pop .inline-controls input {

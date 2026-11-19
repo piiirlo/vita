@@ -1,9 +1,8 @@
-import { lazy, Suspense, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router";
 import type { CurrentUser } from "./api.ts";
 import { useAuth } from "./auth/auth.ts";
 import ErrorBoundary from "./components/ErrorBoundary.tsx";
-import { PageTransition } from "./components/PageTransition.tsx";
 import Toaster from "./components/Toaster.tsx";
 import { SkeletonLines } from "./components/ui/skeleton.tsx";
 import { TooltipProvider } from "./components/ui/tooltip.tsx";
@@ -19,11 +18,14 @@ import LoginPage from "./pages/LoginPage.tsx";
 import NotFoundPage from "./pages/NotFoundPage.tsx";
 import ProjectPage from "./pages/ProjectPage.tsx";
 import StatusPage from "./pages/StatusPage.tsx";
-import Breadcrumbs from "./projects/Breadcrumbs.tsx";
 import { innerPath, projectIdOf } from "./projects/paths.ts";
 import ProjectProvider from "./projects/ProjectProvider.tsx";
+import { PageReveal } from "./motion/PageReveal.tsx";
+import { enableMagnetic, playIntro, press } from "./motion/ignara.ts";
+import { enableOverlayMotion } from "./motion/overlays.ts";
 import CommandPaletteHost from "./shell/CommandPaletteHost.tsx";
 import Rail from "./shell/Rail.tsx";
+import TopBar from "./shell/TopBar.tsx";
 
 // Monaco + sql-formatter are big: load SQL Lab only when it is opened. Same for ECharts.
 const SqlLabPage = lazy(() => import("./pages/SqlLabPage.tsx"));
@@ -102,19 +104,42 @@ function Shell({ user }: { user: CurrentUser }) {
   const chartEditor = /^\/charts\/(new|\d+)/.test(inner);
   const fullScreen = inner.startsWith("/sql-lab") || chartEditor;
   const dashboard = /^\/dashboards\/\d+/.test(inner);
+  const shell = useRef<HTMLDivElement>(null);
+
+  // Ignara's first paint: the sidebar, the page header and the page come in once.
+  useLayoutEffect(() => {
+    if (shell.current) playIntro(shell.current);
+  }, []);
+
+  // Important buttons lean toward the pointer (Ignara's magnetic buttons).
+  useEffect(() => enableMagnetic(), []);
+  // Dialogs, menus, the palette and toasts spring open (motion/overlays.ts).
+  useEffect(() => enableOverlayMotion(), []);
+
+  // Buttons spring back when pressed (Ignara's press: 97% for wide buttons, 70% for icons).
+  useEffect(() => {
+    const el = shell.current;
+    if (!el) return;
+    const onClick = (e: MouseEvent) => {
+      const button = (e.target as Element | null)?.closest?.("button, a.button");
+      if (button && !button.closest("[role=menu], [role=listbox], .react-grid-item")) press(button);
+    };
+    el.addEventListener("click", onClick);
+    return () => el.removeEventListener("click", onClick);
+  }, []);
 
   return (
     <TooltipProvider delayDuration={300}>
       <ProjectProvider id={projectId}>
-        <div className="app-shell">
+        <div className="app-shell" ref={shell}>
           <Rail username={user.username} />
 
           <main className={fullScreen ? `page-full${chartEditor ? " page-chart" : ""}` : dashboard ? "page-wide" : "page"}>
-            <Breadcrumbs />
+            <TopBar />
             {/* Keyed by path: a crash on one page doesn't stick when navigating away, and each
-                page fades in and rises 12px when it opens. */}
+                page's cards, rows and tiles enter the way Ignara's do (motion/PageReveal). */}
             <ErrorBoundary key={path}>
-              <PageTransition key={path} className="page-transition">
+              <PageReveal key={path} className="page-transition">
                 <Routes>
                   <Route path="/" element={<HomePage />} />
                   <Route path="/projects/:projectId" element={<ProjectPage />} />
@@ -124,7 +149,7 @@ function Shell({ user }: { user: CurrentUser }) {
                   <Route path="/status" element={<StatusPage />} />
                   <Route path="*" element={<NotFoundPage />} />
                 </Routes>
-              </PageTransition>
+              </PageReveal>
             </ErrorBoundary>
           </main>
         </div>

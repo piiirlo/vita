@@ -1,6 +1,5 @@
-/** Monaco themes from the design tokens. In both modes the editor sits on a dark panel
- * (--code-bg: the ink card in light mode, the sunken surface in dark mode): keywords orange,
- * functions olive, muted line numbers. */
+/** Monaco themes from the design tokens: the editor sits on the card of the current theme
+ * (--code-bg), keywords in ember, strings green, numbers blue, muted line numbers. */
 import { cssVar } from "../lib/cssVar.ts";
 import type { ResolvedTheme } from "../theme/theme.ts";
 
@@ -24,7 +23,7 @@ export function toHex(color: string): string {
   return `#${hex(+m[1]!)}${hex(+m[2]!)}${hex(+m[3]!)}${alpha < 1 ? hex(alpha * 255) : ""}`;
 }
 
-export const monacoThemeName = (mode: ResolvedTheme) => `vita-ink-${mode}`;
+export const monacoThemeName = (mode: ResolvedTheme) => `vita-${mode}`;
 
 /** (Re)define the theme for the current mode from the live CSS variables; returns its name. */
 export function defineVitaMonacoTheme(monaco: MonacoLike, mode: ResolvedTheme): string {
@@ -32,9 +31,9 @@ export function defineVitaMonacoTheme(monaco: MonacoLike, mode: ResolvedTheme): 
   const noHash = (name: string) => v(name).slice(1);
   const name = monacoThemeName(mode);
   monaco.editor.defineTheme(name, {
-    base: "vs-dark",
+    base: mode === "dark" ? "vs-dark" : "vs",
     inherit: true,
-    // The ".sql" variants are needed: vs-dark has its own (more specific) SQL rules.
+    // The ".sql" variants are needed: vs / vs-dark have their own (more specific) SQL rules.
     rules: [
       ["", "--code-text"],
       ["keyword", "--code-keyword"],
@@ -64,23 +63,25 @@ export function defineVitaMonacoTheme(monaco: MonacoLike, mode: ResolvedTheme): 
       "editor.background": v("--code-bg"),
       "editor.foreground": v("--code-text"),
       "editorLineNumber.foreground": v("--code-line-number"),
-      "editorLineNumber.activeForeground": v("--ink-muted"),
+      "editorLineNumber.activeForeground": v("--code-text"),
       "editor.lineHighlightBackground": v("--code-line-active"),
       "editor.lineHighlightBorder": "#00000000",
       "editor.selectionBackground": v("--code-selection"),
       "editorCursor.foreground": v("--accent"),
-      "editorIndentGuide.background1": v("--ink-border"),
+      "editorIndentGuide.background1": v("--border"),
       "editorWidget.background": v("--surface-raised"),
       "editorWidget.border": v("--border-strong"),
       "editorSuggestWidget.background": v("--surface-raised"),
       "editorSuggestWidget.border": v("--border-strong"),
       "editorSuggestWidget.foreground": v("--text"),
-      "editorSuggestWidget.selectedBackground": v("--selected"),
+      "editorSuggestWidget.selectedBackground": v("--surface-3"),
+      "editorSuggestWidget.selectedForeground": v("--text"),
       "editorSuggestWidget.highlightForeground": v("--accent-text"),
       "editorHoverWidget.background": v("--surface-raised"),
       "editorHoverWidget.border": v("--border-strong"),
       "editorError.foreground": v("--danger"),
-      "scrollbarSlider.background": v("--ink-border"),
+      "scrollbarSlider.background": v("--border-strong"),
+      "scrollbarSlider.hoverBackground": v("--border-hover"),
       "editorOverviewRuler.border": "#00000000",
       "editorGutter.background": v("--code-bg"),
     },

@@ -11,7 +11,7 @@ type Props = {
   className?: string;
 };
 
-/** A small ink tooltip. The trigger keeps its own accessible name. */
+/** A small inverted tooltip (ink on light, light on dark). The trigger keeps its own accessible name. */
 export function Tooltip({ content, children, side = "top", className }: Props) {
   return (
     <TooltipPrimitive.Root>
@@ -21,7 +21,7 @@ export function Tooltip({ content, children, side = "top", className }: Props) {
           side={side}
           sideOffset={8}
           className={cn(
-            "anim-pop z-[80] rounded-[10px] bg-inverse px-2.5 py-1.5 text-[13px] font-medium text-inverse-fg shadow-lg",
+            "anim-menu z-[80] rounded-[9px] bg-inverse px-2.5 py-1.5 text-[12.5px] font-semibold text-inverse-fg shadow-[var(--shadow)]",
             className,
           )}
         >

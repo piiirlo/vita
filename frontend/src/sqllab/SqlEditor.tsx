@@ -173,7 +173,7 @@ export default function SqlEditor({ ref, path, defaultValue, onChange, onRun, er
       beforeMount={beforeMount}
       onMount={handleMount}
       theme={monacoThemeName(resolved)}
-      options={{ ...SQL_EDITOR_OPTIONS, fontFamily: cssVar("--font-mono") || undefined }}
+      options={{ ...SQL_EDITOR_OPTIONS, fontFamily: cssVar("--font-code") || undefined }}
     />
   );
 }

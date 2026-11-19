@@ -1,235 +1,274 @@
 /*
- * Design tokens (Part 14: Ink, Paper, Clay; design/projects-prototype.html). Every color in
- * the app comes from here: components use these variables (or the Tailwind utilities mapped
- * to them in index.css), never literal colors. Light on :root, dark on [data-theme="dark"]
- * (set on <html> before first paint, see index.html and src/theme/), and the .paper scope
- * for cards made of Paper.
+ * Design tokens (Part 16: the Ignara look, design/ignara-design.md). Every color in the app
+ * comes from here: components use these variables (or the Tailwind utilities mapped to them
+ * in index.css), never literal colors. Light on :root, dark on [data-theme="dark"] (set on
+ * <html> before first paint, see index.html and src/theme/).
+ *
+ * Charcoal and ember: warm neutral layers (page → sidebar → card → card-2 / card-3), outlines
+ * as 1px inset hairlines, one ember accent (a gradient on the active nav item and the brand).
+ * Colors are hex or rgba() only (scripts/contrast.mjs parses them).
  */
 
-/* The three colors: Ink 60% (page, panels), Paper 30% (folders, tiles, chart cards), Clay
-   10% (primary actions, the top value in a chart). The theme blocks map them to roles. */
-:root {
-  --ink: #17211f;
-  --ink-2: #1e2a27;
-  --ink-3: #263430;
-  --paper: #eee6d3;
-  --paper-2: #dacfb6;
-  --paper-3: #f7f2e7;
-  --clay: #e4683a;
-  /* Clay deepened a little to reach 3:1 on Paper: big number decimals, the Clay chart series */
-  --clay-on-paper: #cf5a2c;
-  --sage: #6e7f77;
-  --on-paper: #17211f;
-  --on-paper-muted: #4a524e;
-}
-
-/* Light: derived from the same colors (Paper page, Ink text and hero cards). */
+/* Light */
 :root {
   color-scheme: light;
 
   /* surfaces */
-  --bg: #eee6d3;
-  --bg-dots: rgba(23, 33, 31, 0.07);
-  --surface: #f7f2e7;
-  --surface-raised: #fffcf5;
-  --surface-sunken: #e6dcc6;
-  /* Ink panels in the light theme (SQL editor frame) */
-  --surface-ink: var(--ink);
-  --rail-bg: rgba(247, 242, 231, 0.82);
-  --capsule-bg: rgba(247, 242, 231, 0.9);
-  --overlay: rgba(23, 33, 31, 0.45);
-  /* the color of cards made of Paper (folders, dashboard tiles, chart cards: see .paper) */
-  --paper-card: var(--paper-3);
+  --bg: #e7e6e4;
+  --side: #f2f1ef;
+  --surface: #f7f6f4; /* cards */
+  --surface-2: #efeeeb; /* inputs, chips, hovered rows */
+  --surface-3: #e3e1de; /* menu hover, tracks, badges */
+  --surface-raised: #faf9f7; /* modals, drawers, menus, popovers */
+  --surface-sunken: #efeeeb; /* wells (same as card-2) */
+  --overlay: rgba(50, 24, 14, 0.26);
+  --top-light: rgba(255, 255, 255, 0.7); /* the 1px highlight at a card's top edge */
 
   /* text */
-  --text: #17211f;
-  --text-muted: #4a524e;
-  --text-faint: #565e5a;
-  /* text on --surface-ink */
-  --ink-text: #f1ede3;
-  --ink-muted: #a3ada8;
-  --ink-border: rgba(238, 230, 211, 0.14);
+  --text: #1d1e21;
+  --text-2: #3a3b40;
+  --text-muted: #5f6066; /* Ignara's #65666c, darkened to keep 4.5:1 on card-3 */
+  --text-faint: #5f6066;
 
-  /* lines */
-  --border: rgba(23, 33, 31, 0.12);
-  --border-strong: rgba(23, 33, 31, 0.2);
-  --border-hover: rgba(23, 33, 31, 0.42);
-  --hover: rgba(23, 33, 31, 0.05);
-  --selected: rgba(228, 104, 58, 0.1);
+  /* lines (hairlines are inset box-shadows in components; borders where CSS needs them) */
+  --border: rgba(20, 20, 24, 0.08);
+  --border-strong: rgba(20, 20, 24, 0.15);
+  --border-hover: rgba(20, 20, 24, 0.32);
+  --hover: rgba(127, 127, 127, 0.09);
+  --selected: rgba(238, 82, 48, 0.1);
 
-  /* Clay: the one loud color */
-  --accent: var(--clay);
-  --accent-fg: var(--ink); /* text ON Clay: always Ink */
-  --accent-text: #a3401a; /* Clay-ish text on Paper */
-  --accent-soft: rgba(228, 104, 58, 0.15);
-  --link: #a3401a;
-  --link-hover: #7a2f12;
-  --glow: 0 0 0 1px rgba(228, 104, 58, 0.14), 0 24px 60px -30px rgba(228, 104, 58, 0.4);
-  --glow-border: rgba(228, 104, 58, 0.55);
-  /* Clay is only ~2.6:1 on Paper; the deeper Clay passes 3:1 */
-  --focus-ring: var(--accent-text);
+  /* ember: the one loud color */
+  --accent: #ee5230;
+  --accent-hi: #f4633c;
+  --accent-from: #ff7b3a;
+  --accent-to: #e5432c;
+  --accent-fg: #1f0a04; /* text ON the accent */
+  --accent-text: #b5361b; /* accent-colored text */
+  --accent-soft: rgba(238, 82, 48, 0.14);
+  --accent-glow: rgba(228, 60, 36, 0.45);
+  /* the accent as large text / a chart mark on cards (big number decimals) */
+  --accent-strong: #d4421f;
+  --grad: linear-gradient(140deg, var(--accent-from), var(--accent) 50%, var(--accent-to));
+  /* the ember hero KPI card (on --grad): the big value in white (large text), the rest in
+     --accent-fg; a dark tint track with an ink bar, light chips */
+  --on-grad: #ffffff;
+  --hero-track: rgba(31, 10, 4, 0.2);
+  --hero-chip: rgba(255, 255, 255, 0.34);
+  --hero-highlight: rgba(255, 255, 255, 0.3);
+  --hero-shadow: rgba(120, 20, 0, 0.25);
+  --link: #b5361b;
+  --link-hover: #8c2812;
+  --focus-ring: var(--text);
 
-  /* the active rail item / selected pill is inverted */
-  --inverse-bg: var(--ink);
-  --inverse-fg: #f1ede3;
+  /* inverted: selected segment thumb, tooltips, toasts, the active filter pill */
+  --inverse-bg: #1d1e21;
+  --inverse-fg: #f7f6f4;
+  --inverse-muted: #aeaeb3;
+  --inverse-danger: #ff8a92;
+  --inverse-success: #8fdcb1;
+  --inverse-info: #94bcf2;
+  --inverse-line: rgba(255, 255, 255, 0.16);
 
-  /* status: danger is a raspberry red, clearly not Clay (and always icon + "Error") */
-  --success: #2a6342;
-  --success-bg: rgba(46, 107, 71, 0.1);
-  --success-border: rgba(46, 107, 71, 0.32);
-  --danger: #a81d48;
-  --danger-bg: rgba(168, 29, 72, 0.08);
-  --danger-border: rgba(168, 29, 72, 0.32);
-  /* error icon for plain-CSS alerts (same circle-alert as lucide), in --danger */
-  --icon-error: url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2718%27 height=%2718%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27%23A81D48%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3E%3Ccircle cx=%2712%27 cy=%2712%27 r=%2710%27/%3E%3Cline x1=%2712%27 x2=%2712%27 y1=%278%27 y2=%2712%27/%3E%3Cline x1=%2712%27 x2=%2712.01%27 y1=%2716%27 y2=%2716%27/%3E%3C/svg%3E");
-  --warning-text: #6f4c00;
-  --warning-bg: rgba(242, 195, 91, 0.2);
-  --warning-border: rgba(160, 112, 0, 0.38);
+  /* status (errors are always icon + the word "Error", never color alone) */
+  --success: #19683f;
+  --success-bg: rgba(30, 130, 80, 0.13);
+  --success-border: rgba(30, 130, 80, 0.32);
+  --danger: #b3222f;
+  --danger-bg: rgba(205, 40, 60, 0.11);
+  --danger-border: rgba(179, 34, 47, 0.34);
+  /* error icon for plain-CSS alerts (lucide circle-alert), in --danger */
+  --icon-error: url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2718%27 height=%2718%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27%23B3222F%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3E%3Ccircle cx=%2712%27 cy=%2712%27 r=%2710%27/%3E%3Cline x1=%2712%27 x2=%2712%27 y1=%278%27 y2=%2712%27/%3E%3Cline x1=%2712%27 x2=%2712.01%27 y1=%2716%27 y2=%2716%27/%3E%3C/svg%3E");
+  --warning-text: #7d5006;
+  --warning-bg: rgba(215, 150, 30, 0.18);
+  --warning-border: rgba(138, 88, 7, 0.36);
+  --info: #2a5c99;
+  --info-bg: rgba(42, 92, 153, 0.12);
 
-  /* data series: charts are always drawn on Paper (see .paper), in both themes. Ink, Clay,
-     Sage first (the prototype), then 7 more clearly different hues (scripts/contrast.mjs:
-     3:1 on Paper, CIEDE2000 >= 15 between any two, 18 for neighbors). */
-  --series-1: #17211f; /* ink */
-  --series-2: var(--clay-on-paper); /* clay */
-  --series-3: #6e7f77; /* sage */
-  --series-4: #2f6f9a; /* lake blue */
-  --series-5: #8e6b0e; /* ochre */
-  --series-6: #6b4f8f; /* violet */
-  --series-7: #2a7f62; /* teal green */
-  --series-8: #a3405e; /* berry */
-  --series-9: #8b5a3c; /* umber */
-  --series-10: #4e6a2e; /* moss */
-  /* pivot table heat scale (a Sage tint over Paper; text stays --text) */
-  --heat-1: rgba(110, 127, 119, 0.1);
-  --heat-2: rgba(110, 127, 119, 0.2);
-  --heat-3: rgba(110, 127, 119, 0.32);
-  --heat-4: rgba(110, 127, 119, 0.46);
-  --heat-5: rgba(110, 127, 119, 0.6);
-  --chart-grid: rgba(23, 33, 31, 0.08);
+  /* chart series (drawn on cards): Ignara's six, then four more in the same family.
+     scripts/contrast.mjs: 3:1 on cards, CIEDE2000 >= 15 between any two (18 for neighbors). */
+  --series-1: #d4421f; /* ember */
+  --series-2: #3a3b40; /* charcoal */
+  --series-3: #2f72b5; /* blue */
+  --series-4: #a8650c; /* amber */
+  --series-5: #23806a; /* teal */
+  --series-6: #8a4f9e; /* plum */
+  --series-7: #8c7a5c; /* sand */
+  --series-8: #b8305f; /* raspberry */
+  --series-9: #5c7a23; /* olive */
+  --series-10: #26307e; /* indigo */
+  /* quiet data (comparison series, grid) */
+  --data: #85878d;
+  --chart-grid: rgba(20, 20, 24, 0.08);
+  /* heatmap / world map color scale: from 10% ember over card-3 to the accent (Ignara's
+     color-mix(accent 10..100%, card-3)) */
+  --scale-low: #e4d3cd;
+  /* pivot heat cells: an ember ramp over the card (text stays --text) */
+  --heat-1: rgba(238, 82, 48, 0.08);
+  --heat-2: rgba(238, 82, 48, 0.16);
+  --heat-3: rgba(238, 82, 48, 0.26);
+  --heat-4: rgba(238, 82, 48, 0.38);
+  --heat-5: rgba(238, 82, 48, 0.5);
 
-  /* code (the SQL editor sits on Ink in both themes) */
-  --code-bg: var(--ink);
-  --code-text: #f7f2e7;
-  --code-keyword: #f29a73;
-  --code-function: #a9c7b7;
-  --code-string: #e8d29b;
-  --code-number: #f7bc9f;
-  --code-comment: #8f9c96;
-  --code-line-number: #85928c;
-  --code-line-active: rgba(238, 230, 211, 0.05);
-  --code-selection: rgba(228, 104, 58, 0.28);
+  /* code (SQL editor, SQL blocks): on the card */
+  --code-bg: #f7f6f4;
+  --code-text: #1d1e21;
+  --code-keyword: #b5361b;
+  --code-function: #6a3d7d;
+  --code-string: #1d6b41;
+  --code-number: #2a5c99;
+  --code-comment: #5f6066;
+  --code-line-number: #5f6066;
+  --code-line-active: rgba(20, 20, 24, 0.04);
+  --code-selection: rgba(238, 82, 48, 0.2);
 
-  --shadow: rgba(23, 33, 31, 0.18);
+  /* shadows */
+  --shadow-color: rgba(30, 24, 20, 0.32);
+  --shadow-sm: 0 1px 2px rgba(30, 24, 20, 0.06);
+  --shadow: 0 1px 2px rgba(30, 24, 20, 0.05), 0 16px 34px -22px rgba(30, 24, 20, 0.32);
+  --shadow-lg: 0 2px 6px rgba(30, 24, 20, 0.08), 0 30px 60px -24px rgba(30, 24, 20, 0.4);
+  /* the card recipe's outline + depth (use with background: var(--surface)) */
+  --card-shadow: inset 0 1px 0 var(--top-light), inset 0 0 0 1px var(--border), var(--shadow);
+  --panel-shadow: inset 0 0 0 1px var(--border), var(--shadow-lg);
+  --primary-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.08), 0 8px 18px -12px var(--accent-glow);
+  /* card hover: lift + an ember glow */
+  --glow: inset 0 1px 0 var(--top-light), inset 0 0 0 1px var(--border-strong), 0 2px 6px rgba(30, 24, 20, 0.06), 0 24px 44px -24px var(--accent-glow);
+  --glow-border: rgba(238, 82, 48, 0.5);
 
-  /* type: Bricolage Grotesque for titles, Instrument Sans for UI, JetBrains Mono for numbers */
-  --font-display: "Bricolage Grotesque Variable", "Bricolage Grotesque", system-ui, sans-serif;
-  --font-ui: "Instrument Sans Variable", "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, monospace;
+  /* type: Urbanist everywhere (tabular numbers); JetBrains Mono only for SQL / code / results */
+  --font-ui: "Urbanist Variable", "Urbanist", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: var(--font-ui);
+  --font-mono: var(--font-ui); /* numbers and small labels: Urbanist with tabular-nums */
+  --font-code: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, monospace;
 
   /* shape */
-  --radius-card: 22px;
+  --radius-card: 20px;
+  --radius-xl: 26px; /* modals, drawers */
   --radius-control: 12px;
+  --radius-button: 13px;
+  --radius-menu: 16px;
   --radius-pill: 999px;
 
-  /* motion */
-  --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
-  --dur-fast: 150ms;
-  --dur: 200ms;
-  --dur-slow: 250ms;
+  /* layout */
+  --gap: 18px;
+  --pad: 28px;
+  --side-w: 248px;
+  --rail-w: 84px;
+
+  /* motion (Ignara's GSAP eases as CSS) */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1); /* expo.out: slides, indicators */
+  --ease-std: cubic-bezier(0.22, 1, 0.36, 1); /* hovers, fades */
+  --ease-back: cubic-bezier(0.34, 1.56, 0.64, 1); /* back.out: dialogs and menus opening */
+  --ease-in: cubic-bezier(0.55, 0.085, 0.68, 0.53); /* power2.in: closing */
+  --ease-power3: cubic-bezier(0.215, 0.61, 0.355, 1); /* power3.out: hover lift */
+  --dur-fast: 180ms;
+  --dur: 250ms;
+  --dur-slow: 450ms;
+  --dur-slide: 600ms;
 }
 
-/* Dark: the prototype (Ink page and panels). */
+/* Dark */
 [data-theme="dark"] {
   color-scheme: dark;
 
-  --bg: var(--ink);
-  --bg-dots: rgba(238, 230, 211, 0.05);
-  --surface: var(--ink-2);
-  --surface-raised: var(--ink-3);
-  --surface-sunken: #121a18;
-  --surface-ink: var(--ink-3);
-  --rail-bg: rgba(23, 33, 31, 0.86);
-  --capsule-bg: rgba(30, 42, 39, 0.88);
-  --overlay: rgba(8, 12, 11, 0.72);
-  --paper-card: var(--paper);
+  --bg: #26282c;
+  --side: #1f2124;
+  --surface: #2f3135;
+  --surface-2: #36383d;
+  --surface-3: #3f4147;
+  --surface-raised: #323439;
+  --surface-sunken: #36383d;
+  --overlay: rgba(0, 0, 0, 0.5);
+  --top-light: rgba(255, 255, 255, 0.05);
 
-  --text: #f1ede3;
-  --text-muted: #a3ada8;
-  --text-faint: #96a19c;
-  --ink-text: #f1ede3;
-  --ink-muted: #a3ada8;
-  --ink-border: rgba(238, 230, 211, 0.14);
+  --text: #f3f1ed;
+  --text-2: #d4d2ce;
+  --text-muted: #aeaeb3; /* Ignara's #a4a4a9, lightened to keep 4.5:1 on card-3 */
+  --text-faint: #aeaeb3;
 
-  --border: rgba(238, 230, 211, 0.14);
-  --border-strong: rgba(238, 230, 211, 0.27);
-  --border-hover: rgba(238, 230, 211, 0.45);
-  --hover: rgba(238, 230, 211, 0.07);
-  --selected: rgba(228, 104, 58, 0.14);
+  --border: rgba(255, 255, 255, 0.06);
+  --border-strong: rgba(255, 255, 255, 0.12);
+  --border-hover: rgba(255, 255, 255, 0.3);
+  --hover: rgba(127, 127, 127, 0.12);
+  --selected: rgba(240, 85, 47, 0.13);
 
-  --accent-text: #f29a73;
-  --accent-soft: rgba(228, 104, 58, 0.17);
-  --link: #f29a73;
-  --link-hover: #f7bc9f;
-  --glow: 0 0 0 1px rgba(228, 104, 58, 0.16), 0 24px 70px -30px rgba(228, 104, 58, 0.45);
-  --glow-border: rgba(228, 104, 58, 0.6);
-  --focus-ring: var(--accent);
+  --accent: #f0552f;
+  --accent-hi: #f66a40;
+  --accent-from: #ff7c3c;
+  --accent-to: #e8432f;
+  --accent-fg: #1f0a04;
+  --accent-text: #ff8c62;
+  --accent-soft: rgba(240, 85, 47, 0.17);
+  --accent-glow: rgba(240, 70, 40, 0.42);
+  --accent-strong: #ff7c4f;
+  --link: #ff8c62;
+  --link-hover: #ffae8f;
+  --focus-ring: var(--text);
 
-  --inverse-bg: var(--paper);
-  --inverse-fg: var(--ink);
+  --inverse-bg: #f3f1ed;
+  --inverse-fg: #26282c;
+  --inverse-muted: #5f6066;
+  --inverse-danger: #b3222f;
+  --inverse-success: #19683f;
+  --inverse-info: #2a5c99;
+  --inverse-line: rgba(20, 20, 24, 0.16);
 
-  --success: #8fc79a;
-  --success-bg: rgba(143, 199, 154, 0.1);
-  --success-border: rgba(143, 199, 154, 0.32);
-  --danger: #ff8fa6;
-  --danger-bg: rgba(255, 143, 166, 0.1);
-  --danger-border: rgba(255, 143, 166, 0.36);
-  --icon-error: url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2718%27 height=%2718%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27%23FF8FA6%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3E%3Ccircle cx=%2712%27 cy=%2712%27 r=%2710%27/%3E%3Cline x1=%2712%27 x2=%2712%27 y1=%278%27 y2=%2712%27/%3E%3Cline x1=%2712%27 x2=%2712.01%27 y1=%2716%27 y2=%2716%27/%3E%3C/svg%3E");
-  --warning-text: #f2c35b;
-  --warning-bg: rgba(242, 195, 91, 0.1);
-  --warning-border: rgba(242, 195, 91, 0.32);
+  --success: #74d6a0;
+  --success-bg: rgba(116, 214, 160, 0.13);
+  --success-border: rgba(116, 214, 160, 0.32);
+  --danger: #ff8a92;
+  --danger-bg: rgba(255, 138, 146, 0.13);
+  --danger-border: rgba(255, 138, 146, 0.36);
+  --icon-error: url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2718%27 height=%2718%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27%23FF8A92%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3E%3Ccircle cx=%2712%27 cy=%2712%27 r=%2710%27/%3E%3Cline x1=%2712%27 x2=%2712%27 y1=%278%27 y2=%2712%27/%3E%3Cline x1=%2712%27 x2=%2712.01%27 y1=%2716%27 y2=%2716%27/%3E%3C/svg%3E");
+  --warning-text: #f4c46e;
+  --warning-bg: rgba(244, 196, 110, 0.14);
+  --warning-border: rgba(244, 196, 110, 0.34);
+  --info: #94bcf2;
+  --info-bg: rgba(148, 188, 242, 0.13);
 
-  --code-bg: var(--surface-sunken);
-  --code-line-active: rgba(238, 230, 211, 0.04);
+  --series-1: #f0552f;
+  --series-2: #e8e6e1;
+  --series-3: #6fa6e3;
+  --series-4: #f0a040;
+  --series-5: #4fbf9f;
+  --series-6: #c08ad6;
+  --series-7: #8a8478;
+  --series-8: #ff7aa2;
+  --series-9: #a8c65a;
+  --series-10: #5fd0e0;
+  --data: #85888f;
+  --scale-low: #514345;
+  --chart-grid: rgba(255, 255, 255, 0.07);
 
-  --shadow: rgba(0, 0, 0, 0.55);
+  --code-bg: #2f3135;
+  --code-text: #f3f1ed;
+  --code-keyword: #ff8c62;
+  --code-function: #d4a6e6;
+  --code-string: #8fdcb1;
+  --code-number: #94bcf2;
+  --code-comment: #aeaeb3;
+  --code-line-number: #aeaeb3;
+  --code-line-active: rgba(255, 255, 255, 0.04);
+  --code-selection: rgba(240, 85, 47, 0.28);
+
+  --shadow-color: rgba(0, 0, 0, 0.75);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow: 0 1px 1px rgba(0, 0, 0, 0.25), 0 22px 40px -22px rgba(0, 0, 0, 0.75);
+  --shadow-lg: 0 2px 6px rgba(0, 0, 0, 0.4), 0 34px 70px -24px rgba(0, 0, 0, 0.9);
+  --glow: inset 0 1px 0 var(--top-light), inset 0 0 0 1px var(--border-strong), 0 2px 6px rgba(0, 0, 0, 0.3), 0 24px 44px -24px var(--accent-glow);
+  --glow-border: rgba(240, 85, 47, 0.55);
 }
 
-/* Cards made of Paper (folders, dashboard tiles, chart cards): Ink on Paper in both themes.
-   Everything inside reads these roles; charts too (ChartView and the ECharts theme read
-   the tokens from a .paper element: charts are always drawn on Paper). */
+/* Chart surfaces (dashboard tiles, the editor preview, folders). Charts read their colors
+   from a .paper element (lib/cssVar.ts paperVar): in this design that is simply the card of
+   the current theme, so the class only pins the text color. */
 .paper {
-  --surface: var(--paper-card);
-  --surface-raised: var(--paper-3);
-  --surface-sunken: var(--paper-2);
-  --text: var(--on-paper);
-  --text-muted: var(--on-paper-muted);
-  --text-faint: #535b57;
-  --border: rgba(23, 33, 31, 0.12);
-  --border-strong: rgba(23, 33, 31, 0.22);
-  --border-hover: rgba(23, 33, 31, 0.42);
-  --hover: rgba(23, 33, 31, 0.06);
-  --selected: rgba(228, 104, 58, 0.12);
-  --accent-text: #9c3c17;
-  --link: #9c3c17;
-  --link-hover: #74290d;
-  --focus-ring: #9c3c17;
-  --inverse-bg: var(--ink);
-  --inverse-fg: #f1ede3;
-  --success: #2a6342;
-  --success-bg: rgba(42, 99, 66, 0.1);
-  --danger: #a3173f;
-  --danger-bg: rgba(163, 23, 63, 0.08);
-  --warning-text: #664500;
-  --warning-bg: rgba(242, 195, 91, 0.22);
-  --chart-grid: rgba(23, 33, 31, 0.09);
-  --shadow: rgba(23, 33, 31, 0.2);
+  --chart-surface: var(--surface);
   color: var(--text);
 }
 
-/* Legacy names used by App.css (repeated on .paper so they follow its roles). */
+/* Legacy names used by App.css. */
 :root,
-[data-theme="dark"],
-.paper {
+[data-theme="dark"] {
   --muted: var(--text-muted);
   --primary: var(--accent-text);
   --primary-hover: var(--accent-text);

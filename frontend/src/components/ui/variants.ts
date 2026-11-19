@@ -1,32 +1,35 @@
 /** Class recipes shared by the UI primitives (kept out of the component files so React
- * fast refresh keeps working). */
+ * fast refresh keeps working). The Ignara look: hairlines are inset shadows, not borders. */
 import { cva } from "class-variance-authority";
 import { cn } from "../../lib/cn.ts";
 
 export const buttonVariants = cva(
   [
-    "inline-flex items-center justify-center gap-2 whitespace-nowrap font-sans font-medium",
-    "border cursor-pointer select-none transition-[background-color,border-color,color,filter,box-shadow]",
-    "duration-200 ease-out disabled:cursor-not-allowed disabled:opacity-50",
+    "inline-flex items-center justify-center gap-2 whitespace-nowrap font-sans font-semibold",
+    "border border-transparent cursor-pointer select-none",
+    "transition-[background-color,color,filter,box-shadow,transform] duration-200 ease-[var(--ease-std)]",
+    "active:translate-y-px disabled:cursor-not-allowed disabled:opacity-45 disabled:active:translate-y-0",
     "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-ring)]",
+    "[&_svg]:shrink-0",
   ],
   {
     variants: {
       variant: {
-        // The one loud action on a screen: orange with dark text.
-        primary: "bg-accent text-accent-fg border-accent font-semibold hover:brightness-[1.07]",
-        secondary: "bg-transparent text-text border-border-strong hover:bg-hover hover:border-border-hover",
-        ghost: "bg-transparent text-muted border-transparent hover:bg-hover hover:text-text",
-        danger: "bg-transparent text-danger border-danger-border hover:bg-danger-bg",
-        inverse: "bg-inverse text-inverse-fg border-inverse hover:brightness-110",
+        // The one loud action on a screen: ember with dark text and a soft glow.
+        primary: "bg-accent text-accent-fg shadow-[var(--primary-shadow)] hover:brightness-[1.05]",
+        secondary: "bg-surface text-text shadow-[inset_0_0_0_1px_var(--border-strong)] hover:bg-surface-2",
+        ghost: "bg-transparent text-muted hover:bg-surface-3 hover:text-text",
+        danger: "bg-surface text-danger shadow-[inset_0_0_0_1px_var(--danger-border)] hover:bg-danger-bg",
+        // Ink on the page (Ignara's dark button).
+        inverse: "bg-inverse text-inverse-fg hover:brightness-110",
       },
       size: {
-        sm: "h-8 px-3 text-[13px] rounded-[10px]",
-        md: "h-10 px-4 text-sm rounded-control",
-        lg: "h-12 px-5 text-[15px] rounded-control",
-        icon: "h-10 w-10 p-0 rounded-control",
+        sm: "h-8 px-3 text-[12.5px] rounded-[10px] [&_svg]:size-4",
+        md: "h-10 px-4 text-[13.5px] rounded-button [&_svg]:size-[18px]",
+        lg: "h-[52px] px-[22px] text-[15px] rounded-[15px]",
+        icon: "h-10 w-10 p-0 rounded-button",
         "icon-sm": "h-8 w-8 p-0 rounded-[10px]",
-        pill: "h-[30px] px-3 text-xs font-mono rounded-pill",
+        pill: "h-8 px-3 text-xs rounded-[10px]",
       },
     },
     defaultVariants: { variant: "secondary", size: "md" },
@@ -34,15 +37,29 @@ export const buttonVariants = cva(
 );
 
 export const fieldClass = cn(
-  "w-full h-10 px-3 rounded-control border border-border-strong bg-surface text-text font-sans text-sm",
-  "placeholder:text-faint transition-[border-color,box-shadow] duration-200",
-  "hover:border-border-hover focus:outline-none focus-visible:border-[var(--focus-ring)] focus-visible:ring-2 focus-visible:ring-accent-soft",
+  "w-full h-[42px] px-[13px] rounded-control border-0 bg-surface-2 text-text font-sans text-sm font-medium",
+  "shadow-[inset_0_0_0_1px_var(--border-strong)] placeholder:text-faint",
+  "transition-[box-shadow,background-color] duration-200 ease-[var(--ease-std)]",
+  "hover:shadow-[inset_0_0_0_1px_var(--border-hover)]",
+  "focus:outline-none focus-visible:outline-none focus:shadow-[inset_0_0_0_1.5px_var(--accent),0_0_0_4px_var(--accent-soft)]",
   "disabled:opacity-60 disabled:cursor-not-allowed",
 );
 
-export const dialogOverlayClass = "anim-fade fixed inset-0 z-[60] bg-overlay backdrop-blur-[2px]";
+export const dialogOverlayClass = "anim-fade fixed inset-0 z-[60] bg-overlay";
 export const dialogContentClass = cn(
   "anim-pop fixed left-1/2 top-[12vh] z-[61] -translate-x-1/2 max-h-[80vh] overflow-y-auto",
-  "w-[min(460px,calc(100vw-32px))] rounded-card border border-border bg-surface p-6 text-text",
-  "shadow-[0_30px_80px_-30px_var(--shadow)] focus:outline-none",
+  "w-[min(520px,calc(100vw-32px))] rounded-xl bg-surface-raised px-6 pb-5 pt-[22px] text-text",
+  "shadow-[var(--panel-shadow)] focus:outline-none",
+);
+
+/** Menus, popovers and select lists: the panel color, radius 16, 6px padding. */
+export const menuPanelClass = cn(
+  "anim-menu z-[70] min-w-[200px] overflow-hidden rounded-menu bg-surface-raised p-1.5 text-text",
+  "shadow-[var(--panel-shadow)]",
+);
+export const menuItemClass = cn(
+  "relative flex h-[38px] cursor-pointer select-none items-center gap-2.5 rounded-[10px] px-2.5",
+  "text-[13.5px] font-semibold text-text outline-none",
+  "data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[highlighted]:bg-surface-3",
+  "[&_svg]:text-muted",
 );

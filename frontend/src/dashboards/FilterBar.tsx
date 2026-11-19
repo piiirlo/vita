@@ -89,7 +89,7 @@ export default function FilterBar({
           const source = crossSource?.(f.tile);
           const text = f.conditions.map(crossText).join(" · ");
           return (
-            <span key={f.tile} className="dfilter dfilter-cross" data-testid="cross-chip" title={source ? `From “${source}”: click it again to remove` : undefined}>
+            <span key={f.tile} className="dfilter dfilter-cross pop-in" data-testid="cross-chip" title={source ? `From “${source}”: click it again to remove` : undefined}>
               <span className="dfilter-label">{source ?? "Chart"}</span>
               <span className="dfilter-value">{text}</span>
               {onCrossRemove && (

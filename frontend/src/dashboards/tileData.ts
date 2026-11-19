@@ -1,6 +1,6 @@
 /** Loading one chart tile: saved chart -> its dataset (cached per dashboard) -> chart data. */
 import { createContext } from "react";
-import { getChart, getDataset, type CacheOptions, type ChartDataResult, type Dataset, type DashboardFilterDef, type SavedChart } from "../api.ts";
+import { getChart, getDataset, type CacheOptions, type ChartDataResult, type Dataset, type DashboardFilterDef, type RangeKind, type SavedChart } from "../api.ts";
 import { loadChartData } from "../charts/load.ts";
 import { fromParams, type ChartState } from "../charts/model.ts";
 import type { CrossSelection } from "../charts/crossSelect.ts";
@@ -54,10 +54,14 @@ export async function loadTileData(
   cache: CacheOptions = {},
   filters: DashboardFilters = { defs: [], values: {} },
   tileId: string | null = null,
+  /** The tile's range switch: this time range instead of the chart's own. */
+  range: RangeKind | null = null,
 ): Promise<TileData> {
   const chart = await getChart(chartId);
   const dataset = await datasets.get(chart.dataset_id);
-  const state = fromParams(chart.viz_type, chart.params, dataset);
+  const saved = fromParams(chart.viz_type, chart.params, dataset);
+  const time = saved.query.time;
+  const state = range && time ? { ...saved, query: { ...saved.query, time: { ...time, range: { kind: range } } } } : saved;
   // The filter bar's filters, then the other tiles' cross filters (never the tile's own).
   const cross = crossFiltersFor(filters.cross ?? [], tileId);
   const defs = [...filters.defs, ...cross.defs];

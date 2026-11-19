@@ -28,7 +28,7 @@ export default function TileMenu({ label, items }: { label: string; items: TileM
         ⋯
       </button>
       {open && (
-        <div className="tile-menu-list" role="menu">
+        <div className="tile-menu-list anim-menu" role="menu">
           {items.map((item) =>
             item.to !== undefined ? (
               <Link key={item.label} role="menuitem" to={item.to} className="tile-menu-item">

@@ -24,8 +24,10 @@ export function Select({ value, onValueChange, options, placeholder, disabled, c
       <SelectPrimitive.Trigger
         aria-label={rest["aria-label"]}
         className={cn(
-          "inline-flex h-10 w-full cursor-pointer items-center justify-between gap-2 rounded-control border border-border-strong",
-          "bg-surface px-3 font-sans text-sm text-text hover:border-border-hover focus-visible:border-[var(--focus-ring)]",
+          "inline-flex h-[42px] w-full cursor-pointer items-center justify-between gap-2 rounded-control border-0",
+          "bg-surface-2 px-[13px] font-sans text-sm font-medium text-text shadow-[inset_0_0_0_1px_var(--border-strong)]",
+          "transition-[box-shadow] duration-200 hover:shadow-[inset_0_0_0_1px_var(--border-hover)]",
+          "focus-visible:outline-none focus-visible:shadow-[inset_0_0_0_1.5px_var(--accent),0_0_0_4px_var(--accent-soft)]",
           "data-[placeholder]:text-faint disabled:cursor-not-allowed disabled:opacity-60",
           className,
         )}
@@ -39,7 +41,7 @@ export function Select({ value, onValueChange, options, placeholder, disabled, c
         <SelectPrimitive.Content
           position="popper"
           sideOffset={6}
-          className="anim-pop z-[70] max-h-[min(360px,var(--radix-select-content-available-height))] min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-[16px] border border-border-strong bg-surface-raised p-1.5 text-text shadow-[0_18px_50px_-20px_var(--shadow)]"
+          className="anim-menu z-[70] max-h-[min(360px,var(--radix-select-content-available-height))] min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-menu bg-surface-raised p-1.5 text-text shadow-[var(--panel-shadow)]"
         >
           <SelectPrimitive.Viewport>
             {options.map((o) => (
@@ -47,7 +49,7 @@ export function Select({ value, onValueChange, options, placeholder, disabled, c
                 key={o.value}
                 value={o.value}
                 disabled={o.disabled}
-                className="relative flex cursor-pointer select-none items-center rounded-[10px] py-2 pl-2.5 pr-8 text-sm outline-none data-[disabled]:opacity-50 data-[highlighted]:bg-hover"
+                className="relative flex h-[38px] cursor-pointer select-none items-center rounded-[10px] pl-2.5 pr-8 text-[13.5px] font-semibold outline-none data-[disabled]:opacity-50 data-[highlighted]:bg-surface-3"
               >
                 <SelectPrimitive.ItemText>{o.label}</SelectPrimitive.ItemText>
                 <SelectPrimitive.ItemIndicator className="absolute right-2.5 inline-flex">

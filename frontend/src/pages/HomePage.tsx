@@ -58,7 +58,7 @@ export default function HomePage() {
             </p>
           )}
         </div>
-        <button type="button" className="primary pill" onClick={() => setCreating(true)}>
+        <button type="button" className="primary pill magnetic" onClick={() => setCreating(true)}>
           <Plus size={18} strokeWidth={2.4} aria-hidden />
           New project
         </button>
@@ -68,8 +68,8 @@ export default function HomePage() {
       {!projects && !error && <SkeletonLines lines={3} label="Loading projects…" className="max-w-xl" />}
       {projects && (
         <section className="folders" aria-label="Projects">
-          {projects.map((p, i) => (
-            <Folder key={p.id} project={p} index={i} onOpen={() => void navigate(projectHome(p.id))} />
+          {projects.map((p) => (
+            <Folder key={p.id} project={p} onOpen={() => void navigate(projectHome(p.id))} />
           ))}
           <button type="button" className="new-tile" onClick={() => setCreating(true)}>
             <span className="plus-circle" aria-hidden>
@@ -97,11 +97,11 @@ export default function HomePage() {
 /** A project as a folder. Hovering it fans its dashboards out; a paper (one dashboard) comes
  * to the front on hover or focus and opens that dashboard; anywhere else opens the project.
  * The folder is a wrapper (not a button) so the papers can be links of their own. */
-function Folder({ project, index, onOpen }: { project: Project; index: number; onOpen(): void }) {
+function Folder({ project, onOpen }: { project: Project; onOpen(): void }) {
   const papers = project.dashboards.slice(0, 3);
   const fan = FAN[papers.length] ?? [];
   return (
-    <div className="folder paper" style={{ animationDelay: `${index * 60}ms` }}>
+    <div className="folder paper">
       {/* The whole folder opens the project; papers sit above it and open their dashboard. */}
       <button
         type="button"

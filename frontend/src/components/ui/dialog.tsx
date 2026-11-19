@@ -23,11 +23,11 @@ export function Modal({ title, onClose, children, label, wide, onSubmit, classNa
   const body = (
     <>
       <div className="mb-4 flex items-start gap-3">
-        <DialogPrimitive.Title className="m-0 flex-1 border-0 p-0 text-lg font-semibold normal-case tracking-normal text-text">
+        <DialogPrimitive.Title className="m-0 flex-1 border-0 p-0 font-display text-xl font-bold normal-case tracking-[-0.015em] text-text">
           {title}
         </DialogPrimitive.Title>
         <DialogPrimitive.Close
-          className="-mr-2 -mt-1 inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-[10px] border-0 bg-transparent p-0 text-muted hover:bg-hover hover:text-text"
+          className="-mr-2 -mt-1 inline-flex h-[34px] w-[34px] cursor-pointer items-center justify-center rounded-[10px] border-0 bg-transparent p-0 text-muted transition-colors hover:bg-surface-3 hover:text-text"
           aria-label="Close"
         >
           <X size={18} aria-hidden />
@@ -43,7 +43,7 @@ export function Modal({ title, onClose, children, label, wide, onSubmit, classNa
         <DialogPrimitive.Content
           aria-describedby={undefined}
           aria-label={label}
-          className={cn(dialogContentClass, wide && "w-[min(720px,calc(100vw-32px))]", className)}
+          className={cn(dialogContentClass, wide && "w-[min(760px,calc(100vw-32px))]", className)}
           asChild={Boolean(onSubmit)}
         >
           {onSubmit ? (

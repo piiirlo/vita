@@ -9,10 +9,12 @@ import {
   LogOut,
   Moon,
   Network,
+  PanelLeftClose,
+  PanelLeftOpen,
   Sun,
   SunMoon,
 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router";
 import { useAuth } from "../auth/auth.ts";
 import ChangePasswordDialog from "../auth/ChangePasswordDialog.tsx";
@@ -33,6 +35,7 @@ import {
 import { Tooltip } from "../components/ui/tooltip.tsx";
 import { useMediaQuery } from "../dashboards/hooks.ts";
 import { cn } from "../lib/cn.ts";
+import { gsap, motionOn, slidePill, themeReveal } from "../motion/ignara.ts";
 import { innerPath, sectionOf } from "../projects/paths.ts";
 import { useProject } from "../projects/projectContext.ts";
 import { useTheme, type ThemePreference } from "../theme/theme.ts";
@@ -48,20 +51,35 @@ const NAV = [
 ] as const;
 
 const PHONE_QUERY = "(max-width: 767px)";
+// Between phones and wide screens the sidebar is always the icon rail (Ignara: 761-1279px).
+const NARROW_QUERY = "(min-width: 768px) and (max-width: 1279px)";
+const FOLD_KEY = "vita.sidebar.folded";
 
-const itemClass = (active: boolean) =>
-  cn(
-    "flex h-11 w-11 shrink-0 items-center justify-center rounded-control border no-underline",
-    "transition-[background-color,border-color,color] duration-200 ease-out",
-    active
-      ? "border-inverse bg-inverse text-inverse-fg"
-      : "border-transparent text-muted hover:border-border-hover hover:bg-hover hover:text-text",
-  );
+function readFolded(): boolean {
+  try {
+    return localStorage.getItem(FOLD_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
 
-/** The slim icon rail (left); a bottom bar on phones. Inside a project its links stay in the
- * project; on the home page there is only "Projects". */
+function writeFolded(folded: boolean) {
+  try {
+    localStorage.setItem(FOLD_KEY, folded ? "1" : "0");
+  } catch {
+    // private mode: the choice just isn't remembered
+  }
+}
+
+/** The sidebar (Ignara's): brand, Projects, the project's pages and, at the bottom, the theme
+ * switch and the account menu. An icon rail on mid-size screens or when folded; a floating
+ * bar at the bottom on phones. The active page has the ember pill, which slides between items.
+ * Inside a project its links stay in the project; on the home page there is only "Projects". */
 export default function Rail({ username }: { username: string }) {
   const phone = useMediaQuery(PHONE_QUERY);
+  const narrow = useMediaQuery(NARROW_QUERY);
+  const [folded, setFolded] = useState(readFolded);
+  const rail = !phone && (narrow || folded);
   const side = phone ? "top" : "right";
   const theme = useTheme();
   const ThemeIcon = theme.resolved === "dark" ? Sun : Moon;
@@ -81,58 +99,159 @@ export default function Rail({ username }: { username: string }) {
             ? ["home", "dashboards"].includes(sectionOf(inner))
             : inner === item.to || inner.startsWith(item.to + "/"),
       }));
+  const activeKey = home ? "projects" : (nav.find((n) => n.active)?.to ?? null);
+
+  // The ember pill covers the nav and is clipped to the active item; moving, it stretches
+  // (Ignara's: leading edge first, trailing edge after). A resize just snaps it.
+  const listRef = useRef<HTMLDivElement>(null);
+  const pillRef = useRef<HTMLSpanElement>(null);
+  const radius = phone ? 18 : 14;
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    const active = () => list?.querySelector<HTMLElement>('[aria-current="page"]') ?? null;
+    slidePill(pillRef.current, active(), { radius });
+    if (!list || typeof ResizeObserver === "undefined") return;
+    // Only a real size change snaps it: the observer also fires once right after observe(),
+    // which would cut the stretch short.
+    let size = `${list.offsetWidth}x${list.offsetHeight}`;
+    const observer = new ResizeObserver(() => {
+      const now = `${list.offsetWidth}x${list.offsetHeight}`;
+      if (now === size) return;
+      size = now;
+      slidePill(pillRef.current, active(), { radius, animate: false });
+    });
+    observer.observe(list);
+    return () => observer.disconnect();
+  }, [activeKey, rail, phone, radius]);
+
+  // Folding (Ignara's): the sidebar is clipped down to the rail (0.32s power3.inOut), then
+  // becomes the rail while the page glides over (0.6s expo.out). Unfolding unclips it (0.5s
+  // expo.out) and the labels slide in after it.
+  const navRef = useRef<HTMLElement>(null);
+  const mainLeft = useRef<number | null>(null);
+  const unfolding = useRef(false);
+  const RAIL_W = 84;
+  function setFold(next: boolean) {
+    writeFolded(next);
+    mainLeft.current = document.querySelector("main")?.getBoundingClientRect().left ?? null;
+    setFolded(next);
+  }
+  function toggleFold() {
+    const side = navRef.current;
+    if (!side || !motionOn()) return setFold(!folded);
+    if (!folded) {
+      gsap.to(side, {
+        clipPath: `inset(0px ${side.offsetWidth - RAIL_W}px 0px 0px round 0px)`,
+        duration: 0.32,
+        ease: "power3.inOut",
+        onComplete: () => {
+          gsap.set(side, { clearProps: "clipPath" });
+          setFold(true);
+        },
+      });
+    } else {
+      unfolding.current = true;
+      setFold(false);
+    }
+  }
+  useLayoutEffect(() => {
+    const side = navRef.current;
+    const main = document.querySelector("main");
+    if (!side || !main || mainLeft.current === null || !motionOn()) return;
+    const dx = mainLeft.current - main.getBoundingClientRect().left;
+    mainLeft.current = null;
+    gsap.fromTo(main, { x: dx }, { x: 0, duration: 0.6, ease: "expo.out", clearProps: "transform" });
+    if (unfolding.current) {
+      unfolding.current = false;
+      gsap.fromTo(
+        side,
+        { clipPath: `inset(0px ${side.offsetWidth - RAIL_W}px 0px 0px round 0px)` },
+        { clipPath: "inset(0px 0px 0px 0px round 0px)", duration: 0.5, ease: "expo.out", clearProps: "clipPath" },
+      );
+      gsap.fromTo(
+        side.querySelectorAll(".side-label, .side-group, .side-brand-text, .side-me-text"),
+        { x: -8, opacity: 0 },
+        { x: 0, opacity: 1, duration: 0.55, ease: "power3.out", stagger: 0.015, delay: 0.08, clearProps: "transform,opacity" },
+      );
+    }
+  }, [folded]);
+
+  const tip = (label: string, node: ReactNode) => (
+    <Tooltip content={label} side={side}>
+      {node}
+    </Tooltip>
+  );
 
   return (
-    <nav
-      aria-label="Main"
-      className={cn(
-        "z-40 flex items-center gap-2.5 border-border bg-[var(--rail-bg)] backdrop-blur-[14px]",
-        "fixed inset-x-0 bottom-0 h-16 flex-row justify-around border-t px-2",
-        "md:sticky md:top-0 md:h-screen md:w-[72px] md:shrink-0 md:flex-col md:justify-start md:border-r md:border-t-0 md:px-0 md:py-5",
-      )}
-    >
-      <Tooltip content="Vita" side={side}>
-        <Link
-          to="/"
-          aria-label="Vita home"
-          className="hidden h-10 w-10 items-center justify-center rounded-control bg-accent text-xl font-bold text-accent-fg no-underline hover:no-underline md:mb-[18px] md:flex"
-        >
-          V
-        </Link>
-      </Tooltip>
+    <nav ref={navRef} aria-label="Main" className={cn("side", rail && "is-rail", phone && "is-phone")}>
+      <div className="side-head">
+        {tip(
+          "Vita",
+          <Link to="/" aria-label="Vita home" className="side-brand">
+            <span className="side-mark" aria-hidden>
+              V
+            </span>
+            <span className="side-brand-text">
+              <b>Vita</b>
+              <small>Data, charts, dashboards</small>
+            </span>
+          </Link>,
+        )}
+        {!phone && !narrow && (
+          <button
+            type="button"
+            className="side-fold"
+            onClick={toggleFold}
+            aria-label={folded ? "Expand the sidebar" : "Fold the sidebar"}
+            aria-pressed={folded}
+          >
+            {folded ? <PanelLeftOpen size={18} aria-hidden /> : <PanelLeftClose size={18} aria-hidden />}
+          </button>
+        )}
+      </div>
 
-      <Tooltip content="Projects" side={side}>
-        <NavLink to="/" end aria-label="Projects" className={itemClass(home)}>
-          <Folder size={20} strokeWidth={1.7} aria-hidden />
-        </NavLink>
-      </Tooltip>
-      {!home && <span className="rail-divider" aria-hidden />}
+      <div className="side-nav" ref={listRef}>
+        <span className="side-pill" ref={pillRef} aria-hidden />
+        <span className="side-group">Workspace</span>
+        {tip(
+          "Projects",
+          <NavLink to="/" end aria-label="Projects" className="side-item" aria-current={home ? "page" : undefined}>
+            <Folder size={20} strokeWidth={1.7} aria-hidden />
+            <span className="side-label">Projects</span>
+          </NavLink>,
+        )}
 
-      {nav.map(({ to, href, label, icon: Icon, active }) => {
-        // className must be a string: the tooltip trigger (asChild) merges class names as strings.
-        return (
+        {!home && (
+          <span className="side-group" title={project?.project?.name}>
+            {project?.project?.name ?? "Pages"}
+          </span>
+        )}
+        {nav.map(({ to, href, label, icon: Icon, active }) => (
+          // className must be a string: the tooltip trigger (asChild) merges class names as strings.
           <Tooltip key={to} content={label} side={side}>
-            <Link to={href} aria-label={label} className={itemClass(active)} aria-current={active ? "page" : undefined}>
+            <Link to={href} aria-label={label} className="side-item" aria-current={active ? "page" : undefined}>
               <Icon size={20} strokeWidth={1.7} aria-hidden />
+              <span className="side-label">{label}</span>
             </Link>
           </Tooltip>
-        );
-      })}
+        ))}
+      </div>
 
-      <div className="hidden flex-1 md:block" />
-
-      <Tooltip content={theme.resolved === "dark" ? "Light theme" : "Dark theme"} side={side}>
-        <button
-          type="button"
-          onClick={theme.toggle}
-          aria-label={theme.resolved === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-          className={cn(itemClass(false), "cursor-pointer bg-transparent p-0")}
-        >
-          <ThemeIcon size={19} strokeWidth={1.7} aria-hidden />
-        </button>
-      </Tooltip>
-
-      <AccountMenu username={username} side={side} />
+      <div className="side-foot">
+        {tip(
+          theme.resolved === "dark" ? "Light theme" : "Dark theme",
+          <button
+            type="button"
+            onClick={(e) => themeReveal(e.currentTarget, theme.toggle)}
+            aria-label={theme.resolved === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+            className="side-item side-theme"
+          >
+            <ThemeIcon size={19} strokeWidth={1.7} aria-hidden />
+            <span className="side-label">{theme.resolved === "dark" ? "Light theme" : "Dark theme"}</span>
+          </button>,
+        )}
+        <AccountMenu username={username} side={side} />
+      </div>
     </nav>
   );
 }
@@ -155,11 +274,14 @@ function AccountMenu({ username, side }: { username: string; side: "top" | "righ
   return (
     <>
       <DropdownMenu>
-        <DropdownMenuTrigger
-          aria-label={`Account menu for ${username}`}
-          className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full border border-border-strong bg-surface p-0 font-sans text-sm font-semibold text-text uppercase hover:border-border-hover"
-        >
-          {username.slice(0, 1)}
+        <DropdownMenuTrigger aria-label={`Account menu for ${username}`} className="side-me">
+          <span className="side-avatar" aria-hidden>
+            {username.slice(0, 1)}
+          </span>
+          <span className="side-me-text">
+            <b>{username}</b>
+            <small>Account</small>
+          </span>
         </DropdownMenuTrigger>
         <DropdownMenuContent side={side} align="end">
           <DropdownMenuLabel>Signed in as</DropdownMenuLabel>
@@ -205,4 +327,3 @@ function MenuLink({ icon, children, onSelect }: { icon: ReactNode; children: Rea
     </DropdownMenuItem>
   );
 }
-

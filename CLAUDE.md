@@ -9,7 +9,7 @@ Single user for now.
 - **Backend:** Python 3.12, FastAPI, SQLAlchemy 2.x, Alembic (migrations), Pydantic (schemas)
 - **App metadata DB:** PostgreSQL 16 — stores connections, queries, charts, dashboards
 - **Frontend:** React + TypeScript + Vite, Tailwind CSS v4, Radix primitives (shadcn-style, in
-  `src/components/ui/`), lucide-react icons, cmdk (command palette), Motion (count-up only)
+  `src/components/ui/`), lucide-react icons, cmdk (command palette), GSAP (motion)
 - **Charts / editor / grid:** Apache ECharts, Monaco, react-grid-layout
 - **Runtime:** everything runs with Docker Compose
 
@@ -44,6 +44,8 @@ One part at a time, in order:
     "Add a chart"; Ink / Paper / Clay design (`design/projects-prototype.html`) *(done)*
 15. **Dashboard filters** — filter bar (time range, values, number range), targeting by column
     name, values in the URL, defaults; cross-filtering; dependent values filters *(done)*
+16. **Visual redesign ("Ignara")** — `design/ignara-design.md`: tokens, Urbanist, motion, sidebar
+    shell, every component, Monaco and ECharts themes; no feature changes *(done)*
 
 **Out of scope for v1:** multi-user permissions, alerts, scheduled
 reports, chart types beyond the 15 of Part 11.
@@ -477,14 +479,14 @@ This folder may contain the Apache Superset source code. It is **read-only refer
   - Theme: `src/theme/theme.ts` (light / dark / system, localStorage `vita.theme` in try/catch,
     `data-theme` on <html>). `index.html` repeats the logic inline so there is no flash; keep
     them in sync. ECharts themes come from the tokens at runtime (`charts/echartsTheme.ts`,
-    `EChart` rebuilds on theme change); Monaco themes too (`sqllab/monacoTheme.ts`, needs the
-    `*.sql` token rules because vs-dark has its own).
+    `EChart` rebuilds on theme change); Monaco themes too (`sqllab/monacoTheme.ts`: `vs` / `vs-dark`
+    base on the card color, needs the `*.sql` token rules because the bases have their own).
   - Contrast: `npm run check:contrast` (`scripts/contrast.mjs`) checks every text/background
     token pair in both themes; add new pairs there when you add tokens. It also checks the
     10 chart series colors (`--series-1..10`): 3:1 on cards and CIEDE2000 ≥ 15 between any
-    two (≥ 18 for neighbors), checked on Paper (charts are always drawn on Paper: the
-    "paper (light)" / "paper (dark)" themes). The first three stay Ink / Clay / Sage. Pivot
-    heat cells (`--heat-1..5`, a Sage tint) keep `--text` at 4.5:1+.
+    two (≥ 18 for neighbors), checked on the card of each theme (the "paper (light)" /
+    "paper (dark)" themes of the script). The first stays ember. Pivot heat cells
+    (`--heat-1..5`, an ember tint) keep `--text` at 4.5:1+.
   - Lint: `npm run lint` (ESLint flat config `eslint.config.js`, type-aware, max 0 warnings).
   - Tests: Vitest + Testing Library (`*.test.ts(x)` next to the code, setup in
     `src/test/setup.ts`). Monaco is mocked with a textarea in page tests.
@@ -510,40 +512,92 @@ This folder may contain the Apache Superset source code. It is **read-only refer
   block other requests. Don't make an endpoint `async def` if it does blocking DB calls
   (`tests/test_concurrency.py` guards this).
 
-## Design (Ink, Paper, Clay; Part 14)
-Prototype: `design/projects-prototype.html` (structure, wording, flow and look); older
-mockups in `design/*.dc.html`. **Ink** #17211F 60% (page, panels; surfaces #1E2A27 #263430),
-**Paper** #EEE6D3 30% (folders, tiles, chart cards; #DACFB6 #F7F2E7), **Clay** #E4683A 10%
-(primary actions, highlights). Dark = the prototype; light is derived (a Paper page).
-- **Colors only from tokens** (`frontend/src/styles/tokens.css`): CSS variables on `:root`
-  (light) and `[data-theme="dark"]`. No literal colors in components or CSS; Tailwind's own
-  palette is disabled, utilities map to tokens (`bg-surface`, `text-muted`, `border-border`,
-  `text-accent-text`…). Need a new color? Add a token in both themes + a contrast pair.
-- **Clay** `--accent` is for the one primary action per screen, the live dot, focus and
-  highlights. Text **on** Clay is always Ink (`--accent-fg`). Clay text uses `--accent-text`.
-  Clay is under 3:1 on Paper, so on Paper it is `--clay-on-paper` (#CF5A2C: big number
-  decimals, the Clay chart series).
-- **Paper cards**: the `.paper` class (tokens.css) re-maps the roles (`--surface`, `--text`,
-  `--danger`…) to Ink on Paper in both themes: folders, every dashboard tile (big numbers
-  too: number in Ink, decimals in Clay; no dark hero cards) and the chart editor's preview.
-  Charts read their colors with `paperVar` (lib/cssVar.ts), never from the page.
+## Design (the Ignara look; Part 16)
+Spec: `design/ignara-design.md` (tokens, motion, shell, components, screen mapping), taken
+from the read-only study copy `C:\Projects\ignara-study\ignara-readable` (a licensed
+template: re-implement the look in our own code, never copy its CSS / JS). Charcoal and
+ember: warm neutral layers (page `--bg` → sidebar `--side` → card `--surface` → `--surface-2`
+/ `--surface-3`; menus and dialogs `--surface-raised`), 1px hairlines, one ember accent.
+Older looks: `design/projects-prototype.html` (Part 14, Ink / Paper / Clay), `design/*.dc.html`.
+- **Colors only from tokens** (`frontend/src/styles/tokens.css`, hex or rgba() only: the
+  contrast script parses them): CSS variables on `:root` (light) and `[data-theme="dark"]`.
+  No literal colors in components or CSS; Tailwind's own palette is disabled, utilities map
+  to tokens (`bg-surface`, `bg-surface-2`, `text-muted`, `text-text-2`, `border-border`,
+  `text-accent-text`, `bg-inverse`…). Need a new color? Add a token in both themes + a
+  contrast pair.
+- **Ember** `--accent` is for the one primary action per screen (with `--primary-shadow`), the
+  live dot, input focus and highlights; `--grad` (ember gradient) only for the brand mark and
+  the active sidebar item. Text **on** ember is `--accent-fg`; ember text is `--accent-text`;
+  `--accent-strong` is ember as large text / a mark on cards (big number decimals).
+- **Inverted** (`--inverse-bg` / `--inverse-fg`, plus `--inverse-muted|danger|success|info|line`):
+  tooltips, toasts, the selected segment of a segmented control (Tabs), selected list items,
+  the chart tooltip.
+- **Cards**: `--surface` + `--card-shadow` (top highlight, hairline, soft shadow; legacy CSS
+  uses a 1px `--border` + the same shadow). `.paper` now only marks chart surfaces: charts
+  read their colors with `paperVar` (lib/cssVar.ts), i.e. the card of the current theme
+  (dashboard tiles are dark in dark mode). Chart series are per theme (`--series-1..10`).
 - **Errors never rely on color**: danger color + icon + the word "Error" (`ErrorAlert`, the
   `.alert-error` class, toasts).
-- **Contrast**: text >= 4.5:1, large text (24px+) and UI parts >= 3:1. The light focus ring is
-  `--accent-text` (Clay is too light on Paper). Danger is a raspberry red, clearly not Clay.
-- **Fonts** (bundled with @fontsource, no CDN): Bricolage Grotesque for titles (h1-h3,
-  `--font-display`), Instrument Sans for UI; JetBrains Mono for every number, SQL, type
-  labels and small uppercase labels (`.eyebrow`, wizard field labels).
-- **Shape**: cards 22px (`rounded-card`), inputs 12px (`rounded-control`), buttons are pills.
-- Page CSS for Part 14 is in `styles/projects.css` (pills, breadcrumbs, folders, project
-  page) and `styles/setup.css` (wizard, the chart builder's look).
-- **Motion**: UI feedback 150-250 ms, ease `cubic-bezier(.2,.7,.2,1)` (`--ease-out`); page
-  enter = fade + 12px rise (`.page-enter`); lists / tiles stagger 70 ms on first mount only
-  (`.stagger-item` / `.tile-enter` + `data-enter={index}`, CSS so it composes with the
-  grid's transforms); skeleton shimmer, never spinners; card hover = lift 2px + accent glow
-  (`.card-hover`); big numbers count up once (`CountUp`). `prefers-reduced-motion` turns all
-  of it off (CSS rule in `styles/components.css`, `useReducedMotion` in JS). Keep Motion
-  (`motion/react`) out of the main bundle: CSS first.
+- **Contrast**: text >= 4.5:1, large text (24px+) and UI parts >= 3:1. Focus ring = `--text`
+  (2px, offset 2px); inputs focus with an ember hairline + `--accent-soft` ring.
+- **Fonts** (bundled with @fontsource, no CDN): Urbanist (variable) for everything, 500 body,
+  600 titles, `tabular-nums` on the body; `--font-mono` is Urbanist too (numbers, small
+  labels). JetBrains Mono (`--font-code`, `.font-code`, `code` / `pre`) only for SQL, Monaco,
+  query results and database type names. Small labels: 11px / 700 / uppercase / 0.08em.
+- **Shape**: cards 20px (`rounded-card`), dialogs 26px (`rounded-xl`), buttons 13px
+  (`rounded-button`, 10 when small), inputs 12px (`rounded-control`), menus 16px
+  (`rounded-menu`); pills (`rounded-pill`) only for status tags and badges.
+- **Shell** (`shell/Rail.tsx`, `styles/shell.css`): a 248px sidebar (brand, Workspace /
+  project groups, theme switch, account chip) with an ember pill sliding to the active item;
+  the 84px icon rail between 768 and 1279px or when folded (`vita.sidebar.folded`, try/catch);
+  a floating bar at the bottom on phones. Page CSS for Part 14 is in `styles/projects.css`
+  (breadcrumbs, folders, project page) and `styles/setup.css` (wizard).
+- **Motion**: GSAP 3.15 (core only), Ignara's exact settings, in `motion/ignara.ts`:
+  `revealCards` (y 26, 0.8s expo.out), `revealRows` (y 8-12, 0.55s power3.out),
+  `revealTiles` (y 40, ±2.5°, 95%, 0.85s back.out(1.4)), `revealGridItems` (the same for
+  react-grid-layout tiles through `--enter-*` CSS variables: RGL owns their transform),
+  `revealTitle` (PageHeader's letters: 115% + 6°, 0.85s power4.out, 0.022s apart),
+  `press` (buttons spring back from 97% / icons from 70%), `countTo` (1.2s power3.out,
+  `CountUp`), `slidePill` (the stretchy clip-path pill of the sidebar and the Tabs thumb:
+  leading edge 0.36s power3.out, trailing 0.55s power3.inOut), `playIntro` (first paint:
+  sidebar, items, pill, header, page) and `themeReveal` (circular view transition, 450ms).
+  `motion/PageReveal.tsx` (wraps every page, keyed by path) reveals `.card` / `.stagger-item`
+  / `.folder` / `.dash-card` / `tr.stagger-item` / `.tile-enter` when they mount (a
+  MutationObserver, before paint; never replays on refresh). `motionOn()` is false under
+  Vitest and with prefers-reduced-motion: tests see the final DOM (PageHeader renders plain
+  text then). CSS keeps hovers (`.card-hover`: up 4px in 0.45s, back in 0.5s, power3.out),
+  Radix dialogs / menus / toasts (`.anim-pop`: y -18 / scale .97, 0.45s back-out in; y -10,
+  0.18s power2.in out) and skeleton shimmer. Tokens: `--ease-out` expo.out, `--ease-std`,
+  `--ease-back`, `--ease-in`, `--ease-power3`. Charts: `charts/ignaraStyle.ts` (applied in
+  `EChart`) gives every series Ignara's look and entrance (smooth 2.4px lines with a fading
+  gradient area and a ringed hover dot, drawn in 1.2s; bars with 8/3px corners growing in
+  1.1s expo.out staggered 0.5s/n after 0.2s; heatmap cells popping; morphs 0.9s
+  expo.inOut); a single series is drawn in `--data`, heatmaps / the world map use the ember
+  scale (`--scale-low` → `--accent`); the theme has dashed grid lines and an inverted tooltip.
+  `prefers-reduced-motion` turns all of it off (`useReducedMotion` in
+  `motion/useReducedMotion.ts`, the CSS rule in `styles/components.css`).
+- **More Ignara motion** (round 3): magnetic buttons (`enableMagnetic`: `.magnetic` and dialogs'
+  primary buttons lean x 20% / y 28% toward the pointer, 0.5s power3.out quickTo, springs back;
+  New project, Add a chart, Save, Run, Create dataset carry the class); overlays enter with GSAP
+  (`motion/overlays.ts`: modal from 86% at its trigger, back.out(1.5) 0.5s; menus 92%, back.out(2)
+  0.4s; palette `.anim-palette`; toasts 30px, back.out(1.8)); exits are CSS keyframes (power2.in);
+  `pop` (chips that appear, `.pop-in`), `bump` (a big number that changes on refresh), `shake`
+  (refused login); the sidebar pill's stretch is Ignara's exact clip-path technique (no SVG goo
+  exists in Ignara) and the Tabs thumb uses it too; folding the sidebar clips it to the rail
+  (0.32s) and slides the page (0.6s); tab content slides in 26px; wizard steps fill (0.9s
+  expo.out, 0.12s apart) and the new dot pops.
+- **Ignara components** (`styles/ignara.css`): the top bar (`shell/TopBar.tsx`: crumbs, the one
+  search capsule, the date); the dashboard head (greeting, split title, summary line; settings in
+  a quiet `.dash-toolbar`); chart cards (title + description subtitle, arrow to the editor, cache
+  info as a clock tooltip, legend chips that toggle series, `TileFigures`: headline total /
+  average, target figures, best period, and a range switch that reloads only that tile via
+  `loadTileData(..., range)`); big numbers are KPI cards by default (`display.kpi_style` card /
+  hero / classic, `kpi_target`; `charts/kpi.ts`; value top left unless a position is picked,
+  delta chip, sparkline bottom right; the hero is the ember gradient with a progress bar);
+  bars are lollipops by default for one upright unstacked series (`display.bar_style`,
+  `bar_target`: dashed target line with its value, ember beads at or over it), horizontal bars
+  are Ignara's 10px rails; gauges are the 44-tick dial with side stats. These are `look`s
+  applied in `EChart` (`ignaraStyle.ts`), so builders and their tests are unchanged.
 - **Focus**: every interactive element shows the `--focus-ring` (`:focus-visible`); Escape
   closes dialogs, menus and the palette (Radix does this; keep it).
 - **CSS layers**: `styles/index.css` = vendor < theme < base (fonts, `base.css`, `App.css`) <
@@ -553,7 +607,8 @@ mockups in `design/*.dc.html`. **Ink** #17211F 60% (page, panels; surfaces #1E2A
   live in `App.css` (organized by page); new components prefer Tailwind utilities.
 - **Lazy chunks**: SQL Lab, chart editor, dashboard page, dataset editor, the schema diagram
   and the command palette are lazy-loaded; keep heavy libraries (Monaco, ECharts, TanStack,
-  cmdk, Motion, dagre, chart code, the world map) out of the main bundle.
+  cmdk, dagre, chart code, the world map) out of the main bundle. GSAP core is in the main
+  bundle on purpose (the shell's intro, pill and presses use it at first paint).
 
 ## Testing notes
 - Backend tests run against a separate `vita_test` database (created and migrated

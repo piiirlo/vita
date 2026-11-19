@@ -22,10 +22,10 @@ export function AlertDialog({ title, children, confirmLabel, cancelLabel = "Canc
       <AlertDialogPrimitive.Portal>
         <AlertDialogPrimitive.Overlay className={dialogOverlayClass} />
         <AlertDialogPrimitive.Content aria-describedby={undefined} className={dialogContentClass}>
-          <AlertDialogPrimitive.Title className="m-0 mb-3 border-0 p-0 text-lg font-semibold normal-case tracking-normal text-text">
+          <AlertDialogPrimitive.Title className="m-0 mb-3 border-0 p-0 font-display text-xl font-bold normal-case tracking-[-0.015em] text-text">
             {title}
           </AlertDialogPrimitive.Title>
-          <div className="text-[15px] leading-relaxed text-text [&_p]:my-1">{children}</div>
+          <div className="text-sm leading-relaxed text-text-2 [&_p]:my-1">{children}</div>
           {error}
           <div className="mt-5 flex flex-wrap justify-end gap-2">
             <AlertDialogPrimitive.Cancel className={buttonVariants({ variant: "secondary" })}>{cancelLabel}</AlertDialogPrimitive.Cancel>

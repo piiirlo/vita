@@ -275,7 +275,7 @@ export default function ConnectionFormPage() {
           <Link to={projectPath("/connections")} className="button">
             Cancel
           </Link>
-          <button type="submit" className="primary" disabled={busy !== null}>
+          <button type="submit" className="primary magnetic" disabled={busy !== null}>
             {busy === "save" ? "Saving…" : "Save"}
           </button>
         </div>

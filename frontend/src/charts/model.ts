@@ -59,6 +59,12 @@ export type DisplayOptions = {
   /** Not stacked (default), stacked, or 100% stacked (shares of each period, in the browser). */
   stack?: "none" | "stacked" | "percent";
 
+  // ---- bar ----
+  /** Ignara's lollipop (stem + bead; default for one series of vertical bars) or classic bars. */
+  bar_style?: "lollipop" | "classic";
+  /** Lollipop: a dashed target line; beads above it are ember. */
+  bar_target?: number | null;
+
   // ---- combo ----
   /** Per metric name: drawn as bars or a line, on the left or right axis. Default: the first
    * metric is bars on the left, the others lines on the left. */
@@ -83,6 +89,11 @@ export type DisplayOptions = {
   heat?: string[];
 
   // ---- big number ----
+  /** Ignara's KPI card (default: icon + label, left-aligned value, delta chip, sparkline),
+   * the ember "hero" card (gradient, progress to `kpi_target`), or the classic centered number. */
+  kpi_style?: "card" | "hero" | "classic";
+  /** Hero card: the progress bar's target (empty: no bar). */
+  kpi_target?: number | null;
   subtitle?: string;
   font_size?: "auto" | "s" | "m" | "l";
   /** Where the number sits in its card (centered by default); subtitle, comparison and trend

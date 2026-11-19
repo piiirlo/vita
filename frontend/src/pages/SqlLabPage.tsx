@@ -543,7 +543,7 @@ export default function SqlLabPage() {
           >
             Format
           </button>
-          <button onClick={() => void save()} title="Save (Ctrl+S)">
+          <button className="magnetic" onClick={() => void save()} title="Save (Ctrl+S)">
             Save
           </button>
           {activeTab.savedQueryId !== null && (
@@ -565,7 +565,7 @@ export default function SqlLabPage() {
             </button>
           ) : (
             <button
-              className="primary run-button"
+              className="primary run-button magnetic"
               onClick={() => void run(activeTab.id)}
               title="Run (Ctrl+Enter). Runs only the selection if text is selected."
             >

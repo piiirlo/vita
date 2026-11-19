@@ -1,32 +1,39 @@
-/* Part 14: projects (design/projects-prototype.html): pill buttons, breadcrumbs, the home
-   page's folders and the project page. Imported after App.css (same layer). */
+/* Part 14: projects: breadcrumbs, the home page's folders and the project page (restyled in
+   Part 16, the Ignara look). Imported after App.css (same layer). */
 
-/* Buttons are pills (the prototype); primary = Clay with Ink text. */
-button,
-.button,
+/* Buttons: 13px corners (10 when small); a press nudges them down 1px. */
 button.small,
 .button.small {
-  border-radius: var(--radius-pill);
+  height: 32px;
+  padding: 0 12px;
+  font-size: 12.5px;
+  border-radius: 10px;
 }
 button:active:not(:disabled),
 .button:active {
-  transform: scale(0.97);
+  transform: translateY(1px);
 }
 button.ghost,
 .button.ghost {
   background: transparent;
-  border-color: var(--border-strong);
+  border-color: transparent;
+}
+button.ghost:hover,
+.button.ghost:hover {
+  background: var(--surface-3);
 }
 button.pill,
 .button.pill {
   height: 44px;
   padding: 0 18px;
   font-weight: 600;
+  border-radius: var(--radius-button);
 }
 button.pill.small,
 .button.pill.small {
   height: 34px;
   padding: 0 14px;
+  border-radius: 10px;
 }
 
 /* Breadcrumbs (top of every project page) */
@@ -36,8 +43,9 @@ button.pill.small,
   flex-wrap: wrap;
   gap: 8px;
   min-width: 0;
-  margin: 0 0 22px;
-  font-size: 14px;
+  margin: 0 0 14px;
+  font-size: 13px;
+  font-weight: 600;
   color: var(--text-muted);
 }
 .crumbs a {
@@ -72,18 +80,6 @@ button.pill.small,
   height: auto;
 }
 
-.rail-divider {
-  display: none;
-}
-@media (min-width: 768px) {
-  .rail-divider {
-    display: block;
-    width: 28px;
-    height: 1px;
-    margin: 2px 0;
-    background: var(--border-strong);
-  }
-}
 
 /* ---------- home: projects as folders ---------- */
 
@@ -121,7 +117,6 @@ button.pill.small,
   position: relative;
   height: 252px;
   margin-top: 22px;
-  animation: v-pop 0.45s var(--ease-out) both;
   /* the fan-out (workflow-folders reference) */
   --fan-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
@@ -151,9 +146,9 @@ button.folder-open:active:not(:disabled) {
 .folder-back {
   position: absolute;
   inset: 0;
-  background: var(--paper-2);
+  background: var(--surface-3);
   border-radius: 0 22px 22px 22px;
-  box-shadow: 0 28px 40px -22px var(--shadow);
+  box-shadow: 0 28px 40px -22px var(--shadow-color);
 }
 .folder-tab {
   position: absolute;
@@ -161,7 +156,7 @@ button.folder-open:active:not(:disabled) {
   top: -30px;
   width: 110px;
   height: 48px;
-  background: var(--paper-2);
+  background: var(--surface-3);
   border-radius: 14px 14px 0 0;
 }
 .folder-papers {
@@ -186,14 +181,16 @@ button.folder-open:active:not(:disabled) {
   transition:
     transform 0.4s var(--fan-ease),
     box-shadow 0.4s var(--fan-ease);
-  background: var(--paper-3);
-  color: var(--on-paper);
+  background: var(--surface-raised);
+  color: var(--text);
   text-decoration: none;
   border-radius: 10px;
-  box-shadow: 0 -4px 16px -6px rgba(23, 33, 31, 0.4);
+  box-shadow:
+    inset 0 0 0 1px var(--border),
+    0 -4px 16px -6px var(--shadow-color);
 }
 a.folder-paper:hover {
-  color: var(--on-paper);
+  color: var(--text);
   text-decoration: none;
 }
 .folder-paper.empty {
@@ -209,7 +206,7 @@ a.folder-paper:hover {
 .folder .folder-paper:focus-visible {
   z-index: 10;
   transform: translateX(calc(var(--x) * 1.35)) translateY(-28px) rotate(0deg) scale(1.04);
-  box-shadow: 0 18px 30px -12px rgba(23, 33, 31, 0.55);
+  box-shadow: 0 18px 30px -12px var(--shadow-color);
 }
 .folder-paper b {
   display: block;
@@ -227,7 +224,7 @@ a.folder-paper:hover {
 .folder-mini span {
   height: 26px;
   border-radius: 5px;
-  background: rgba(23, 33, 31, 0.12);
+  background: var(--surface-3);
 }
 .folder-mini span.o {
   background: var(--accent);
@@ -241,9 +238,9 @@ a.folder-paper:hover {
   place-content: center;
   text-align: center;
   font-size: 12.5px;
-  color: var(--on-paper-muted);
-  background: rgba(23, 33, 31, 0.06);
-  border: 1.5px dashed rgba(23, 33, 31, 0.35);
+  color: var(--text-muted);
+  background: var(--hover);
+  border: 1.5px dashed var(--border-hover);
   box-shadow: none;
 }
 .folder-front {
@@ -258,16 +255,17 @@ a.folder-paper:hover {
   flex-direction: column;
   justify-content: center;
   gap: 6px;
-  border-radius: 22px;
-  background: linear-gradient(160deg, var(--paper-3), var(--paper));
-  color: var(--on-paper);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  color: var(--text);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.45),
-    0 -8px 20px -10px rgba(23, 33, 31, 0.35);
+    inset 0 1px 0 var(--top-light),
+    inset 0 0 0 1px var(--border),
+    0 -8px 20px -10px var(--shadow-color);
 }
 .folder-name {
   font: 700 20px/1.15 var(--font-display);
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -278,7 +276,7 @@ a.folder-paper:hover {
   align-items: center;
   gap: 10px;
   font-size: 13px;
-  color: var(--on-paper-muted);
+  color: var(--text-muted);
 }
 .folder-src {
   display: inline-flex;
@@ -356,7 +354,7 @@ a.folder-paper:hover {
   width: 58px;
   height: 46px;
   border-radius: 7px 12px 12px 12px;
-  background: var(--paper);
+  background: var(--surface);
 }
 .folder-icon::before {
   content: "";
@@ -366,7 +364,7 @@ a.folder-paper:hover {
   width: 24px;
   height: 9px;
   border-radius: 6px 6px 0 0;
-  background: var(--paper-2);
+  background: var(--surface-2);
 }
 .project-section {
   display: flex;
@@ -397,11 +395,10 @@ a.folder-paper:hover {
   transition:
     transform var(--dur) var(--ease-out),
     box-shadow var(--dur) var(--ease-out);
-  animation: v-pop 0.4s var(--ease-out) both;
 }
 .dash-card:hover {
   transform: translateY(-3px);
-  box-shadow: 0 20px 34px -20px var(--shadow);
+  box-shadow: 0 20px 34px -20px var(--shadow-color);
   color: var(--text);
   text-decoration: none;
 }
@@ -420,11 +417,11 @@ a.folder-paper:hover {
   grid-template-columns: repeat(3, 1fr);
   gap: 6px;
   border-radius: 12px;
-  background: var(--paper-3);
+  background: var(--surface);
 }
 .dash-thumb span {
   border-radius: 6px;
-  background: rgba(23, 33, 31, 0.13);
+  background: var(--surface-3);
 }
 .dash-thumb span.o {
   background: var(--accent);

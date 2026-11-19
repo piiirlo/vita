@@ -91,19 +91,19 @@ export default function CommandPalette() {
       open={isOpen}
       onOpenChange={setOpen}
       label="Command palette"
-      overlayClassName="anim-fade fixed inset-0 z-[90] bg-overlay backdrop-blur-[2px]"
-      contentClassName="anim-pop fixed left-1/2 top-[14vh] z-[91] w-[min(640px,calc(100vw-24px))] -translate-x-1/2 overflow-hidden rounded-card border border-border-strong bg-surface-raised text-text shadow-[0_30px_90px_-30px_var(--shadow)]"
+      overlayClassName="anim-fade fixed inset-0 z-[90] bg-overlay"
+      contentClassName="anim-palette fixed left-1/2 top-[14vh] z-[91] w-[min(640px,calc(100vw-24px))] -translate-x-1/2 overflow-hidden rounded-[22px] border-0 bg-surface-raised text-text shadow-[var(--panel-shadow)]"
     >
       <div className="flex items-center gap-3 border-b border-border px-5">
-        <Search size={18} className="shrink-0 text-accent" aria-hidden />
+        <Search size={18} className="shrink-0 text-muted" aria-hidden />
         <Command.Input
           autoFocus
           placeholder="Jump to a dashboard, chart, dataset or query…"
           className="h-14 flex-1 border-0 bg-transparent font-sans text-[15px] text-text outline-none placeholder:text-faint"
         />
-        <kbd className="rounded-pill border border-border-strong px-2 py-1 font-mono text-[11px] text-muted">Esc</kbd>
+        <kbd className="kbd">Esc</kbd>
       </div>
-      <Command.List className="max-h-[min(420px,60vh)] overflow-y-auto p-2 [&_[cmdk-group-heading]]:font-mono [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-[0.14em] [&_[cmdk-group-heading]]:text-muted [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:pt-3 [&_[cmdk-group-heading]]:text-[11px]">
+      <Command.List className="max-h-[min(420px,60vh)] overflow-y-auto p-2 [&_[cmdk-group-heading]]:font-bold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-[0.06em] [&_[cmdk-group-heading]]:text-muted [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:pt-3 [&_[cmdk-group-heading]]:text-[11px]">
         <Command.Empty className="px-3 py-8 text-center text-sm text-muted">
           {loading ? "Loading…" : "Nothing matches. Try another word."}
         </Command.Empty>
@@ -203,7 +203,7 @@ function Item({
       value={value}
       keywords={keywords}
       onSelect={onSelect}
-      className="flex cursor-pointer items-center gap-3 rounded-control px-3 py-2.5 text-sm text-text data-[selected=true]:bg-hover data-[selected=true]:shadow-[inset_2px_0_0_var(--accent)]"
+      className="flex h-[38px] cursor-pointer items-center gap-2.5 rounded-[10px] px-2.5 text-[13.5px] font-semibold text-text data-[selected=true]:bg-surface-3"
     >
       <span className="text-muted" aria-hidden>
         {icon}

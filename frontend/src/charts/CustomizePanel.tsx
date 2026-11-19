@@ -204,10 +204,13 @@ export default function CustomizePanel({ state, dataset, seriesNames, onDisplay,
       <Group title="Layout">
         {vizType === "big_number" && <BigNumberLayout state={state} dataset={dataset} hints={hints} onDisplay={onDisplay} onQuery={onQuery} />}
         {vizType === "bar" && (
-          <div className="checkbox-row">
-            <Check label="Stacked" checked={Boolean(display.stacked)} hint={hints.stacked} onChange={(stacked) => onDisplay({ stacked })} />
-            <Check label="Horizontal" checked={Boolean(display.horizontal)} onChange={(horizontal) => onDisplay({ horizontal })} />
-          </div>
+          <>
+            <div className="checkbox-row">
+              <Check label="Stacked" checked={Boolean(display.stacked)} hint={hints.stacked} onChange={(stacked) => onDisplay({ stacked })} />
+              <Check label="Horizontal" checked={Boolean(display.horizontal)} onChange={(horizontal) => onDisplay({ horizontal })} />
+            </div>
+            <BarStyle display={display} single={seriesNames.length <= 1 && !query.series && query.metrics.length <= 1} onDisplay={onDisplay} />
+          </>
         )}
         {vizType === "area" && (
           <div className="control">
@@ -442,6 +445,44 @@ const TONES: { value: GaugeTone; label: string }[] = [
   { value: "success", label: "Green" },
 ];
 
+/** Lollipop (Ignara's stem and bead, the default for one series) or classic bars, and the
+ * lollipop's target line. */
+function BarStyle({ display, single, onDisplay }: { display: DisplayOptions; single: boolean; onDisplay(p: Partial<DisplayOptions>): void }) {
+  const style = display.bar_style ?? "lollipop";
+  const applies = single && !display.horizontal && !display.stacked;
+  return (
+    <>
+      <div className="control">
+        <span>Bar style</span>
+        <div className="segmented" role="radiogroup" aria-label="Bar style">
+          {(
+            [
+              ["lollipop", "Lollipop"],
+              ["classic", "Classic"],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              role="radio"
+              aria-checked={style === value}
+              disabled={!applies}
+              className={style === value ? "active" : ""}
+              onClick={() => onDisplay({ bar_style: value === "lollipop" ? undefined : value })}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {!applies && <p className="control-hint">Lollipops are for one series of upright, unstacked bars.</p>}
+      </div>
+      {applies && style === "lollipop" && (
+        <NumberField label="Target line" value={display.bar_target} placeholder="None" onChange={(bar_target) => onDisplay({ bar_target })} />
+      )}
+    </>
+  );
+}
+
 function GaugeRange({ display, onDisplay }: { display: DisplayOptions; onDisplay(p: Partial<DisplayOptions>): void }) {
   return (
     <div className="inline-controls gauge-range">
@@ -546,8 +587,41 @@ function BigNumberLayout({
     ["m", "M"],
     ["l", "L"],
   ] as const;
+  const styles = [
+    ["card", "Card"],
+    ["hero", "Hero"],
+    ["classic", "Classic"],
+  ] as const;
+  const style = display.kpi_style ?? "card";
   return (
     <>
+      <div className="control">
+        <span>Style</span>
+        <div className="segmented segmented-3" role="radiogroup" aria-label="Big number style">
+          {styles.map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              role="radio"
+              aria-checked={style === value}
+              className={style === value ? "active" : ""}
+              onClick={() => onDisplay({ kpi_style: value === "card" ? undefined : value })}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <p className="control-hint">
+          {style === "hero"
+            ? "An ember card for the number that matters most, with a bar towards its target."
+            : style === "card"
+              ? "A KPI card: the value, its change and a small trend line."
+              : "The number alone, large and centered."}
+        </p>
+      </div>
+      {style === "hero" && (
+        <NumberField label="Target" value={display.kpi_target} placeholder="None" onChange={(kpi_target) => onDisplay({ kpi_target })} />
+      )}
       <div className="control">
         <span>Font size</span>
         <div className="segmented segmented-4" role="radiogroup" aria-label="Font size">
@@ -575,7 +649,7 @@ function BigNumberLayout({
               role="radio"
               aria-checked={(display.align ?? "center") === value}
               className={(display.align ?? "center") === value ? "active" : ""}
-              onClick={() => onDisplay({ align: value === "center" ? undefined : value })}
+              onClick={() => onDisplay({ align: value })}
             >
               {label}
             </button>
@@ -589,13 +663,13 @@ function BigNumberLayout({
               role="radio"
               aria-checked={(display.valign ?? "middle") === value}
               className={(display.valign ?? "middle") === value ? "active" : ""}
-              onClick={() => onDisplay({ valign: value === "middle" ? undefined : value })}
+              onClick={() => onDisplay({ valign: value })}
             >
               {label}
             </button>
           ))}
         </div>
-        <p className="control-hint">The subtitle, comparison and trend line follow the number.</p>
+        <p className="control-hint">The subtitle, comparison and trend line follow the number. Cards sit top left until you pick a position.</p>
       </div>
       <Check
         label="Compare with the previous period"

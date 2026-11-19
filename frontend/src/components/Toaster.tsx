@@ -4,9 +4,9 @@ import { cn } from "../lib/cn.ts";
 import { dismissToast, TOAST_DURATION_MS, useToasts, type ToastKind } from "./toast.ts";
 
 const ICONS: Record<ToastKind, typeof Info> = { success: CircleCheck, error: CircleAlert, info: Info };
-const ICON_CLASS: Record<ToastKind, string> = { success: "text-success", error: "text-danger", info: "text-accent-text" };
+const ICON_CLASS: Record<ToastKind, string> = { success: "text-inverse-success", error: "text-inverse-danger", info: "text-inverse-info" };
 
-/** Shows the toasts from toast.ts (bottom right). Hover pauses them; swipe right dismisses.
+/** Shows the toasts from toast.ts (bottom center, inverted like Ignara's). Hover pauses them; swipe right dismisses.
  * Errors use the danger color, an icon and the word "Error" (not color alone). */
 export default function Toaster() {
   const toasts = useToasts();
@@ -21,35 +21,35 @@ export default function Toaster() {
             type={t.kind === "error" ? "foreground" : "background"}
             onOpenChange={(open) => !open && dismissToast(t.id)}
             className={cn(
-              "toast-root flex items-start gap-3 rounded-[16px] border bg-surface-raised py-3 pl-4 pr-2 text-sm text-text",
-              "shadow-[0_18px_50px_-20px_var(--shadow)]",
-              t.kind === "error" ? "border-danger-border" : "border-border-strong",
+              "toast-root flex items-center gap-3 rounded-[15px] bg-inverse py-3 pl-4 pr-3 text-[13.5px] font-semibold text-inverse-fg",
+              "shadow-[var(--shadow-lg)]",
+              t.kind === "error" && "shadow-[inset_0_0_0_1.5px_var(--inverse-danger),var(--shadow-lg)]",
             )}
           >
             <Icon size={18} className={cn("mt-px shrink-0", ICON_CLASS[t.kind])} aria-hidden />
             <ToastPrimitive.Description className="min-w-0 flex-1 whitespace-pre-wrap [overflow-wrap:anywhere]">
-              {t.kind === "error" && <strong className="font-semibold text-danger">Error: </strong>}
+              {t.kind === "error" && <strong className="font-bold text-inverse-danger">Error: </strong>}
               {t.message}
             </ToastPrimitive.Description>
             {t.action && (
               <ToastPrimitive.Action
                 altText={t.action.label}
                 onClick={t.action.onClick}
-                className="h-7 shrink-0 cursor-pointer rounded-lg border border-border-strong bg-transparent px-2.5 text-[13px] font-medium text-text hover:bg-hover"
+                className="h-[30px] shrink-0 cursor-pointer rounded-[9px] border-0 bg-[var(--inverse-line)] px-3 text-[12.5px] font-bold text-inverse-fg hover:brightness-125"
               >
                 {t.action.label}
               </ToastPrimitive.Action>
             )}
             <ToastPrimitive.Close
               aria-label="Dismiss"
-              className="inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-lg border-0 bg-transparent p-0 text-muted hover:bg-hover hover:text-text"
+              className="inline-flex h-[30px] w-[30px] shrink-0 cursor-pointer items-center justify-center rounded-[9px] border-0 bg-transparent p-0 text-inverse-muted hover:bg-[var(--inverse-line)] hover:text-inverse-fg"
             >
               <X size={16} aria-hidden />
             </ToastPrimitive.Close>
           </ToastPrimitive.Root>
         );
       })}
-      <ToastPrimitive.Viewport className="fixed bottom-4 right-4 z-[100] m-0 flex w-[min(420px,calc(100vw-32px))] list-none flex-col gap-2 p-0 outline-none max-md:bottom-[84px]" />
+      <ToastPrimitive.Viewport className="fixed bottom-[22px] left-1/2 z-[100] m-0 flex w-[min(440px,calc(100vw-24px))] -translate-x-1/2 list-none flex-col gap-2 p-0 outline-none max-md:bottom-[96px]" />
     </ToastPrimitive.Provider>
   );
 }

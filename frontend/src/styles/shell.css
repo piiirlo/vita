@@ -1,0 +1,319 @@
+/* The app shell (Ignara's sidebar, src/shell/Rail.tsx): 248px with labels on wide screens, an
+   84px icon rail between 768 and 1279px (or when folded), a floating bar at the bottom on phones. */
+
+.side {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: var(--side-w);
+  height: 100vh;
+  padding: 18px 16px 16px;
+  background: var(--side);
+  box-shadow: inset -1px 0 0 var(--border);
+  overflow: hidden auto;
+  scrollbar-width: none;
+}
+.side::-webkit-scrollbar {
+  display: none;
+}
+
+/* brand */
+.side-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 2px 12px 4px;
+}
+.side-brand {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+  border-radius: 12px;
+  color: var(--text);
+}
+.side-brand:hover {
+  color: var(--text);
+  text-decoration: none;
+}
+.side-mark {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: var(--grad);
+  color: var(--accent-fg);
+  font-size: 20px;
+  font-weight: 800;
+  box-shadow:
+    inset 0 1px 0 var(--top-light),
+    0 8px 16px -8px var(--accent-glow);
+}
+.side-brand-text {
+  min-width: 0;
+}
+.side-brand-text b {
+  display: block;
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+.side-brand-text small {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.side .side-fold {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: var(--hover);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  color: var(--text);
+}
+.side .side-fold:hover {
+  background: var(--surface);
+}
+
+/* nav */
+.side-nav {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+.side-group {
+  display: block;
+  padding: 12px 12px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.side .side-item {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  height: 44px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-2);
+  font-size: 13.5px;
+  font-weight: 600;
+  text-decoration: none;
+  transition:
+    color var(--dur) var(--ease-std),
+    background-color var(--dur) var(--ease-std);
+}
+.side .side-item:hover:not([aria-current="page"]) {
+  color: var(--text);
+  background: var(--hover);
+  text-decoration: none;
+}
+.side .side-item[aria-current="page"] {
+  color: var(--accent-fg);
+}
+.side-label {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  text-align: left;
+}
+/* the ember pill: it covers the nav and is clipped to the active item (motion/ignara.ts
+   slidePill stretches it from item to item); hidden until it has a target */
+.side-pill {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  opacity: 0;
+  background: var(--grad);
+  filter: drop-shadow(0 8px 12px var(--accent-glow));
+  pointer-events: none;
+}
+
+/* footer: theme switch + the account chip ("me") */
+.side-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 14px;
+}
+.side .side-me {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  width: 100%;
+  height: 50px;
+  padding: 0 10px 0 6px;
+  border: 0;
+  border-radius: 15px;
+  background: var(--surface);
+  box-shadow: var(--card-shadow);
+  color: var(--text);
+  text-align: left;
+}
+.side .side-me:hover {
+  background: var(--surface-2);
+}
+.side-avatar {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.side-me-text {
+  min-width: 0;
+  line-height: 1.15;
+}
+.side-me-text b {
+  display: block;
+  overflow: hidden;
+  font-size: 13.5px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.side-me-text small {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+/* the icon rail */
+.side.is-rail {
+  --side-w: var(--rail-w);
+  align-items: center;
+  padding: 16px 12px;
+}
+.side.is-rail .side-head {
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 0 6px;
+}
+.side.is-rail .side-brand {
+  flex: none;
+}
+.side.is-rail .side-brand-text,
+.side.is-rail .side-label,
+.side.is-rail .side-me-text {
+  display: none;
+}
+.side.is-rail .side-nav,
+.side.is-rail .side-foot {
+  width: 100%;
+  align-items: center;
+}
+.side.is-rail .side-group {
+  height: 1px;
+  margin: 10px 14px;
+  padding: 0;
+  width: calc(100% - 28px);
+  background: var(--border-strong);
+  color: transparent;
+}
+.side.is-rail .side-item {
+  justify-content: center;
+  width: 52px;
+  padding: 0;
+}
+.side.is-rail .side-me {
+  justify-content: center;
+  width: 52px;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* phones: a floating bar at the bottom */
+.side.is-phone {
+  position: fixed;
+  top: auto;
+  left: 10px;
+  right: 10px;
+  bottom: calc(10px + env(safe-area-inset-bottom));
+  z-index: 40;
+  flex-direction: row;
+  align-items: center;
+  gap: 2px;
+  width: auto;
+  height: auto;
+  padding: 6px;
+  border-radius: 24px;
+  background: var(--surface-raised);
+  box-shadow: var(--panel-shadow);
+  overflow: visible;
+}
+.side.is-phone .side-head,
+.side.is-phone .side-group,
+.side.is-phone .side-label,
+.side.is-phone .side-me-text {
+  display: none;
+}
+.side.is-phone .side-nav {
+  flex-direction: row;
+  justify-content: space-around;
+}
+.side.is-phone .side-foot {
+  flex-direction: row;
+  padding: 0;
+  gap: 2px;
+}
+.side.is-phone .side-item {
+  justify-content: center;
+  width: 44px;
+  height: 48px;
+  padding: 0;
+  border-radius: 18px;
+}
+.side.is-phone .side-me {
+  justify-content: center;
+  width: 44px;
+  height: 48px;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.side.is-phone .side-avatar {
+  width: 32px;
+  height: 32px;
+}
+@media (max-width: 767px) {
+  .app-shell > main {
+    padding-bottom: 84px;
+  }
+}

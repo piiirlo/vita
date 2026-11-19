@@ -11,8 +11,7 @@
 @import "react-grid-layout/css/styles.css" layer(vendor);
 @import "react-resizable/css/styles.css" layer(vendor);
 
-@import "@fontsource-variable/bricolage-grotesque/opsz.css" layer(base);
-@import "@fontsource-variable/instrument-sans/wght.css" layer(base);
+@import "@fontsource-variable/urbanist/wght.css" layer(base);
 @import "@fontsource-variable/jetbrains-mono/wght.css" layer(base);
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities);
@@ -22,6 +21,8 @@
 @import "./projects.css" layer(base);
 @import "./setup.css" layer(base);
 @import "./filters.css" layer(base);
+@import "./shell.css" layer(base);
+@import "./ignara.css" layer(base);
 @import "./components.css" layer(components);
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
@@ -33,11 +34,11 @@
   --color-surface: var(--surface);
   --color-surface-raised: var(--surface-raised);
   --color-surface-sunken: var(--surface-sunken);
-  --color-surface-ink: var(--surface-ink);
-  --color-ink-text: var(--ink-text);
-  --color-ink-muted: var(--ink-muted);
-  --color-ink-border: var(--ink-border);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-side: var(--side);
   --color-text: var(--text);
+  --color-text-2: var(--text-2);
   --color-muted: var(--text-muted);
   --color-faint: var(--text-faint);
   --color-border: var(--border);
@@ -49,8 +50,18 @@
   --color-accent-fg: var(--accent-fg);
   --color-accent-text: var(--accent-text);
   --color-accent-soft: var(--accent-soft);
+  --color-accent-strong: var(--accent-strong);
+  --color-info: var(--info);
+  --color-info-bg: var(--info-bg);
+  --color-warning: var(--warning-text);
+  --color-warning-bg: var(--warning-bg);
   --color-inverse: var(--inverse-bg);
   --color-inverse-fg: var(--inverse-fg);
+  --color-inverse-muted: var(--inverse-muted);
+  --color-inverse-danger: var(--inverse-danger);
+  --color-inverse-success: var(--inverse-success);
+  --color-inverse-info: var(--inverse-info);
+  --color-inverse-line: var(--inverse-line);
   --color-success: var(--success);
   --color-success-bg: var(--success-bg);
   --color-success-border: var(--success-border);
@@ -64,10 +75,16 @@
   --font-sans: var(--font-ui);
   --font-display: var(--font-display);
   --font-mono: var(--font-mono);
+  --font-code: var(--font-code);
 
   --radius-card: var(--radius-card);
   --radius-control: var(--radius-control);
+  --radius-button: var(--radius-button);
+  --radius-menu: var(--radius-menu);
+  --radius-xl: var(--radius-xl);
   --radius-pill: var(--radius-pill);
 
   --ease-out: var(--ease-out);
+  --ease-std: var(--ease-std);
+  --ease-back: var(--ease-back);
 }

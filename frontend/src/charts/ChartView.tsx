@@ -1,3 +1,4 @@
+import type { EChartsOption } from "echarts";
 import { ArrowDown, ArrowUp, TriangleAlert } from "lucide-react";
 import { colorRules, ruleFor, ruleText } from "./colorRules.ts";
 import { lazy, Suspense, useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
@@ -6,6 +7,7 @@ import { CountUp } from "../components/motion.tsx";
 import { paperVar as cssVar } from "../lib/cssVar.ts";
 import { useTheme } from "../theme/theme.ts";
 import { changeRatio, hasTimeAxis, metricFormatter, type Coverage } from "./display.ts";
+import { kpiStyle, lollipopBars } from "./kpi.ts";
 import EChart, { type EChartClick } from "./EChart.tsx";
 import { crossSelection, type OnCrossSelect } from "./crossSelect.ts";
 import { seriesColors } from "./echartsTheme.ts";
@@ -89,12 +91,14 @@ function useDrawColors(): Pick<DrawContext, "colors" | "labelColor" | "tokens"> 
             ["border", "--border-strong"],
             ["band", "--hover"],
             ["danger", "--danger"],
-            ["warning", "--series-5"], // ochre: an amber band
+            ["warning", "--series-4"], // amber: a warning band
             ["success", "--success"],
             ["accent", "--accent"],
             ["surface", "--surface"],
             ["sunken", "--surface-sunken"],
             ["tint", "--heat-2"],
+            ["data", "--data"],
+            ["scaleLow", "--scale-low"],
           ] as [DrawToken, string][]
         ).map(([k, v]) => [k, cssVar(v)]),
       ),
@@ -162,6 +166,12 @@ export default function ChartView({
     [state, result, dataset, drawColors, width, coverage, vizType],
   );
 
+  // Legend chips (Ignara's): several series and a legend on top; a chip hides / shows one.
+  const [hidden, setHidden] = useState<string[]>([]);
+  const chips = useMemo(() => (layout && (state.display.legend ?? "top") === "top" ? legendChips(layout.option) : []), [layout, state.display.legend]);
+  const chipLegend = chips.length > 1;
+  const lollipop = vizType === "bar" && lollipopBars(state.display, chips.length || 1) && !state.display.horizontal;
+
   let body: ReactNode;
   if (result.rows.length === 0) {
     // No rows (the API also returns none for a total whose time range had no rows, so a real
@@ -220,7 +230,30 @@ export default function ChartView({
           : null;
     body = (
       <>
+        {chipLegend && (
+          <div className="chips chart-chips" role="group" aria-label="Series">
+            {chips.map((c) => {
+              const on = !hidden.includes(c.name);
+              return (
+                <button
+                  key={c.name}
+                  type="button"
+                  className="chip"
+                  aria-pressed={on}
+                  onClick={() => setHidden((h) => (on ? (h.length < chips.length - 1 ? [...h, c.name] : h) : h.filter((n) => n !== c.name)))}
+                >
+                  <i className="catdot" style={{ background: c.color }} aria-hidden />
+                  {c.name}
+                </button>
+              );
+            })}
+          </div>
+        )}
         <EChart
+          look={{
+            ...(lollipop ? { lollipop: { target: state.display.bar_target ?? null, latest: hasTimeAxis(state) } } : {}),
+            ...(chipLegend ? { chipLegend: true, hiddenSeries: hidden } : {}),
+          }}
           option={layout!.option}
           onItemClick={
             onSelect && !hasTimeAxis(state)
@@ -286,30 +319,73 @@ function BigNumber({
     [state, trend, dataset, drawColors, coverage],
   );
 
+  const style = kpiStyle(display);
+  if (style === "classic")
+    return (
+      <div className={bigNumberClass(display)}>
+        <div className={`big-number-value${status ? ` ${status}` : ""}`} data-testid="big-number-value">
+          <BigValue value={value} format={format} />
+        </div>
+        {rule && <RuleStatus rule={rule} status={status!} format={format} />}
+        <div className="big-number-subtitle">{display.subtitle || (metric ? metricLabel(metric, dataset) : "")}</div>
+        {display.compare_previous && previous && <Comparison value={value} previous={previous} format={format} />}
+        {trendOption && (
+          <>
+            <EChart className="big-number-trend" option={trendOption} label="Trend" look={{ sparkline: true }} />
+            {display.trend_dates && trend && (
+              <div className="big-number-trend-dates" data-testid="trend-dates">
+                <span>{categoryLabel(trend.rows[0]?.[0], grain)}</span>
+                <span>{categoryLabel(trend.rows.at(-1)?.[0], grain)}</span>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    );
+
+  // Ignara's KPI card: the value (left-aligned unless a position was picked), then a foot with
+  // the delta chip and a quiet line, the sparkline bottom-right; the hero card adds a bar.
+  const n = toNumber(value);
+  const target = style === "hero" ? (display.kpi_target ?? null) : null;
+  const share = target && n !== null && target !== 0 ? n / target : null;
+  const subtitle = display.subtitle || (metric ? metricLabel(metric, dataset) : "");
   return (
-    <div className={bigNumberClass(display)}>
+    <div
+      className={`${bigNumberClass(display)} kpi kpi-${style}`}
+      data-positioned={display.align || display.valign ? "" : undefined}
+    >
       <div className={`big-number-value${status ? ` ${status}` : ""}`} data-testid="big-number-value">
         <BigValue value={value} format={format} />
       </div>
-      {rule && (
-        <div className={`big-number-status ${status}`} data-testid="big-number-status">
-          {rule.when === "below" ? <ArrowDown size={14} aria-hidden /> : <ArrowUp size={14} aria-hidden />}
-          {ruleText(rule, format)}
+      {rule && <RuleStatus rule={rule} status={status!} format={format} />}
+      <div className="kpi-foot">
+        {display.compare_previous && previous && <Comparison value={value} previous={previous} format={format} />}
+        <span className="big-number-subtitle">
+          {share !== null ? `${Math.round(share * 100)}% of ${format(target)}` : subtitle}
+        </span>
+        {trendOption && style !== "hero" && <EChart className="kpi-spark" option={trendOption} label="Trend" look={{ sparkline: true }} />}
+      </div>
+      {share !== null && (
+        <span className="kpi-bar" role="img" aria-label={`${Math.round(share * 100)}% of the target`}>
+          <i style={{ transform: `scaleX(${Math.max(0, Math.min(1, share))})` }} />
+        </span>
+      )}
+      {trendOption && display.trend_dates && trend && style !== "hero" && (
+        <div className="big-number-trend-dates" data-testid="trend-dates">
+          <span>{categoryLabel(trend.rows[0]?.[0], grain)}</span>
+          <span>{categoryLabel(trend.rows.at(-1)?.[0], grain)}</span>
         </div>
       )}
-      <div className="big-number-subtitle">{display.subtitle || (metric ? metricLabel(metric, dataset) : "")}</div>
-      {display.compare_previous && previous && <Comparison value={value} previous={previous} format={format} />}
-      {trendOption && (
-        <>
-          <EChart className="big-number-trend" option={trendOption} label="Trend" />
-          {display.trend_dates && trend && (
-            <div className="big-number-trend-dates" data-testid="trend-dates">
-              <span>{categoryLabel(trend.rows[0]?.[0], grain)}</span>
-              <span>{categoryLabel(trend.rows.at(-1)?.[0], grain)}</span>
-            </div>
-          )}
-        </>
-      )}
+    </div>
+  );
+}
+
+/** "Below $5,000" with an arrow (conditional colors never rely on color alone). */
+function RuleStatus({ rule, status, format }: { rule: NonNullable<ReturnType<typeof ruleFor>>; status: string; format(v: unknown): string }) {
+  return (
+    <div className={`big-number-status ${status}`} data-testid="big-number-status">
+      {rule.when === "below" ? <ArrowDown size={14} aria-hidden /> : <ArrowUp size={14} aria-hidden />}
+      {ruleText(rule, format)}
     </div>
   );
 }
@@ -443,11 +519,36 @@ function GaugeView({ state, result, dataset, drawColors }: { state: ChartState; 
   const value = result.rows[0]?.[0];
   const format = metric ? metricFormatter(state.display, metric, dataset) : (v: unknown) => String(v);
   const target = gaugeTargetText(state, result, dataset);
+  const n = toNumber(value);
+  const goal = state.display.gauge_target ?? null;
+  const max = (option.series as { max?: number }[] | undefined)?.[0]?.max ?? null;
+  // Ignara's target card: the dial, then the numbers that matter beside it.
+  const stats: [string, string][] =
+    goal !== null && n !== null
+      ? [
+          ["Target", format(goal)],
+          ["Reached", goal ? `${Math.round((n / goal) * 100)}%` : "-"],
+          [n >= goal ? "Above target by" : "Still to go", format(Math.abs(goal - n))],
+        ]
+      : [
+          ["Value", format(value)],
+          ...(max !== null ? ([["Out of", format(max)]] as [string, string][]) : []),
+        ];
   return (
-    <div className="gauge">
-      <EChart option={option} label={`Gauge: ${metric ? metricLabel(metric, dataset) : ""} ${format(value)}${target ? `, ${target}` : ""}`} />
+    <div className="gauge gauge-dial">
+      <div className="gauge-ring">
+        <EChart option={option} look={{ dial: true }} label={`Gauge: ${metric ? metricLabel(metric, dataset) : ""} ${format(value)}${target ? `, ${target}` : ""}`} />
+      </div>
+      <dl className="gauge-stats">
+        {stats.map(([dt, dd]) => (
+          <div key={dt}>
+            <dt>{dt}</dt>
+            <dd>{dd}</dd>
+          </div>
+        ))}
+      </dl>
       {target && (
-        <p className="gauge-target mono" data-testid="gauge-target">
+        <p className="sr-only" data-testid="gauge-target">
           {target}
         </p>
       )}
@@ -455,11 +556,28 @@ function GaugeView({ state, result, dataset, drawColors }: { state: ChartState; 
   );
 }
 
+/** The series a legend would list (name and color), for the legend chips. */
+function legendChips(option: EChartsOption): { name: string; color: string }[] {
+  const series = (Array.isArray(option.series) ? option.series : option.series ? [option.series] : []) as {
+    name?: string;
+    id?: string;
+    itemStyle?: { color?: unknown };
+    lineStyle?: { color?: unknown };
+  }[];
+  const seen = new Map<string, string>();
+  for (const s of series) {
+    if (!s.name || String(s.id ?? "").startsWith("partial:") || seen.has(s.name)) continue;
+    const color = s.itemStyle?.color ?? s.lineStyle?.color;
+    seen.set(s.name, typeof color === "string" ? color : "currentColor");
+  }
+  return [...seen].map(([name, color]) => ({ name, color }));
+}
+
 /** A big number with no data: "-" instead of a number (never 0), then why. */
 function EmptyBigNumber({ state, dataset, message }: { state: ChartState; dataset: Dataset | null; message: ReactNode }) {
   const metric = state.query.metrics[0];
   return (
-    <div className={`${bigNumberClass(state.display)} big-number-empty`}>
+    <div className={`${bigNumberClass(state.display)} big-number-empty${kpiStyle(state.display) === "classic" ? "" : ` kpi kpi-${kpiStyle(state.display)}`}`}>
       <div className="big-number-value is-empty" data-testid="big-number-value" aria-label="No data">
         -
       </div>

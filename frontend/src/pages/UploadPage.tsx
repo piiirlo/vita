@@ -212,7 +212,7 @@ export default function UploadPage({
             <strong className="mono small">{preview?.file_name}</strong>
             <span className="spacer" />
             <Button onClick={startOver}>Choose another file</Button>
-            <Button variant="primary" disabled={!canCreate} onClick={() => void create()}>
+            <Button variant="primary" className="magnetic" disabled={!canCreate} onClick={() => void create()}>
               {actionLabel}
             </Button>
           </div>
@@ -251,7 +251,7 @@ export default function UploadPage({
           phase.kind === "preview" && (
             <>
               <Button onClick={startOver}>Choose another file</Button>
-              <Button variant="primary" disabled={!canCreate} onClick={() => (target?.mode === "replace" ? setConfirmReplace(true) : void create())}>
+              <Button variant="primary" className="magnetic" disabled={!canCreate} onClick={() => (target?.mode === "replace" ? setConfirmReplace(true) : void create())}>
                 {actionLabel}
               </Button>
             </>

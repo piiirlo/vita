@@ -25,6 +25,8 @@ function compareValues(a: unknown, b: unknown): number {
 /** Low -> high colors of a continuous scale: from the sunken surface to the two olives,
  * ordered by contrast with the card so "more" always stands out more (both themes). */
 export function scaleColors(ctx: DrawContext): string[] | undefined {
+  // Ignara's heat scale: 10% ember over card-3 up to the full accent.
+  if (ctx.tokens?.scaleLow && ctx.tokens.accent) return [ctx.tokens.scaleLow, ctx.tokens.accent];
   const [, olive, darkOlive] = ctx.colors ?? [];
   // The faint olive tint (--heat-2): "a little" reads as a little, never as "no data" (which
   // stays the plain card color).

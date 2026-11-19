@@ -1,8 +1,9 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Navigate, useNavigate, useSearchParams } from "react-router";
 import { ApiError, login } from "../api.ts";
 import { safeNext, useAuth } from "../auth/auth.ts";
 import { usePageTitle } from "../components/usePageTitle.ts";
+import { shake } from "../motion/ignara.ts";
 
 export default function LoginPage() {
   usePageTitle("Log in");
@@ -13,7 +14,12 @@ export default function LoginPage() {
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const card = useRef<HTMLFormElement>(null);
   const [error, setError] = useState<string | null>(null);
+  // A refused login shakes the card (Ignara's "no").
+  useEffect(() => {
+    if (error) shake(card.current);
+  }, [error]);
   const [busy, setBusy] = useState(false);
   const [waitUntil, setWaitUntil] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -61,7 +67,7 @@ export default function LoginPage() {
 
   return (
     <div className="login-page">
-      <form className="card form login-card" onSubmit={(e) => void submit(e)} aria-label="Log in">
+      <form ref={card} className="card form login-card" onSubmit={(e) => void submit(e)} aria-label="Log in">
         {busy && <span className="scan-line" aria-hidden />}
         <div className="login-brand">
           <span className="login-logo" aria-hidden>

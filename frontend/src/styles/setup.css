@@ -8,53 +8,105 @@
 }
 .wizard-steps {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
   margin: 0 0 30px;
   padding: 0;
   list-style: none;
 }
 .wizard-steps li {
+  position: relative;
   display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 8px 14px 8px 8px;
-  border-radius: var(--radius-pill);
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  font-size: 14px;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
 }
-.wizard-steps li > span:first-child {
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
+.wizard-steps li:last-child {
+  flex: none;
+}
+.wizard-steps .steps-dot {
+  position: relative;
+  z-index: 1;
   display: grid;
   place-items: center;
-  font: 500 12px var(--font-mono);
-  background: var(--surface-raised);
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--bg);
+  box-shadow: inset 0 0 0 2px var(--border-strong);
 }
-.wizard-steps li.on {
-  color: var(--text);
-  border-color: var(--accent);
-}
-.wizard-steps li.on > span:first-child {
+.wizard-steps li.done .steps-dot {
   background: var(--accent);
   color: var(--accent-fg);
+  box-shadow: none;
 }
-.wizard-steps li.done {
+.wizard-steps li.on .steps-dot::after {
+  content: "";
+  position: absolute;
+  inset: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.wizard-steps li.on .steps-dot::before {
+  content: "";
+  position: absolute;
+  inset: -5px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  animation: v-breathe-ring 2.2s ease-in-out infinite;
+}
+@keyframes v-breathe-ring {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.wizard-steps .steps-bar {
+  position: absolute;
+  top: 10px;
+  left: 26px;
+  right: 4px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--border-strong);
+  overflow: hidden;
+}
+.wizard-steps .steps-fill {
+  position: absolute;
+  inset: 0;
+  background: var(--accent);
+  transform-origin: 0 50%;
+}
+.wizard-steps small {
+  padding-right: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.wizard-steps li.done small,
+.wizard-steps li.on small {
   color: var(--text);
 }
-.wizard-steps li.done > span:first-child {
-  background: var(--paper);
-  color: var(--ink);
-}
-/* in the chart editor's header row (the Chart step) */
+/* in the chart editor's header row (the Chart step): compact, labels hidden */
 .chart-editor-header .wizard-steps {
   margin: 0;
+  min-width: 160px;
 }
-.chart-editor-header .wizard-steps li {
-  padding: 4px 10px 4px 4px;
-  font-size: 13px;
+.chart-editor-header .wizard-steps small {
+  display: none;
+}
+.chart-editor-header .wizard-steps .steps-dot {
+  width: 16px;
+  height: 16px;
+}
+.chart-editor-header .wizard-steps .steps-bar {
+  top: 7px;
+  left: 19px;
+}
+.chart-editor-header .wizard-steps li.on .steps-dot::after {
+  inset: 4px;
 }
 .chart-editor-header .wizard-steps li > span:first-child {
   width: 22px;
@@ -124,8 +176,8 @@ button.choice:active:not(:disabled) {
   border-radius: 14px;
   display: grid;
   place-items: center;
-  background: var(--paper);
-  color: var(--ink);
+  background: var(--surface);
+  color: var(--text);
 }
 .choice strong {
   display: block;
@@ -174,9 +226,9 @@ button.sand,
 .button.sand,
 button.sand:hover,
 .button.sand:hover {
-  background: var(--paper);
-  border-color: var(--paper);
-  color: var(--ink);
+  background: var(--surface);
+  border-color: var(--surface);
+  color: var(--text);
 }
 button.sand:hover,
 .button.sand:hover {
@@ -243,8 +295,8 @@ button.explore-table:hover {
   border-color: transparent;
 }
 button.explore-table[aria-pressed="true"] {
-  background: var(--paper);
-  color: var(--ink);
+  background: var(--surface);
+  color: var(--text);
 }
 button.explore-table:active:not(:disabled) {
   transform: none;
@@ -269,7 +321,7 @@ button.explore-table:active:not(:disabled) {
   text-align: left;
   padding: 12px 14px;
   font: 500 11px var(--font-mono);
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text-muted);
   background: var(--surface-raised);
@@ -320,9 +372,9 @@ button.explore-table:active:not(:disabled) {
   justify-content: space-between;
   gap: 10px;
   padding: 10px 12px 10px 16px;
-  border-bottom: 1px solid var(--ink-border);
+  border-bottom: 1px solid var(--border);
   font: 500 12px var(--font-mono);
-  color: var(--ink-muted);
+  color: var(--text-muted);
 }
 .setup-editor textarea {
   display: block;
@@ -334,7 +386,7 @@ button.explore-table:active:not(:disabled) {
   outline: 0;
   resize: vertical;
   background: transparent;
-  font: 400 14.5px/1.7 var(--font-mono);
+  font: 400 14.5px/1.7 var(--font-code);
   color: var(--code-text);
 }
 .setup-editor textarea:focus-visible {

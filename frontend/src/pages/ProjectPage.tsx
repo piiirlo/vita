@@ -134,8 +134,8 @@ export default function ProjectPage() {
             )}
           </div>
           <div className="dash-cards">
-            {data.dashboards.map((d, i) => (
-              <Link key={d.id} to={projectPath(`/dashboards/${d.id}`)} className="dash-card paper" style={{ animationDelay: `${i * 60}ms` }}>
+            {data.dashboards.map((d) => (
+              <Link key={d.id} to={projectPath(`/dashboards/${d.id}`)} className="dash-card paper">
                 <span className={`dash-thumb${d.chart_count ? "" : " empty"}`} aria-hidden>
                   {d.chart_count
                     ? Array.from({ length: Math.min(d.chart_count, 5) }, (_, j) => <span key={j} className={j === 0 ? "o" : j === 1 ? "w2" : ""} />)

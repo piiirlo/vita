@@ -135,7 +135,22 @@ export type DrawContext = {
 };
 
 /** Token colors a chart may need besides the series palette. */
-export type DrawToken = "text" | "muted" | "border" | "band" | "danger" | "warning" | "success" | "accent" | "surface" | "sunken" | "tint";
+export type DrawToken =
+  | "text"
+  | "muted"
+  | "border"
+  | "band"
+  | "danger"
+  | "warning"
+  | "success"
+  | "accent"
+  | "surface"
+  | "sunken"
+  | "tint"
+  /** Quiet data (Ignara draws a single series in it; the accent is for what stands out). */
+  | "data"
+  /** Low end of the ember color scale (heatmaps, the world map). */
+  | "scaleLow";
 
 type TooltipItem = {
   axisValueLabel?: string;
@@ -276,8 +291,11 @@ export function cartesianLayout(state: ChartState, result: ChartDataResult, data
   const several = ordered.length > 1;
   const palette = ctx.colors?.filter(Boolean) ?? [];
   const single = !several && display.color ? ctx.colors?.[display.color - 1] : undefined;
+  // One series with no color picked is drawn in the quiet data color (Ignara's look: the
+  // accent marks what stands out, like a hovered bar).
+  const quiet = !several && !display.color && !display.series_colors?.[ordered[0]?.name ?? ""] ? ctx.tokens?.data : undefined;
   // A series' own color (picked in Customize), else the palette in order.
-  const colorOf = (i: number): string | undefined => single ?? pickSeriesColor(display, ordered[i]!.name, i, palette);
+  const colorOf = (i: number): string | undefined => single ?? quiet ?? pickSeriesColor(display, ordered[i]!.name, i, palette);
   // Conditional colors on single values (not on 100% shares: they'd compare percentages).
   const rules = rulesApply(vizType) && !percent ? colorRules(display) : [];
   const tones = toneColors(ctx);

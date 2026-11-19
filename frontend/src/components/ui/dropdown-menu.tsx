@@ -2,20 +2,15 @@ import * as Menu from "@radix-ui/react-dropdown-menu";
 import { Check, ChevronRight } from "lucide-react";
 import { forwardRef, type ComponentPropsWithoutRef, type ElementRef } from "react";
 import { cn } from "../../lib/cn.ts";
+import { menuItemClass, menuPanelClass } from "./variants.ts";
 
 export const DropdownMenu = Menu.Root;
 export const DropdownMenuTrigger = Menu.Trigger;
 export const DropdownMenuSub = Menu.Sub;
 export const DropdownMenuRadioGroup = Menu.RadioGroup;
 
-const panel = cn(
-  "anim-pop z-[70] min-w-[200px] rounded-[16px] border border-border-strong bg-surface-raised p-1.5 text-text",
-  "shadow-[0_18px_50px_-20px_var(--shadow)]",
-);
-const item = cn(
-  "relative flex cursor-pointer select-none items-center gap-2.5 rounded-[10px] px-2.5 py-2 text-sm outline-none",
-  "data-[highlighted]:bg-hover data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
-);
+const panel = menuPanelClass;
+const item = menuItemClass;
 
 export const DropdownMenuContent = forwardRef<ElementRef<typeof Menu.Content>, ComponentPropsWithoutRef<typeof Menu.Content>>(
   ({ className, sideOffset = 6, ...props }, ref) => (
@@ -32,16 +27,16 @@ export const DropdownMenuItem = forwardRef<ElementRef<typeof Menu.Item>, Compone
 DropdownMenuItem.displayName = "DropdownMenuItem";
 
 export function DropdownMenuLabel({ className, ...props }: ComponentPropsWithoutRef<typeof Menu.Label>) {
-  return <Menu.Label className={cn("eyebrow px-2.5 pb-1 pt-2 text-[11px]", className)} {...props} />;
+  return <Menu.Label className={cn("eyebrow px-2.5 pb-1 pt-2", className)} {...props} />;
 }
 
 export function DropdownMenuSeparator() {
-  return <Menu.Separator className="mx-1 my-1.5 h-px bg-border" />;
+  return <Menu.Separator className="mx-1 my-1.5 h-px bg-border-strong" />;
 }
 
 export const DropdownMenuSubTrigger = forwardRef<ElementRef<typeof Menu.SubTrigger>, ComponentPropsWithoutRef<typeof Menu.SubTrigger>>(
   ({ className, children, ...props }, ref) => (
-    <Menu.SubTrigger ref={ref} className={cn(item, "data-[state=open]:bg-hover", className)} {...props}>
+    <Menu.SubTrigger ref={ref} className={cn(item, "data-[state=open]:bg-surface-3", className)} {...props}>
       {children}
       <ChevronRight size={16} className="ml-auto text-muted" aria-hidden />
     </Menu.SubTrigger>

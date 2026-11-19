@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUpToLine, Plus, RefreshCw, Type } from "lucide-react";
 import { Link, useParams, useSearchParams } from "react-router";
 import {
@@ -17,7 +17,9 @@ import UnsavedChangesDialog from "../components/UnsavedChangesDialog.tsx";
 import { useUnsavedChanges } from "../components/useUnsavedChanges.ts";
 import { CACHE_TTLS } from "../charts/load.ts";
 import { Button } from "../components/ui/button.tsx";
-import { SearchCapsule } from "../shell/PageHeader.tsx";
+import { TitleText } from "../shell/PageHeader.tsx";
+import { AuthContext } from "../auth/auth.ts";
+import { motionOn } from "../motion/ignara.ts";
 import AddChartDialog from "../dashboards/AddChartDialog.tsx";
 import ChartTile from "../dashboards/ChartTile.tsx";
 import DashboardGrid from "../dashboards/DashboardGrid.tsx";
@@ -84,6 +86,8 @@ export default function DashboardPage() {
   const narrow = useMediaQuery(NARROW_QUERY);
   const pageVisible = usePageVisible();
   const now = useNow(15_000);
+  const auth = useContext(AuthContext);
+  const user = auth?.state.status === "authenticated" ? auth.state.user.username : null;
 
   // One request queue and dataset cache per dashboard page.
   const queue = useRef(new RequestQueue(MAX_PARALLEL_TILES)).current;
@@ -398,10 +402,21 @@ export default function DashboardPage() {
       />
     );
 
+  // Ignara's page head: a greeting, the big title, one line about the page, the date.
+  const hour = new Date(now).getHours();
+  const greeting = `${hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening"}${user ? `, ${user}` : ""}`;
+  const chartCount = tiles.filter((t) => t.type === "chart").length;
+  const summary =
+    dashboard.description ||
+    [`${chartCount} chart${chartCount === 1 ? "" : "s"}`, filterDefs.length ? `${filterDefs.length} filter${filterDefs.length === 1 ? "" : "s"}` : null, dashboard.cross_filtering ? "click a chart to filter the others" : null]
+      .filter(Boolean)
+      .join(" · ");
+
   return (
     <div className="dashboard-page">
       <header className="dash-header">
         <div className="dash-heading">
+          {!editing && <span className="dash-greeting">{greeting}</span>}
           {/* In a project the breadcrumbs say where this is. */}
           {(!inProject || editing) && (
             <span className="eyebrow">
@@ -427,12 +442,13 @@ export default function DashboardPage() {
                 onChange={(e) => setDraft({ ...draft, name: e.target.value })}
               />
             ) : (
-              <h1 className="dash-title">{dashboard.name}</h1>
+              <h1 className="dash-title" aria-label={motionOn() ? dashboard.name : undefined}>
+                <TitleText key={dashboard.name} title={dashboard.name} />
+              </h1>
             )}
             {dirty && <span className="dirty-dot" title="Unsaved changes" aria-label="Unsaved changes" />}
           </div>
         </div>
-        {!editing && <SearchCapsule className="dash-capsule" />}
         <div className="dash-actions">
           {editing ? (
             <>
@@ -452,73 +468,77 @@ export default function DashboardPage() {
               <Button variant="ghost" onClick={cancel} disabled={saving}>
                 Cancel
               </Button>
-              <Button variant="primary" onClick={() => void save()} disabled={saving}>
+              <Button variant="primary" className="magnetic" onClick={() => void save()} disabled={saving}>
                 {saving ? "Saving…" : "Save"}
               </Button>
             </>
           ) : (
             <>
-              <span
-                className={`live-chip${intervalMs !== null ? " on" : ""}`}
-                title={new Date(lastUpdated).toLocaleString()}
-              >
-                <span className={intervalMs !== null ? "live-dot" : "dot dot-ok"} aria-hidden />
-                {intervalMs !== null && <span>Live ·</span>}
-                <span>Last updated {relativeTime(new Date(lastUpdated).toISOString(), now)}</span>
-              </span>
               <Button onClick={refreshAll}>
                 <RefreshCw size={15} aria-hidden /> Refresh all
               </Button>
-              <label className="inline-label small">
-                Auto-refresh
-                <select
-                  value={dashboard.refresh_interval}
-                  onChange={(e) => void saveSettings({ refresh_interval: e.target.value as RefreshInterval }, "refresh interval")}
-                  aria-label="Auto-refresh"
-                >
-                  {REFRESH_INTERVALS.map((r) => (
-                    <option key={r.value} value={r.value}>
-                      {r.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="inline-label small">
-                Cache
-                <select
-                  value={dashboard.cache_ttl ?? ""}
-                  onChange={(e) =>
-                    void saveSettings({ cache_ttl: e.target.value === "" ? null : Number(e.target.value) }, "cache setting")
-                  }
-                  aria-label="Cache"
-                  title="How long tiles reuse a chart result (Refresh always queries again)"
-                >
-                  <option value="">Each chart's own</option>
-                  {CACHE_TTLS.map((t) => (
-                    <option key={t.value} value={t.value}>
-                      {t.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="inline-label small cross-switch" title="Click a bar, slice, row… to filter the other charts on it">
-                <input
-                  type="checkbox"
-                  role="switch"
-                  checked={dashboard.cross_filtering}
-                  onChange={(e) => void setCrossFiltering(e.target.checked)}
-                />
-                Cross-filter
-              </label>
               <Button onClick={edit}>Edit</Button>
-              <Link to={addChartPath} className="button primary pill">
+              <Link to={addChartPath} className="button primary pill magnetic">
                 <Plus size={17} strokeWidth={2.4} aria-hidden /> Add a chart
               </Link>
             </>
           )}
         </div>
       </header>
-      {dashboard.description && !editing && <p className="muted dash-description">{dashboard.description}</p>}
+      {!editing && <p className="dash-summary">{summary}</p>}
+      {!editing && (
+        <div className="dash-toolbar">
+          <span
+            className={`live-chip${intervalMs !== null ? " on" : ""}`}
+            title={new Date(lastUpdated).toLocaleString()}
+          >
+            <span className={intervalMs !== null ? "live-dot" : "dot dot-ok"} aria-hidden />
+            {intervalMs !== null && <span>Live ·</span>}
+            <span>Last updated {relativeTime(new Date(lastUpdated).toISOString(), now)}</span>
+          </span>
+          <label className="inline-label small">
+            Auto-refresh
+            <select
+              value={dashboard.refresh_interval}
+              onChange={(e) => void saveSettings({ refresh_interval: e.target.value as RefreshInterval }, "refresh interval")}
+              aria-label="Auto-refresh"
+            >
+              {REFRESH_INTERVALS.map((r) => (
+                <option key={r.value} value={r.value}>
+                  {r.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="inline-label small">
+            Cache
+            <select
+              value={dashboard.cache_ttl ?? ""}
+              onChange={(e) =>
+                void saveSettings({ cache_ttl: e.target.value === "" ? null : Number(e.target.value) }, "cache setting")
+              }
+              aria-label="Cache"
+              title="How long tiles reuse a chart result (Refresh always queries again)"
+            >
+              <option value="">Each chart's own</option>
+              {CACHE_TTLS.map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="inline-label small cross-switch" title="Click a bar, slice, row… to filter the other charts on it">
+            <input
+              type="checkbox"
+              role="switch"
+              checked={dashboard.cross_filtering}
+              onChange={(e) => void setCrossFiltering(e.target.checked)}
+            />
+            Cross-filter
+          </label>
+        </div>
+      )}
 
       <FilterBar
         defs={filterDefs}
@@ -548,7 +568,7 @@ export default function DashboardPage() {
               <strong>This dashboard is empty</strong>
               Write a query or pick a dataset, then build your first chart.
               <div className="get-started">
-                <Link to={addChartPath} className="button primary pill">
+                <Link to={addChartPath} className="button primary pill magnetic">
                   <Plus size={17} strokeWidth={2.4} aria-hidden /> Add a chart
                 </Link>
               </div>

@@ -483,7 +483,7 @@ export default function ChartEditorPage() {
               Saving adds it to {setupMode ? "a new dashboard in this project" : `“${wizardTarget?.name ?? "the dashboard"}”`}
             </span>
           )}
-          <button className="primary" onClick={() => void save()}>
+          <button className="primary magnetic" onClick={() => void save()}>
             {wizard ? "Save chart" : "Save"}
           </button>
           {chart && <button onClick={() => setSaveDialog(true)}>Save as new</button>}

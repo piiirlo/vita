@@ -1,0 +1,555 @@
+/* Ignara's dashboard components (Part 16 round 3, design/ignara-design.md): the KPI card and
+   its ember hero, chart card headers with figures and a range switch, legend chips, the dial,
+   and the dashboard page head. Imported after App.css (same layer), so it wins. */
+
+/* ---------- chart cards ---------- */
+
+.dash-tile {
+  border-radius: var(--radius-card);
+}
+.dash-tile-header {
+  align-items: flex-start;
+  gap: 10px;
+  min-height: 32px;
+  padding: 18px 16px 0 22px;
+  margin-bottom: 14px;
+}
+.dash-tile-heading {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.dash-tile-title {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.dash-tile-sub {
+  overflow: hidden;
+  margin-top: 2px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dash-tile-header > .spacer {
+  display: none;
+}
+/* Ignara's small arrow button (top right of a card) */
+.tile-open {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--border);
+  color: var(--text-muted);
+  transition:
+    background-color var(--dur) var(--ease-std),
+    color var(--dur) var(--ease-std);
+}
+.tile-open:hover {
+  background: var(--surface-3);
+  color: var(--text);
+  text-decoration: none;
+}
+/* "cached 5 minutes ago": a quiet clock with a tooltip */
+.tile-cached,
+.hero-meta-text {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 24px;
+  height: 30px;
+  color: var(--text-muted);
+  opacity: 0.7;
+  cursor: help;
+}
+.tile-cached:hover,
+.tile-cached:focus-visible,
+.hero-meta-text:hover {
+  opacity: 1;
+}
+.dash-tile-body {
+  padding: 0 22px 20px;
+}
+
+/* ---------- chart header figures + range switch (Ignara's "Takings against target") ---------- */
+
+.tile-figures {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 28px;
+  margin: -2px 0 16px;
+}
+.tile-fig small {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.tile-fig b {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.tile-fig b.big {
+  display: block;
+  font-size: 34px;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+}
+.tile-fig em {
+  font-style: normal;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.tile-fig-dash {
+  display: inline-block;
+  width: 14px;
+  margin-right: 6px;
+  border-top: 2px dashed var(--accent);
+  vertical-align: middle;
+}
+.tile-range {
+  margin-left: auto;
+}
+
+/* Ignara's segmented control (.seg): a card-2 track, the active segment is the ink thumb. */
+.seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 13px;
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+.seg button {
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  transition:
+    background-color var(--dur) var(--ease-out),
+    color var(--dur) var(--ease-out);
+}
+.seg button:hover {
+  background: transparent;
+  color: var(--text);
+}
+.seg button.active,
+.seg button.active:hover {
+  background: var(--inverse-bg);
+  color: var(--inverse-fg);
+  box-shadow: 0 4px 10px -4px var(--shadow-color);
+}
+
+/* Legend chips (Ignara's channel chips): a pressed chip shows its series. */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.chart-chips {
+  margin: 0 0 10px;
+}
+.chips .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--border);
+  color: var(--text-muted);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.chips .chip:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.chips .chip[aria-pressed="true"] {
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  color: var(--text);
+}
+.chips .chip[aria-pressed="false"] .catdot {
+  opacity: 0.35;
+}
+.catdot {
+  display: inline-block;
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+}
+
+/* ---------- the KPI card (big numbers) ---------- */
+
+/* The tile's header is the KPI label: icon + 12.5px label. */
+.kpi-head {
+  align-items: center;
+  margin-bottom: 0;
+}
+.kpi-head .kpi-icon {
+  flex: none;
+  color: var(--accent-text);
+}
+.kpi-head .dash-tile-title {
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+.dash-tile-body .big-number.kpi {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  width: 100%;
+  margin: 0;
+  text-align: left;
+}
+/* top left unless a position was picked */
+.big-number.kpi[data-positioned].big-number-h-center {
+  align-items: center;
+  text-align: center;
+}
+.big-number.kpi[data-positioned].big-number-h-right {
+  align-items: flex-end;
+  text-align: right;
+}
+.big-number.kpi[data-positioned].big-number-v-middle {
+  justify-content: center;
+}
+.big-number.kpi[data-positioned].big-number-v-bottom {
+  justify-content: flex-end;
+}
+.big-number.kpi:not([data-positioned]) {
+  align-items: stretch;
+  text-align: left;
+}
+.kpi .big-number-value {
+  margin-top: 10px;
+  font-size: clamp(26px, 13cqmin, 56px);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+.kpi .big-number-frac {
+  color: inherit;
+  opacity: 0.55;
+}
+.kpi-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.kpi .big-number-subtitle {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+/* the delta chip: ▲ +1.8% (green) / ▼ −3.4% (red); its label stays outside the chip */
+.kpi .big-number-change {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  margin: 0;
+  font-size: 12px;
+}
+.kpi .big-number-change > svg {
+  box-sizing: content-box;
+  width: 11px;
+  height: 11px;
+  padding: 3px 1px 3px 6px;
+  border-radius: 99px 0 0 99px;
+  background: var(--chip-bg, var(--surface-3));
+}
+.kpi .big-number-change > strong {
+  padding: 2px 7px 2px 3px;
+  border-radius: 0 99px 99px 0;
+  background: var(--chip-bg, var(--surface-3));
+  font-size: 11px;
+  font-weight: 700;
+}
+.kpi .big-number-change.is-flat > strong {
+  padding-left: 7px;
+  border-radius: 99px;
+}
+.kpi .big-number-change.is-up {
+  --chip-bg: var(--success-bg);
+  color: var(--success);
+}
+.kpi .big-number-change.is-down {
+  --chip-bg: var(--danger-bg);
+  color: var(--danger);
+}
+.kpi .big-number-change-label {
+  margin-left: 8px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.kpi .big-number-status {
+  justify-content: flex-start;
+  margin-top: 6px;
+}
+/* the sparkline, bottom right (Ignara's 92 × 30 squiggle) */
+.kpi-spark {
+  width: 92px;
+  height: 30px;
+  margin-left: auto;
+}
+.kpi .big-number-trend-dates {
+  justify-content: flex-end;
+}
+
+/* ---------- the ember hero ---------- */
+
+.dash-tile:has(.kpi-tile-hero) {
+  border: 0;
+  background: var(--grad);
+  box-shadow:
+    inset 0 1px 0 var(--hero-highlight),
+    0 22px 40px -20px var(--accent-glow);
+  color: var(--accent-fg);
+}
+.kpi-tile-hero .kpi-head .dash-tile-title,
+.kpi-tile-hero .kpi-head .kpi-icon,
+.kpi-tile-hero .kpi-foot,
+.kpi-tile-hero .big-number-subtitle,
+.kpi-tile-hero .tile-cached,
+.kpi-tile-hero .hero-meta-text {
+  color: var(--accent-fg);
+}
+.kpi-tile-hero .tile-menu-trigger,
+.kpi-tile-hero .dash-tile-header button {
+  color: var(--accent-fg);
+}
+.kpi-tile-hero .big-number-value {
+  color: var(--on-grad);
+  font-size: clamp(34px, 16cqmin, 64px);
+  text-shadow: 0 2px 14px var(--hero-shadow);
+}
+.kpi-tile-hero .big-number-frac {
+  color: var(--on-grad);
+}
+.kpi-tile-hero .big-number-change.is-up,
+.kpi-tile-hero .big-number-change.is-down {
+  --chip-bg: var(--hero-chip);
+  color: var(--accent-fg);
+}
+.kpi-tile-hero .big-number-change-label {
+  color: var(--accent-fg);
+}
+.kpi-bar {
+  position: relative;
+  display: block;
+  height: 5px;
+  margin-top: 10px;
+  overflow: hidden;
+  border-radius: 5px;
+  background: var(--hero-track);
+}
+.kpi-bar i {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--accent-fg);
+  transform-origin: 0 50%;
+}
+/* the old hero rule under big numbers: a hairline */
+.kpi-tile .hero-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+.kpi-tile .hero-meta .hero-rule {
+  display: none;
+}
+
+/* ---------- the dial (gauges) ---------- */
+
+.gauge.gauge-dial {
+  display: flex;
+  flex: 1;
+  flex-direction: row;
+  align-items: center;
+  gap: 18px;
+  min-height: 0;
+  height: 100%;
+}
+.gauge-ring {
+  flex: 0 0 auto;
+  height: min(100%, 220px);
+  max-width: 60%;
+  aspect-ratio: 1;
+}
+.gauge-ring .echart {
+  width: 100%;
+  height: 100%;
+}
+.gauge-stats {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+}
+.gauge-stats dt {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.gauge-stats dd {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+/* ---------- dashboard page head (Ignara's: greeting, big title, one line, the date) ---------- */
+
+.dash-greeting {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text-2);
+}
+.dashboard-page .dash-title {
+  font-size: clamp(28px, 2.6vw, 38px);
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.04;
+}
+.dash-summary {
+  max-width: 70ch;
+  margin: 8px 0 20px;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+.date-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+/* ---------- the top bar (Ignara's .top): crumbs, search, date; sticky on every page ---------- */
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: -22px calc(-1 * var(--pad)) 6px;
+  padding: 16px var(--pad) 14px;
+  background: var(--bg);
+}
+.page-wide > .topbar {
+  margin: -22px -32px 6px;
+  padding: 16px 32px 14px;
+}
+.page-full > .topbar {
+  margin: 0;
+  padding: 14px 24px 10px;
+}
+.topbar .crumbs {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+.topbar-search {
+  flex: 0 1 420px;
+}
+.topbar .date-chip {
+  margin-left: auto;
+}
+.topbar:has(.crumbs) .date-chip {
+  margin-left: 0;
+}
+@media (max-width: 1100px) {
+  .topbar .date-chip {
+    display: none;
+  }
+}
+@media (max-width: 760px) {
+  .topbar {
+    margin: -16px -16px 6px;
+    padding: 12px 16px;
+  }
+  .topbar .crumbs {
+    display: none;
+  }
+  .topbar-search {
+    flex: 1;
+  }
+}
+
+/* ---------- the dashboard head: title block left, the two actions right ---------- */
+
+.dashboard-page .dash-header {
+  align-items: flex-end;
+  margin: 10px 0 0;
+}
+.dashboard-page .dash-actions {
+  margin-left: auto;
+}
+.dash-summary {
+  margin-bottom: 14px;
+}
+/* the dashboard's own settings, quiet, under the head */
+.dash-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin: 0 0 18px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+.dash-toolbar select {
+  min-height: 32px;
+  height: 32px;
+  padding: 0 28px 0 10px;
+  border: 0;
+  border-radius: 10px;
+  background-color: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--border);
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+/* KPI tiles taller than Ignara's: the value and the sparkline grow with them */
+.dash-tile-body .kpi .big-number-value {
+  font-size: clamp(26px, 15cqmin, 64px);
+}
+.dash-tile-body .kpi-spark {
+  width: clamp(92px, 45%, 260px);
+  height: clamp(30px, 24cqh, 110px);
+}

@@ -200,7 +200,7 @@ export default function DatasetNewPage() {
           <Link to={projectPath("/datasets")} className="button">
             Cancel
           </Link>
-          <button type="submit" className="primary" disabled={saving || !table}>
+          <button type="submit" className="primary magnetic" disabled={saving || !table}>
             {saving ? "Reading columns…" : "Create dataset"}
           </button>
         </div>

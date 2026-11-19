@@ -23,7 +23,7 @@ function block(selector) {
 }
 const light = block(":root");
 const dark = { ...light, ...block('[data-theme="dark"]') };
-// Cards made of Paper (.paper) in each theme; their page is the card itself.
+// Chart surfaces (.paper = the card of each theme); their page is the card itself.
 const paperOf = (vars) => {
   const merged = { ...vars, ...block(".paper") };
   return { ...merged, "--bg": merged["--surface"] };
@@ -86,7 +86,13 @@ const PAIRS = [
   ["muted text on card", "--text-muted", ["--bg", "--surface"], NORMAL],
   ["muted text on raised", "--text-muted", ["--bg", "--surface-raised"], NORMAL],
   ["muted text on hovered row", "--text-muted", ["--bg", "--surface", "--selected"], NORMAL],
-  ["muted text on rail", "--text-muted", ["--bg", "--rail-bg"], NORMAL],
+  ["muted text on sidebar", "--text-muted", ["--side"], NORMAL],
+  ["nav item text on sidebar", "--text-2", ["--side"], NORMAL],
+  ["muted text on card-2 (inputs, chips)", "--text-muted", ["--bg", "--surface-2"], NORMAL],
+  ["muted text on card-3 (badges, menu hover)", "--text-muted", ["--bg", "--surface-3"], NORMAL],
+  ["secondary text on card", "--text-2", ["--bg", "--surface"], NORMAL],
+  ["body text on card-3", "--text", ["--bg", "--surface-3"], NORMAL],
+  ["info text on card", "--info", ["--bg", "--surface"], NORMAL],
   ["faint text (placeholders, NULL) on card", "--text-faint", ["--bg", "--surface"], NORMAL],
   ["faint text on page", "--text-faint", ["--bg"], NORMAL],
   ["body text on hovered row", "--text", ["--bg", "--surface", "--selected"], NORMAL],
@@ -97,8 +103,16 @@ const PAIRS = [
   ["accent text on card", "--accent-text", ["--bg", "--surface"], NORMAL],
   ["accent text on raised", "--accent-text", ["--bg", "--surface-raised"], NORMAL],
   ["text on orange (primary button)", "--accent-fg", ["--accent"], NORMAL],
-  ["active rail item / tooltip", "--inverse-fg", ["--inverse-bg"], NORMAL],
-  ["text on ink (SQL editor gutter)", "--ink-muted", ["--surface-ink"], NORMAL],
+  ["tooltip / toast / selected segment", "--inverse-fg", ["--inverse-bg"], NORMAL],
+  ["text on the active nav pill (accent)", "--accent-fg", ["--accent-to"], NORMAL],
+  ["muted text on toast / tooltip", "--inverse-muted", ["--inverse-bg"], NORMAL],
+  ["hero KPI value (large) on ember", "--on-grad", ["--accent-to"], LARGE],
+  ["hero KPI label / foot on ember", "--accent-fg", ["--accent-to"], NORMAL],
+  ["hero KPI delta chip on ember", "--accent-fg", ["--accent-to", "--hero-chip"], NORMAL],
+  ["hero KPI bar (ink on its track)", "--accent-fg", ["--accent-to", "--hero-track"], UI],
+  ["error text on toast", "--inverse-danger", ["--inverse-bg"], NORMAL],
+  ["success icon on toast", "--inverse-success", ["--inverse-bg"], UI],
+  ["info icon on toast", "--inverse-info", ["--inverse-bg"], UI],
   ["warning-rule value / table cell on card", "--warning-text", ["--bg", "--surface"], NORMAL],
   ["big number: below-target value / change on card", "--danger", ["--bg", "--surface"], NORMAL],
   ["big number: above-target value / change on card", "--success", ["--bg", "--surface"], NORMAL],
@@ -126,20 +140,20 @@ const PAIRS = [
   ["SQL numbers", "--code-number", ["--code-bg"], NORMAL],
   ["SQL comments", "--code-comment", ["--code-bg"], NORMAL],
   ["SQL line numbers", "--code-line-number", ["--code-bg"], NORMAL],
-  ["SQL text on ink (dataset/chart SQL blocks)", "--code-text", ["--code-bg"], NORMAL],
+  ["SQL selection", "--code-text", ["--code-bg", "--code-selection"], NORMAL],
   // UI parts (3:1): focus ring and the orange against the page.
   ["focus ring vs page", "--focus-ring", ["--bg"], LARGE],
   ["focus ring vs card", "--focus-ring", ["--bg", "--surface"], LARGE],
 ];
 
-// Chart series: charts are always drawn on Paper, so each one is a UI part (3:1) on Paper
-// cards, and every two must be clearly different colors (CIEDE2000; 15+ is "clearly
+// Chart series: charts are drawn on cards, so each one is a UI part (3:1) on the card, and every two must be clearly different colors (CIEDE2000; 15+ is "clearly
 // different" at a glance, neighbors get 18+).
 const SERIES = Array.from({ length: 10 }, (_, i) => `--series-${i + 1}`);
-const PAPER_PAIRS = SERIES.map((token) => [`chart ${token.slice(2)} on Paper`, token, ["--bg", "--surface"], UI]);
+const PAPER_PAIRS = SERIES.map((token) => [`chart ${token.slice(2)} on card`, token, ["--bg", "--surface"], UI]);
 
-PAPER_PAIRS.push(["text on Clay on Paper", "--accent-fg", ["--accent"], NORMAL]);
-PAPER_PAIRS.push(["big number decimals (large) in Clay on Paper", "--clay-on-paper", ["--bg", "--surface"], LARGE]);
+PAPER_PAIRS.push(["text on the accent", "--accent-fg", ["--accent"], NORMAL]);
+PAPER_PAIRS.push(["big number decimals (large) in the accent on card", "--accent-strong", ["--bg", "--surface"], LARGE]);
+PAPER_PAIRS.push(["quiet comparison series on card", "--data", ["--bg", "--surface"], UI]);
 const MIN_DELTA_E = 15;
 const MIN_DELTA_E_NEIGHBORS = 18;
 
@@ -190,8 +204,8 @@ function deltaE(c1, c2) {
 let failed = 0;
 for (const [theme, vars] of THEMES) {
   console.log(`\n${theme}`);
-  // Paper cards hold no SQL, rail or ink: only their own pairs.
-  const onPaper = PAIRS.filter(([what]) => !/SQL|rail|ink/.test(what));
+  // Chart surfaces hold no SQL or sidebar: only their own pairs.
+  const onPaper = PAIRS.filter(([what]) => !/SQL|sidebar|nav item/.test(what));
   for (const [what, fg, stack, min] of theme.startsWith("paper") ? [...onPaper, ...PAPER_PAIRS] : PAIRS) {
     let bg = parse(resolve(vars, vars[stack[0]]));
     for (const layer of stack.slice(1)) bg = over(parse(resolve(vars, vars[layer])), bg);
